@@ -3,7 +3,7 @@
    ===================================================================== */
 window.EG_CONFIG = {
   // From Supabase → Project Settings → API. Both are safe to have on a public website.
-  SUPABASE_URL: "https://supabase.com/dashboard/project/ybtsdtpcxinttnshbicl",          // looks like https://abcdefgh.supabase.co
+    SUPABASE_URL: "https://ybtsdtpcxinttnshbicl.supabase.co",          // looks like https://abcdefgh.supabase.co
   SUPABASE_KEY: "sb_publishable_OxlLbOFv4jUFr9ZYZZouMg_zk9qagSR",      // the publishable (or "anon") key
 
   // The Discord link in the menu and the "Back to the server" button.
