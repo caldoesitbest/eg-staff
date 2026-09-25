@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>EG Staff Applications</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2304050f'/%3E%3Cpath d='M12 3c.4 5 2.4 7.3 9 9-6.6 1.7-8.6 4-9 9-.4-5-2.4-7.3-9-9 6.6-1.7 8.6-4 9-9z' fill='%2338e8ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Rajdhani:wght@600;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <a class="brand" href="../"><i data-icon="crown"></i><span>Envious Gluttony™</span></a>
+    <span class="spaced" style="color: var(--muted)">Admin</span>
+  </header>
+
+  <form class="login-card glow-card" id="login" novalidate>
+    <span class="pill"><i data-icon="lock"></i>Staff only</span>
+    <h1>Staff applications</h1>
+    <p>Log in to read and review applications.</p>
+    <div class="field">
+      <label class="sub-label" for="user">Username</label>
+      <input class="inp" id="user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    </div>
+    <div class="field">
+      <label class="sub-label" for="pass">Password</label>
+      <input class="inp" id="pass" name="password" type="password" autocomplete="current-password">
+    </div>
+    <div class="alert" id="login-error" role="alert" hidden></div>
+    <button class="btn btn-primary" type="submit" id="login-btn">Log in</button>
+  </form>
+
+  <main id="dash" hidden>
+    <div class="admin-head">
+      <h1>Staff applications</h1>
+      <div class="admin-actions">
+        <a class="btn btn-ghost btn-sm" id="sheet-link" href="#" target="_blank" rel="noopener" hidden><i data-icon="external-link"></i>Google Sheet</a>
+        <button class="btn btn-ghost btn-sm" id="refresh" type="button"><i data-icon="refresh-cw"></i>Refresh</button>
+        <button class="btn btn-ghost btn-sm" id="logout" type="button"><i data-icon="log-out"></i>Log out</button>
+      </div>
+    </div>
+    <div class="stats" id="stats" role="group" aria-label="Filter by status"></div>
+    <div class="admin-grid" id="grid">
+      <div class="list-col">
+        <div class="toolbar">
+          <label class="search"><i data-icon="search"></i><input class="inp" id="search" type="search" placeholder="Search name or username" aria-label="Search applications"></label>
+        </div>
+        <p class="count-note" id="count-note"></p>
+        <ul class="app-list" id="list"></ul>
+      </div>
+      <section class="detail glow-card" id="detail" aria-label="Application"></section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="../assets/icons.js"></script>
+<script src="../assets/config.js"></script>
+<script src="../assets/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Envious Gluttony™ Staff Recruitment</title>
+<meta name="description" content="Join the team shaping our community. Apply for staff at Envious Gluttony.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Envious Gluttony™ Staff Recruitment">
+<meta property="og:description" content="Join the team shaping our community! Staff applications are open.">
+<!-- Replace YOUR-DOMAIN.com with your domain so Discord shows the big preview image -->
+<meta property="og:image" content="https://enviousgluttony.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#38e8ff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2304050f'/%3E%3Cpath d='M12 3c.4 5 2.4 7.3 9 9-6.6 1.7-8.6 4-9 9-.4-5-2.4-7.3-9-9 6.6-1.7 8.6-4 9-9z' fill='%2338e8ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Rajdhani:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <a class="brand" href="./"><i data-icon="crown"></i><span>Envious Gluttony™</span></a>
+    <ol class="stepper" id="stepper" aria-label="Progress">
+      <li><span class="dot">1</span><span class="label">Welcome</span></li>
+      <li><span class="dot">2</span><span class="label">Staff Recruitment</span></li>
+      <li><span class="dot">3</span><span class="label">Rules &amp; Judgment</span></li>
+    </ol>
+  </header>
+
+  <form id="quiz" novalidate>
+    <!-- Slide 1: welcome -->
+    <section class="slide" id="slide-0" aria-labelledby="intro-title">
+      <div class="intro-grid">
+        <div class="intro-copy">
+          <h1 class="intro-title" id="intro-title" tabindex="-1">Staff<svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg><br>Recruitment!</h1>
+          <p class="intro-lede">Join the team shaping our community! Tell us about yourself, then show us how you'd handle real situations in the server.</p>
+          <ul class="intro-facts">
+            <li><i data-icon="clock"></i>About 10 minutes</li>
+            <li><i data-icon="file-text"></i>2 parts, 14 questions</li>
+            <li><i data-icon="lock"></i>Only the owners see your answers</li>
+          </ul>
+          <button type="button" class="btn btn-primary" id="start">Start application <i data-icon="arrow-right"></i></button>
+        </div>
+        <div class="intro-art"><img src="assets/hero-art.webp" alt="" width="664" height="790"></div>
+      </div>
+      <div class="glow-line"></div>
+      <div class="slide-foot"><span class="spaced">Envious Gluttony™</span><span class="cyan">Join the team shaping our community!</span></div>
+    </section>
+
+    <!-- Slide 2: staff recruitment -->
+    <section class="slide" id="slide-1" aria-labelledby="part1-title" hidden>
+      <h2 class="sr-only" id="part1-title" tabindex="-1">Staff Recruitment</h2>
+      <picture>
+        <source media="(max-width: 760px)" srcset="assets/header-lettering.webp">
+        <img class="banner" src="assets/header-wide.webp" width="1672" height="292" alt="Staff Recruitment. Rules, responsibility, community, good judgment.">
+      </picture>
+      <div class="cards" id="cards-recruitment"></div>
+      <div class="glow-line"></div>
+      <div class="part-foot"><span class="spaced">Envious Gluttony™</span><span class="spaced">Building a stronger community together</span></div>
+    </section>
+
+    <!-- Slide 3: rules & judgment check -->
+    <section class="slide" id="slide-2" aria-labelledby="part2-title" hidden>
+      <div class="rj-head">
+        <span class="pill"><i data-icon="crown"></i>Envious Gluttony</span>
+        <h2 class="rj-title" id="part2-title" tabindex="-1">Rules &amp; <span class="grad">Judgment Check</span></h2>
+        <p class="rj-sub">Show us that you understand the rules and how you would handle real situations.</p>
+        <div class="spark-divider"><span></span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg><span></span></div>
+      </div>
+      <div class="rules-bar glow-card">
+        <div class="rules-title"><i data-icon="book-open"></i><div><small>Quick</small><strong>Rules reference</strong></div></div>
+        <ul class="rules-list" id="rules-list"></ul>
+      </div>
+      <div class="cards" id="cards-judgment"></div>
+      <div class="pledge"><i data-icon="shield-check"></i><span class="bar"></span><p>We want staff who <em>understand the rules, protect the community,</em> and use <em class="mint">good judgment.</em></p></div>
+    </section>
+
+    <div class="alert" id="alert" role="alert" hidden></div>
+    <div class="nav" id="nav" hidden>
+      <button type="button" class="btn btn-ghost" id="back"><i data-icon="arrow-left"></i>Back</button>
+      <button type="submit" class="btn btn-primary" id="next">Next</button>
+      <div class="nav-note"><span>Your answers save on this device as you type.</span><button type="button" class="linkish" id="reset">Start over</button></div>
+    </div>
+    <div class="hp" aria-hidden="true">
+      <label for="eg-hp">Leave this empty</label>
+      <input type="text" id="eg-hp" name="eg_hp" tabindex="-1" autocomplete="off">
+    </div>
+  </form>
+
+  <section class="done-card glow-card" id="done" hidden aria-labelledby="done-title">
+    <svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg>
+    <h2 id="done-title" tabindex="-1">Application sent!</h2>
+    <p>Thanks for applying. The owners read every application. If you're picked, you'll get a DM on Discord, so keep your DMs open to server members.</p>
+    <dl class="receipt">
+      <dt>Application</dt><dd class="code" id="done-id"></dd>
+      <dt>Discord</dt><dd id="done-user"></dd>
+    </dl>
+    <a class="btn btn-ghost" id="done-invite" href="#" target="_blank" rel="noopener" hidden>Back to the server <i data-icon="arrow-right"></i></a>
+  </section>
+
+  <section class="done-card glow-card" id="closed" hidden aria-labelledby="closed-title">
+    <h2 id="closed-title">Applications are closed</h2>
+    <p>We're not taking staff applications right now. Keep an eye on the server announcements for the next round.</p>
+  </section>
+</div>
+
+<script src="assets/icons.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
