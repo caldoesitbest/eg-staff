@@ -8,7 +8,6 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Envious Gluttony™ Staff Recruitment">
 <meta property="og:description" content="Join the team shaping our community! Staff applications are open.">
-<!-- Replace YOUR-DOMAIN.com with your domain so Discord shows the big preview image -->
 <meta property="og:image" content="https://enviousgluttony.com/assets/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#38e8ff">
@@ -21,7 +20,7 @@
 <body>
 <div class="wrap">
   <header class="topbar">
-    <a class="brand" href="./"><i data-icon="crown"></i><span>Envious Gluttony™</span></a>
+    <div class="brand-slot" id="brand-slot"><a class="brand" href="/"><i data-icon="crown"></i><span>Envious Gluttony™</span></a></div>
     <ol class="stepper" id="stepper" aria-label="Progress">
       <li><span class="dot">1</span><span class="label">Welcome</span></li>
       <li><span class="dot">2</span><span class="label">Staff Recruitment</span></li>
@@ -97,6 +96,17 @@
       <dt>Application</dt><dd class="code" id="done-id"></dd>
       <dt>Discord</dt><dd id="done-user"></dd>
     </dl>
+    <div class="done-track" id="done-tracked" hidden>
+      <p>It's saved to your account. Check its status anytime.</p>
+      <div class="nav"><a class="btn btn-primary" href="/account/">Track my application <i data-icon="arrow-right"></i></a></div>
+    </div>
+    <div class="done-track" id="done-track" hidden>
+      <p>Want to follow its status? Create an account on this device and we'll attach it automatically.</p>
+      <div class="nav">
+        <a class="btn btn-primary" href="/signup/">Create my account</a>
+        <a class="btn btn-ghost" href="/signin/?next=/account/">Sign in</a>
+      </div>
+    </div>
     <a class="btn btn-ghost" id="done-invite" href="#" target="_blank" rel="noopener" hidden>Back to the server <i data-icon="arrow-right"></i></a>
   </section>
 
@@ -106,8 +116,11 @@
   </section>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="assets/icons.js"></script>
 <script src="assets/config.js"></script>
+<script src="assets/supa.js"></script>
+<script src="assets/nav.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

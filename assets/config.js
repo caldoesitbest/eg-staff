@@ -2,11 +2,16 @@
    SETTINGS: the only file you need to edit
    ===================================================================== */
 window.EG_CONFIG = {
-  // Your Google Apps Script web app URL (ends in /exec). See README step 3.
-  API_URL: "https://script.google.com/macros/s/AKfycbwC5k6WG8SZsmIAwDI7avDdDNhK8QXBsCHvYXy8xOSVUPWNiKP-qrZNkq0PuSpl1J-y4Q/exec",
+  // From Supabase → Project Settings → API. Both are safe to have on a public website.
+  SUPABASE_URL: "https://supabase.com/dashboard/project/ybtsdtpcxinttnshbicl",          // looks like https://abcdefgh.supabase.co
+  SUPABASE_KEY: "sb_publishable_OxlLbOFv4jUFr9ZYZZouMg_zk9qagSR",      // the publishable (or "anon") key
 
-  // Optional: your Discord invite. Adds a "Back to the server" button after someone applies.
-  DISCORD_INVITE: "",
+  // The Discord link in the menu and the "Back to the server" button.
+  DISCORD_INVITE: "https://discord.gg/enviousgluttony",
+
+  // Sign-in buttons. Turn one off with false.
+  DISCORD_LOGIN: true,
+  GOOGLE_LOGIN: true,
 
   // Set to false to close applications. The page stays up but the quiz hides.
   APPLICATIONS_OPEN: true,
@@ -14,10 +19,9 @@ window.EG_CONFIG = {
   FORM_ID: "eg-staff-v2",
 
   /* Questions. Reword freely.
-     - id:    unique, lowercase, no spaces. Keep discord_username (used for spam checks).
-     - short: the column name in your Google Sheet and the label in Discord.
-     - type:  text | number | textarea
-     Changing a short name starts a new column in the sheet. */
+     - id:    unique, lowercase, no spaces. Keep name, discord_username and age.
+     - short: the label shown on the admin page and in Discord.
+     - type:  text | number | textarea */
   recruitment: [
     { n: "01", icon: "user", q: "What is your name and username?", fields: [
       { id: "name", short: "Name", label: "Name", type: "text", required: true, maxLength: 60, placeholder: "Your name" },

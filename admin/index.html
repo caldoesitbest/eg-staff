@@ -14,40 +14,27 @@
 <body>
 <div class="wrap">
   <header class="topbar">
-    <a class="brand" href="../"><i data-icon="crown"></i><span>Envious Gluttony™</span></a>
+    <div class="brand-slot" id="brand-slot"><a class="brand" href="/"><i data-icon="crown"></i><span>Envious Gluttony™</span></a></div>
     <span class="spaced" style="color: var(--muted)">Admin</span>
   </header>
 
-  <form class="login-card glow-card" id="login" novalidate>
-    <span class="pill"><i data-icon="lock"></i>Staff only</span>
-    <h1>Staff applications</h1>
-    <p>Log in to read and review applications.</p>
-    <div class="field">
-      <label class="sub-label" for="user">Username</label>
-      <input class="inp" id="user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false">
-    </div>
-    <div class="field">
-      <label class="sub-label" for="pass">Password</label>
-      <input class="inp" id="pass" name="password" type="password" autocomplete="current-password">
-    </div>
-    <div class="alert" id="login-error" role="alert" hidden></div>
-    <button class="btn btn-primary" type="submit" id="login-btn">Log in</button>
-  </form>
+  <section class="login-card glow-card" id="gate" aria-live="polite">
+    <p class="count-note">Checking your access…</p>
+  </section>
 
   <main id="dash" hidden>
     <div class="admin-head">
       <h1>Staff applications</h1>
       <div class="admin-actions">
-        <a class="btn btn-ghost btn-sm" id="sheet-link" href="#" target="_blank" rel="noopener" hidden><i data-icon="external-link"></i>Google Sheet</a>
+        <button class="btn btn-ghost btn-sm" id="export" type="button"><i data-icon="download"></i>Export CSV</button>
         <button class="btn btn-ghost btn-sm" id="refresh" type="button"><i data-icon="refresh-cw"></i>Refresh</button>
-        <button class="btn btn-ghost btn-sm" id="logout" type="button"><i data-icon="log-out"></i>Log out</button>
       </div>
     </div>
     <div class="stats" id="stats" role="group" aria-label="Filter by status"></div>
     <div class="admin-grid" id="grid">
       <div class="list-col">
         <div class="toolbar">
-          <label class="search"><i data-icon="search"></i><input class="inp" id="search" type="search" placeholder="Search name or username" aria-label="Search applications"></label>
+          <label class="search"><i data-icon="search"></i><input class="inp" id="search" type="search" placeholder="Search name, username or ID" aria-label="Search applications"></label>
         </div>
         <p class="count-note" id="count-note"></p>
         <ul class="app-list" id="list"></ul>
@@ -58,8 +45,12 @@
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="../assets/icons.js"></script>
 <script src="../assets/config.js"></script>
+<script src="../assets/supa.js"></script>
+<script src="../assets/nav.js"></script>
+<script src="../assets/authui.js"></script>
 <script src="../assets/admin.js"></script>
 </body>
 </html>

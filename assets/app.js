@@ -182,14 +182,14 @@
   }
 
   async function send() {
-    if (!/^https?:\/\//.test(C.API_URL)) {
-      showAlert("This quiz isn't connected to the answer sheet yet. Owner: paste your web app URL into API_URL in assets/config.js.");
+    const EG = window.EG;
+    if (!EG || !EG.configured) {
+      showAlert("This quiz isn't connected yet. Owner: add your Supabase keys to assets/config.js.");
       return;
     }
     hideAlert();
     setSending(true);
     const payload = {
-      action: "submit",
       form: C.FORM_ID,
       applicationId: state.appId,
       elapsedMs: Date.now() - state.startedAt,
@@ -199,16 +199,16 @@
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 25000);
     try {
-      // Plain-text body, so the browser skips the CORS preflight Apps Script can't answer.
-      const res = await fetch(C.API_URL, { method: "POST", body: JSON.stringify(payload), signal: ctrl.signal, redirect: "follow" });
-      let data = null;
-      try { data = await res.json(); } catch (e) { data = null; }
-      if (!data) throw new Error("unreadable response");
-      if (!data.ok) { showAlert(data.error || "Your application couldn't be saved. Try again in a minute."); return; }
+      const signedIn = !!(await EG.user());
+      const { data, error } = await EG.sb.rpc("submit_application", { p: payload }).abortSignal(ctrl.signal);
+      if (error) throw error;
+      if (!data || !data.ok) { showAlert((data && data.error) || "Your application couldn't be saved. Try again in a minute."); return; }
+      const discordUser = getValue(allFields.find((f) => f.id === "discord_username") || allFields[0]).replace(/^@/, "");
+      if (!signedIn) EG.addReceipt(data.id, discordUser);
       clearDraft();
-      showDone(data.id || state.appId);
+      showDone(data.id, signedIn);
     } catch (e) {
-      showAlert(e && e.name === "AbortError"
+      showAlert(ctrl.signal.aborted
         ? "The server took too long to answer. Check your connection and submit again."
         : "Couldn't reach the server. Check your connection and submit again. Your answers are still here.");
     } finally {
@@ -217,12 +217,14 @@
     }
   }
 
-  function showDone(id) {
+  function showDone(id, signedIn) {
     const user = getValue(allFields.find((f) => f.id === "discord_username") || allFields[0]);
     form.hidden = true;
     stepItems.forEach((li) => { li.classList.add("done"); li.classList.remove("current"); li.removeAttribute("aria-current"); });
     $("done-id").textContent = id;
     $("done-user").textContent = user ? "@" + user.replace(/^@/, "") : "—";
+    $("done-tracked").hidden = !signedIn;
+    $("done-track").hidden = !!signedIn;
     if (C.DISCORD_INVITE) { $("done-invite").href = C.DISCORD_INVITE; $("done-invite").hidden = false; }
     $("done").hidden = false;
     $("done-title").focus({ preventScroll: true });

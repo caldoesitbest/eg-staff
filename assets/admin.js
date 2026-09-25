@@ -1,50 +1,14 @@
-/* Envious Gluttony™ staff applications: admin page */
+/* Envious Gluttony™ staff applications: admin page (admins only, via Supabase) */
 (function () {
   "use strict";
 
-  const C = window.EG_CONFIG;
+  const EG = window.EG;
+  const U = window.EGUI;
+  const el = U.el;
   const icon = window.egIcon;
   const STATUSES = ["New", "Reviewing", "Accepted", "Denied"];
-  const TOKEN_KEY = "eg-admin-token";
-  const GROUPS = [
-    { title: "Staff Recruitment", cards: C.recruitment, style: "num" },
-    { title: "Rules & Judgment Check", cards: C.judgment, style: "circle" }
-  ];
-  const labelFor = (id) => {
-    for (const card of C.recruitment.concat(C.judgment)) for (const f of card.fields) if (f.id === id) return f.short;
-    return id;
-  };
-  const NAME = labelFor("name");
-  const USER = labelFor("discord_username");
-  const AGE = labelFor("age");
-
   const $ = (id) => document.getElementById(id);
-  const state = { token: readToken(), apps: [], filter: "All", query: "", selected: null, sheetUrl: "", busy: false };
-
-  function el(tag, props, children) {
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(props || {})) {
-      if (v === undefined || v === null || v === false) continue;
-      if (k === "class") node.className = v;
-      else if (k === "text") node.textContent = v;
-      else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-      else node.setAttribute(k, v === true ? "" : String(v));
-    }
-    for (const c of [].concat(children || [])) if (c !== null && c !== undefined && c !== false) node.append(c);
-    return node;
-  }
-
-  function readToken() { try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
-  function saveToken(t) { state.token = t; try { sessionStorage.setItem(TOKEN_KEY, t); } catch (e) { /* stays in memory */ } }
-  function clearToken() { state.token = ""; try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ } }
-
-  async function api(body) {
-    if (!/^https?:\/\//.test(C.API_URL)) throw new Error("API_URL in assets/config.js isn't set yet.");
-    const res = await fetch(C.API_URL, { method: "POST", body: JSON.stringify(body), redirect: "follow" });
-    const data = await res.json().catch(() => null);
-    if (!data) throw new Error("The server sent back something unreadable. Check API_URL and your deployment.");
-    return data;
-  }
+  const state = { apps: [], filter: "All", query: "", selected: null, busy: false };
 
   let toastTimer = null;
   function toast(msg) {
@@ -56,10 +20,13 @@
   }
 
   const statusClass = (s) => "s-" + String(s || "New").toLowerCase();
-  const who = (a) => ({ name: a.answers[NAME] || "No name", user: a.answers[USER] ? "@" + String(a.answers[USER]).replace(/^@/, "") : "" });
+  const answer = (a, id) => {
+    const hit = (Array.isArray(a.answers) ? a.answers : []).find((x) => x && x.id === id);
+    return hit ? hit.value : "";
+  };
   const fmtDate = (iso) => {
     const d = new Date(iso);
-    return isNaN(d) ? String(iso || "") : d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   };
   function ago(iso) {
     const d = new Date(iso);
@@ -73,42 +40,45 @@
     return days < 8 ? days + (days === 1 ? " day ago" : " days ago") : fmtDate(iso);
   }
 
-  /* ---------- login ---------- */
-  $("login").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const err = $("login-error");
-    err.hidden = true;
-    const user = $("user").value.trim();
-    const pass = $("pass").value;
-    if (!user || !pass) { err.textContent = "Enter your username and password."; err.hidden = false; return; }
-    const btn = $("login-btn");
-    btn.disabled = true;
-    btn.textContent = "Checking…";
-    try {
-      const r = await api({ action: "login", user: user, pass: pass });
-      if (!r.ok) { err.textContent = r.error || "Wrong username or password."; err.hidden = false; return; }
-      saveToken(r.token);
-      $("pass").value = "";
-      await load();
-    } catch (ex) {
-      err.textContent = ex.message && ex.message.includes("API_URL") ? ex.message : "Couldn't reach the server. Check your connection and try again.";
-      err.hidden = false;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Log in";
-    }
-  });
-
-  function showLogin(msg) {
-    clearToken();
+  /* ---------- access ---------- */
+  function gate(nodes) {
     $("dash").hidden = true;
-    $("login").hidden = false;
-    if (msg) { $("login-error").textContent = msg; $("login-error").hidden = false; }
-    $("user").focus();
+    $("gate").hidden = false;
+    $("gate").replaceChildren(...nodes.filter(Boolean));
+    window.egIcons($("gate"));
   }
 
-  $("logout").addEventListener("click", () => { state.apps = []; state.selected = null; showLogin(); toast("Logged out"); });
-  $("refresh").addEventListener("click", () => load(true));
+  async function start() {
+    if (!EG.configured) {
+      gate([el("h1", { text: "Not connected yet" }), el("p", { text: "Add your Supabase keys to assets/config.js to use the admin page." })]);
+      return;
+    }
+    const user = await EG.user();
+    if (!user) {
+      gate([
+        el("span", { class: "pill" }, [icon("lock"), "Staff only"]),
+        el("h1", { text: "Staff applications" }),
+        el("p", { text: "Sign in with your Envious Gluttony™ account to read and review applications." }),
+        el("a", { class: "btn btn-primary", href: "/signin/?next=/admin/" }, ["Sign in", icon("arrow-right")])
+      ]);
+      return;
+    }
+    if (!(await EG.isAdmin())) {
+      const p = await EG.profile();
+      const out = el("button", { type: "button", class: "btn btn-ghost" }, [icon("log-out"), "Sign out"]);
+      out.addEventListener("click", async () => { await EG.signOut(); location.reload(); });
+      gate([
+        el("span", { class: "pill" }, [icon("lock"), "Staff only"]),
+        el("h1", { text: "No admin access" }),
+        el("p", { text: "You're signed in as " + (p && p.username ? "@" + p.username : user.email) + ", but this account isn't an admin. Ask an owner to add you." }),
+        out
+      ]);
+      return;
+    }
+    $("gate").hidden = true;
+    $("dash").hidden = false;
+    await load();
+  }
 
   /* ---------- data ---------- */
   async function load(announce) {
@@ -116,28 +86,31 @@
     state.busy = true;
     $("refresh").disabled = true;
     try {
-      const r = await api({ action: "list", token: state.token });
-      if (!r.ok) {
-        if (r.auth === false) return showLogin(r.error);
-        toast(r.error || "Couldn't load applications.");
-        return;
-      }
-      state.apps = r.apps || [];
-      state.sheetUrl = r.sheetUrl || "";
-      $("login").hidden = true;
-      $("dash").hidden = false;
-      $("sheet-link").hidden = !state.sheetUrl;
-      if (state.sheetUrl) $("sheet-link").href = state.sheetUrl;
+      const { data, error } = await EG.sb.from("applications").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      state.apps = data || [];
       if (state.selected && !state.apps.some((a) => a.id === state.selected)) state.selected = null;
       render();
       if (announce) toast("Up to date");
     } catch (ex) {
-      if (!$("dash").hidden) toast("Couldn't reach the server.");
-      else showLogin(ex.message);
+      toast("Couldn't load applications: " + EG.friendlyError(ex));
     } finally {
       state.busy = false;
       $("refresh").disabled = false;
     }
+  }
+
+  async function save(id, changes, doneMsg) {
+    const { data, error } = await EG.sb.from("applications").update(changes).eq("id", id).select("id, status, staff_note, status_changed_at");
+    if (error || !data || !data.length) {
+      toast(error ? EG.friendlyError(error) : "That didn't save. Refresh and try again.");
+      return false;
+    }
+    const a = state.apps.find((x) => x.id === id);
+    if (a) Object.assign(a, data[0]);
+    render();
+    toast(doneMsg);
+    return true;
   }
 
   /* ---------- rendering ---------- */
@@ -145,9 +118,7 @@
     const q = state.query.toLowerCase();
     return state.apps.filter((a) => {
       if (state.filter !== "All" && a.status !== state.filter) return false;
-      if (!q) return true;
-      const w = who(a);
-      return (w.name + " " + w.user + " " + a.id).toLowerCase().includes(q);
+      return !q || [a.name, a.discord_username, a.id].join(" ").toLowerCase().includes(q);
     });
   }
 
@@ -164,8 +135,7 @@
       el("button", {
         type: "button", class: "stat", "aria-pressed": String(state.filter === s),
         onclick: () => { state.filter = s; render(); }
-      }, [el("span", { text: s === "All" ? "Total" : s }), el("strong", { text: String(counts[s]) })])
-    ));
+      }, [el("span", { text: s === "All" ? "Total" : s }), el("strong", { text: String(counts[s]) })])));
   }
 
   function renderList() {
@@ -177,17 +147,17 @@
       $("list").replaceChildren(el("li", { class: "empty", text: state.apps.length ? "No applications match." : "No applications yet. Share the link in your server!" }));
       return;
     }
-    $("list").replaceChildren(...items.map((a) => {
-      const w = who(a);
-      return el("li", null, el("button", {
-        type: "button", class: "app-row", "aria-current": String(a.id === state.selected),
-        onclick: () => { state.selected = a.id; $("grid").classList.add("showing-detail"); render(); $("detail").scrollIntoView({ block: "start" }); }
-      }, [
-        el("span", { class: "who" }, [el("strong", { text: w.name }), el("span", { text: [w.user, a.answers[AGE] ? "age " + a.answers[AGE] : ""].filter(Boolean).join(" · ") })]),
-        el("span", { class: "status " + statusClass(a.status), text: a.status }),
-        el("span", { class: "meta", text: ago(a.submitted) + " · " + a.id })
-      ]));
-    }));
+    $("list").replaceChildren(...items.map((a) => el("li", null, el("button", {
+      type: "button", class: "app-row", "aria-current": String(a.id === state.selected),
+      onclick: () => { state.selected = a.id; $("grid").classList.add("showing-detail"); render(); $("detail").scrollIntoView({ block: "start" }); }
+    }, [
+      el("span", { class: "who" }, [
+        el("strong", { text: a.name || "No name" }),
+        el("span", { text: ["@" + a.discord_username, a.age ? "age " + a.age : ""].filter(Boolean).join(" · ") })
+      ]),
+      el("span", { class: "status " + statusClass(a.status), text: a.status }),
+      el("span", { class: "meta", text: ago(a.created_at) + " · " + a.id + (a.user_id ? " · has account" : "") })
+    ]))));
   }
 
   function renderDetail() {
@@ -198,27 +168,15 @@
       box.replaceChildren(el("p", { class: "empty", text: state.apps.length ? "Pick an application to read it." : "Applications will show up here." }));
       return;
     }
-    const w = who(a);
-    const used = new Set([NAME, USER, AGE]);
 
-    const groups = GROUPS.map((g) => el("div", { class: "qa-group" }, [
-      el("h3", { text: g.title }),
-      ...g.cards.map((card) => {
-        const answers = card.fields.map((f) => { used.add(f.short); return { f: f, v: a.answers[f.short] || "" }; });
-        const body = card.fields.length > 1
-          ? answers.map((x) => el("p", { class: "a" + (x.v ? "" : " blank"), text: (x.f.label || x.f.short) + ": " + (x.v || "no answer") }))
-          : [el("p", { class: "a" + (answers[0].v ? "" : " blank"), text: answers[0].v || "No answer" })];
-        return el("div", { class: "qa" }, [el("p", { class: "q" }, [el("b", { text: card.n }), card.q]), ...body]);
-      })
-    ]));
-
-    const extras = Object.keys(a.answers).filter((k) => !used.has(k) && a.answers[k] !== "");
-    if (extras.length) {
-      groups.push(el("div", { class: "qa-group" }, [
-        el("h3", { text: "Other answers" }),
-        ...extras.map((k) => el("div", { class: "qa" }, [el("p", { class: "q", text: k }), el("p", { class: "a", text: a.answers[k] })]))
-      ]));
-    }
+    const note = el("textarea", { class: "inp", id: "staff-note", rows: "3", maxlength: "1000", placeholder: "Optional. The applicant sees this on their account page." });
+    note.value = a.staff_note || "";
+    const saveNote = el("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Save message" });
+    saveNote.addEventListener("click", async () => {
+      U.busy(saveNote, true, "Saving…");
+      await save(a.id, { staff_note: note.value.trim() || null }, note.value.trim() ? "Message saved" : "Message removed");
+      U.busy(saveNote, false);
+    });
 
     const del = el("button", { type: "button", class: "btn btn-danger btn-sm" }, [icon("trash-2"), "Delete"]);
     let armed = null;
@@ -231,56 +189,64 @@
       }
       clearTimeout(armed);
       del.disabled = true;
-      await mutate({ action: "delete", id: a.id }, () => {
-        state.apps = state.apps.filter((x) => x.id !== a.id);
-        state.selected = null;
-      }, "Application deleted");
+      const { error } = await EG.sb.from("applications").delete().eq("id", a.id);
       del.disabled = false;
+      if (error) { toast(EG.friendlyError(error)); return; }
+      state.apps = state.apps.filter((x) => x.id !== a.id);
+      state.selected = null;
+      render();
+      toast("Application deleted");
     });
 
     box.replaceChildren(
       el("button", { type: "button", class: "btn btn-ghost btn-sm back-to-list", onclick: () => { state.selected = null; render(); } }, [icon("arrow-left"), "All applications"]),
       el("div", { class: "detail-top" }, [
-        el("div", null, [el("h2", { text: w.name }), el("p", { class: "sub", text: w.user })]),
+        el("div", null, [el("h2", { text: a.name || "No name" }), el("p", { class: "sub", text: "@" + a.discord_username + (a.user_id ? " · has an account" : "") })]),
         el("span", { class: "status " + statusClass(a.status), text: a.status })
       ]),
       el("dl", { class: "facts" }, [
-        el("div", null, [el("dt", { text: "Age" }), el("dd", { text: a.answers[AGE] || "—" })]),
-        el("div", null, [el("dt", { text: "Submitted" }), el("dd", { text: fmtDate(a.submitted) })]),
+        el("div", null, [el("dt", { text: "Age" }), el("dd", { text: a.age || answer(a, "age") || "—" })]),
+        el("div", null, [el("dt", { text: "Submitted" }), el("dd", { text: fmtDate(a.created_at) })]),
         el("div", null, [el("dt", { text: "Application" }), el("dd", { text: a.id })])
       ]),
-      el("div", { class: "seg", role: "group", "aria-label": "Status" }, STATUSES.map((s) =>
-        el("button", {
-          type: "button", class: statusClass(s), "aria-pressed": String(a.status === s),
-          onclick: () => {
-            if (a.status === s) return;
-            mutate({ action: "status", id: a.id, status: s }, () => { a.status = s; }, "Marked as " + s);
-          }
-        }, s)
-      )),
-      ...groups,
-      el("div", { class: "detail-foot" }, [el("span", { class: "count-note", text: "Submitted " + ago(a.submitted) }), del])
+      el("div", { class: "seg", role: "group", "aria-label": "Status" }, STATUSES.map((s) => el("button", {
+        type: "button", class: statusClass(s), "aria-pressed": String(a.status === s),
+        onclick: () => { if (a.status !== s) save(a.id, { status: s }, "Marked as " + s); }
+      }, s))),
+      el("div", { class: "note-edit" }, [
+        el("label", { class: "sub-label", for: "staff-note", text: "Message to the applicant" }),
+        note,
+        el("div", { class: "row" }, [saveNote])
+      ]),
+      ...U.answersView(a.answers),
+      el("div", { class: "detail-foot" }, [el("span", { class: "count-note", text: "Submitted " + ago(a.created_at) }), del])
     );
+    window.egIcons(box);
   }
 
-  async function mutate(body, apply, doneMsg) {
-    try {
-      const r = await api(Object.assign({ token: state.token }, body));
-      if (!r.ok) {
-        if (r.auth === false) return showLogin(r.error);
-        toast(r.error || "That didn't save. Try again.");
-        return;
-      }
-      apply();
-      render();
-      toast(doneMsg);
-    } catch (ex) {
-      toast("Couldn't reach the server. Try again.");
-    }
-  }
+  /* ---------- export ---------- */
+  $("export").addEventListener("click", () => {
+    if (!state.apps.length) { toast("Nothing to export yet"); return; }
+    const ids = [];
+    const labels = {};
+    state.apps.forEach((a) => (a.answers || []).forEach((x) => { if (!labels[x.id]) { labels[x.id] = x.label || x.id; ids.push(x.id); } }));
+    const cell = (v) => {
+      let s = String(v === null || v === undefined ? "" : v);
+      if (/^[=+\-@]/.test(s)) s = "'" + s; // keep spreadsheets from running it as a formula
+      return '"' + s.replace(/"/g, '""') + '"';
+    };
+    const rows = [["Application", "Submitted", "Status", "Message to applicant", "Has account"].concat(ids.map((i) => labels[i]))]
+      .concat(state.apps.map((a) => [a.id, a.created_at, a.status, a.staff_note || "", a.user_id ? "yes" : "no"].concat(ids.map((i) => answer(a, i)))));
+    const blob = new Blob(["﻿" + rows.map((r) => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const link = el("a", { href: URL.createObjectURL(blob), download: "eg-staff-applications.csv" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
 
+  $("refresh").addEventListener("click", () => load(true));
   $("search").addEventListener("input", (e) => { state.query = e.target.value.trim(); renderList(); });
 
-  /* ---------- start ---------- */
-  if (state.token) load(); else showLogin();
+  start();
 })();
