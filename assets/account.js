@@ -169,7 +169,7 @@
       apps.length ? apps.map(tracker) : [el("section", { class: "empty-track glow-card" }, [
         el("h2", { text: "No application yet" }),
         el("p", { text: "When you apply for staff, you can follow it here, from submitted to decision." }),
-        el("a", { class: "btn btn-primary", href: "/" }, ["Apply for staff", icon("arrow-right")])
+        el("a", { class: "btn btn-primary", href: "/apply/" }, ["Apply for staff", icon("arrow-right")])
       ])],
       [claimBox(async () => renderAccount(user, profile))]
     ));

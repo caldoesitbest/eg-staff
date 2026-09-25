@@ -879,3 +879,24 @@ details.answers .qa-group { margin-top: 14px; }
   .steps-mini span { display: none; }
   .steps-mini li + li::before { width: 10px; }
 }
+
+/* EG mark in the brand button (all pages) */
+.brand-mark { width: 38px; height: auto; margin-block: -6px; filter: drop-shadow(0 2px 8px rgba(56, 232, 255, 0.25)); }
+@media (max-width: 480px) {
+  .brand { letter-spacing: 0.16em; }
+  .brand-mark { width: 32px; }
+}
+@media (max-width: 420px) {
+  .brand { gap: 8px; letter-spacing: 0.08em; }
+  .brand-btn { padding-right: 6px; }
+  .brand-mark { width: 30px; }
+}
+@media (max-width: 420px) {
+  .stepper, .stepper li { gap: 4px; }
+  .stepper li + li::before { width: 8px; }
+}
+.topbar > .stepper, .topbar > .steps-mini { flex: none; }
+body { overflow-x: clip; }
+@media (max-width: 340px) {
+  .topbar .brand-btn > span { display: none; }
+}

@@ -3,124 +3,371 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Envious Gluttony™ Staff Recruitment</title>
-<meta name="description" content="Join the team shaping our community. Apply for staff at Envious Gluttony.">
+<title>Envious Gluttony™ · By the people. For the people. With the people.</title>
+<meta name="description" content="Envious Gluttony™ is a fast-growing Discord community built on conversation, culture, a healthy amount of chaos and good judgment. Same planet. Different breed.">
+<link rel="canonical" href="https://enviousgluttony.com/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Envious Gluttony™ Staff Recruitment">
-<meta property="og:description" content="Join the team shaping our community! Staff applications are open.">
-<meta property="og:image" content="https://enviousgluttony.com/assets/og.jpg">
+<meta property="og:url" content="https://enviousgluttony.com/">
+<meta property="og:site_name" content="Envious Gluttony™">
+<meta property="og:title" content="Envious Gluttony™">
+<meta property="og:description" content="By the people. For the people. With the people. A Discord community built on conversation, culture and a healthy amount of chaos.">
+<meta property="og:image" content="https://enviousgluttony.com/assets/home/og-home.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#38e8ff">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2304050f'/%3E%3Cpath d='M12 3c.4 5 2.4 7.3 9 9-6.6 1.7-8.6 4-9 9-.4-5-2.4-7.3-9-9 6.6-1.7 8.6-4 9-9z' fill='%2338e8ff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Rajdhani:wght@600;700&display=swap">
-<link rel="stylesheet" href="assets/style.css">
+<meta name="theme-color" content="#05071f">
+<link rel="icon" type="image/png" href="assets/home/favicon-64.png">
+<link rel="apple-touch-icon" href="assets/home/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
+<link rel="stylesheet" href="assets/fonts.css?v=4">
+<link rel="stylesheet" href="assets/home.css?v=4">
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
-<div class="wrap">
-  <header class="topbar">
-    <div class="brand-slot" id="brand-slot"><a class="brand" href="/"><i data-icon="crown"></i><span>Envious Gluttony™</span></a></div>
-    <ol class="stepper" id="stepper" aria-label="Progress">
-      <li><span class="dot">1</span><span class="label">Welcome</span></li>
-      <li><span class="dot">2</span><span class="label">Staff Recruitment</span></li>
-      <li><span class="dot">3</span><span class="label">Rules &amp; Judgment</span></li>
-    </ol>
-  </header>
+<a class="skip" href="#main">Skip to content</a>
+<canvas class="stars" id="stars" aria-hidden="true"></canvas>
 
-  <form id="quiz" novalidate>
-    <!-- Slide 1: welcome -->
-    <section class="slide" id="slide-0" aria-labelledby="intro-title">
-      <div class="intro-grid">
-        <div class="intro-copy">
-          <h1 class="intro-title" id="intro-title" tabindex="-1">Staff<svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg><br>Recruitment!</h1>
-          <p class="intro-lede">Join the team shaping our community! Tell us about yourself, then show us how you'd handle real situations in the server.</p>
-          <ul class="intro-facts">
-            <li><i data-icon="clock"></i>About 10 minutes</li>
-            <li><i data-icon="file-text"></i>2 parts, 14 questions</li>
-            <li><i data-icon="lock"></i>Only the owners see your answers</li>
-          </ul>
-          <button type="button" class="btn btn-primary" id="start">Start application <i data-icon="arrow-right"></i></button>
+<!-- ============================ NAV ============================ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <div class="brand-slot" id="brand-slot" data-mark="assets/home/eg-mark.webp"
+         data-sections="About:#about,Milestones:#milestones,Community:#community,Confession:#confession,The Ladder:#ladder,Stats:#stats,Rules:#rules">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/home/eg-mark.webp" alt="" width="44" height="33"><span class="brand-name">Envious Gluttony™</span></a>
+    </div>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#top" data-spy="top">Home</a>
+      <a href="#about" data-spy="about">About</a>
+      <a href="#community" data-spy="community">Community</a>
+      <a href="#stats" data-spy="stats">Stats</a>
+      <a href="#rules" data-spy="rules">Rules</a>
+      <a href="/apply/">Apply</a>
+    </nav>
+    <a class="nav-cta" href="https://discord.gg/enviousgluttony" target="_blank" rel="noopener" data-invite>
+      <i data-icon="discord"></i><span>Join our Discord</span>
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============================ HERO ============================ -->
+  <section class="hero" id="top" aria-labelledby="hero-title" data-spy-section="top">
+    <div class="hero-sky" aria-hidden="true"></div>
+    <div class="hero-art" id="hero-art">
+      <img src="assets/home/hero-1600.webp"
+           srcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w"
+           sizes="(max-width: 759px) 100vw, 64vw" width="1600" height="1474" fetchpriority="high" decoding="async"
+           alt="An astronaut in a white suit sits on an asteroid under a giant cyan ringed planet.">
+      <p class="tag tag-hero" aria-hidden="true">
+        <svg class="tag-crown" viewBox="0 0 64 40"><path d="M6 34 4 8l16 14L32 3l12 19L60 8l-3 26Z"/><path d="M8 34h48"/></svg>
+        <span>Good people.</span><span>Bad habits.</span><span>Great conversations.</span>
+      </p>
+    </div>
+    <div class="moon" id="moon" aria-hidden="true"><span class="moon-ring"></span></div>
+
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <img class="hero-logo" src="assets/home/eg-logo.webp" width="540" height="430" alt="Envious Gluttony">
+        <p class="eyebrow">Discord community <span class="sep">/</span> Est. 09.02.26</p>
+        <h1 class="hero-title" id="hero-title">
+          <span>By the people.</span>
+          <span>For the people.</span>
+          <span class="accent">With the people.</span>
+        </h1>
+        <p class="hero-lede">A fast-growing space for conversation, culture and a healthy amount of chaos, built on personality, participation and good judgment.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-join" href="https://discord.gg/enviousgluttony" target="_blank" rel="noopener" data-invite>
+            <i data-icon="discord"></i><span>Join the community</span><i data-icon="arrow-right" class="arrow"></i>
+          </a>
+          <a class="btn btn-line" href="/apply/"><span>Apply for staff</span><i data-icon="arrow-right" class="arrow"></i></a>
         </div>
-        <div class="intro-art"><img src="assets/hero-art.webp" alt="" width="664" height="790"></div>
-      </div>
-      <div class="glow-line"></div>
-      <div class="slide-foot"><span class="spaced">Envious Gluttony™</span><span class="cyan">Join the team shaping our community!</span></div>
-    </section>
-
-    <!-- Slide 2: staff recruitment -->
-    <section class="slide" id="slide-1" aria-labelledby="part1-title" hidden>
-      <h2 class="sr-only" id="part1-title" tabindex="-1">Staff Recruitment</h2>
-      <picture>
-        <source media="(max-width: 760px)" srcset="assets/header-lettering.webp">
-        <img class="banner" src="assets/header-wide.webp" width="1672" height="292" alt="Staff Recruitment. Rules, responsibility, community, good judgment.">
-      </picture>
-      <div class="cards" id="cards-recruitment"></div>
-      <div class="glow-line"></div>
-      <div class="part-foot"><span class="spaced">Envious Gluttony™</span><span class="spaced">Building a stronger community together</span></div>
-    </section>
-
-    <!-- Slide 3: rules & judgment check -->
-    <section class="slide" id="slide-2" aria-labelledby="part2-title" hidden>
-      <div class="rj-head">
-        <span class="pill"><i data-icon="crown"></i>Envious Gluttony</span>
-        <h2 class="rj-title" id="part2-title" tabindex="-1">Rules &amp; <span class="grad">Judgment Check</span></h2>
-        <p class="rj-sub">Show us that you understand the rules and how you would handle real situations.</p>
-        <div class="spark-divider"><span></span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg><span></span></div>
-      </div>
-      <div class="rules-bar glow-card">
-        <div class="rules-title"><i data-icon="book-open"></i><div><small>Quick</small><strong>Rules reference</strong></div></div>
-        <ul class="rules-list" id="rules-list"></ul>
-      </div>
-      <div class="cards" id="cards-judgment"></div>
-      <div class="pledge"><i data-icon="shield-check"></i><span class="bar"></span><p>We want staff who <em>understand the rules, protect the community,</em> and use <em class="mint">good judgment.</em></p></div>
-    </section>
-
-    <div class="alert" id="alert" role="alert" hidden></div>
-    <div class="nav" id="nav" hidden>
-      <button type="button" class="btn btn-ghost" id="back"><i data-icon="arrow-left"></i>Back</button>
-      <button type="submit" class="btn btn-primary" id="next">Next</button>
-      <div class="nav-note"><span>Your answers save on this device as you type.</span><button type="button" class="linkish" id="reset">Start over</button></div>
-    </div>
-    <div class="hp" aria-hidden="true">
-      <label for="eg-hp">Leave this empty</label>
-      <input type="text" id="eg-hp" name="eg_hp" tabindex="-1" autocomplete="off">
-    </div>
-  </form>
-
-  <section class="done-card glow-card" id="done" hidden aria-labelledby="done-title">
-    <svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg>
-    <h2 id="done-title" tabindex="-1">Application sent!</h2>
-    <p>Thanks for applying. The owners read every application. If you're picked, you'll get a DM on Discord, so keep your DMs open to server members.</p>
-    <dl class="receipt">
-      <dt>Application</dt><dd class="code" id="done-id"></dd>
-      <dt>Discord</dt><dd id="done-user"></dd>
-    </dl>
-    <div class="done-track" id="done-tracked" hidden>
-      <p>It's saved to your account. Check its status anytime.</p>
-      <div class="nav"><a class="btn btn-primary" href="/account/">Track my application <i data-icon="arrow-right"></i></a></div>
-    </div>
-    <div class="done-track" id="done-track" hidden>
-      <p>Want to follow its status? Create an account on this device and we'll attach it automatically.</p>
-      <div class="nav">
-        <a class="btn btn-primary" href="/signup/">Create my account</a>
-        <a class="btn btn-ghost" href="/signin/?next=/account/">Sign in</a>
+        <ul class="pulse" aria-label="The server right now">
+          <li class="p-members"><i data-icon="users"></i><b data-stat="members">280</b><span>members</span></li>
+          <li class="p-boosts"><i data-icon="gem"></i><b data-stat="boosts">31</b><span>boosts</span></li>
+          <li class="p-live"><span class="dot" aria-hidden="true"></span><b data-stat="third">10</b><span data-stat-label>in voice</span></li>
+        </ul>
       </div>
     </div>
-    <a class="btn btn-ghost" id="done-invite" href="#" target="_blank" rel="noopener" hidden>Back to the server <i data-icon="arrow-right"></i></a>
+    <a class="scroll-cue" href="#about"><span>Scroll</span><i aria-hidden="true"></i></a>
   </section>
 
-  <section class="done-card glow-card" id="closed" hidden aria-labelledby="closed-title">
-    <h2 id="closed-title">Applications are closed</h2>
-    <p>We're not taking staff applications right now. Keep an eye on the server announcements for the next round.</p>
-  </section>
-</div>
+  <!-- ticker band -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>By the people</span><i>✦</i><span>For the people</span><i>✦</i><span>With the people</span><i>✦</i><span>Good people</span><i>✦</i><span>Bad habits</span><i>✦</i><span>Great conversations</span><i>✦</i>
+      <span>By the people</span><i>✦</i><span>For the people</span><i>✦</i><span>With the people</span><i>✦</i><span>Good people</span><i>✦</i><span>Bad habits</span><i>✦</i><span>Great conversations</span><i>✦</i>
+    </div>
+  </div>
 
+  <!-- ============================ ABOUT ============================ -->
+  <section class="about" id="about" aria-labelledby="about-title" data-spy-section="about">
+    <div class="container about-grid">
+      <div class="about-head" data-reveal>
+        <p class="eyebrow"><span class="num">01</span> Why EG exists</p>
+        <h2 class="h-xl" id="about-title">Not another server <em class="outline">thrown together.</em></h2>
+      </div>
+      <div class="about-copy" data-reveal style="--d:.1s">
+        <p class="lead">Envious Gluttony™ started as a passion project between a few friends who wanted somewhere people actually stay: to talk, laugh, argue about nothing, meet people and have a genuinely good time.</p>
+        <p>Nobody here is a spectator. The ideas come from the chat, the features come from the suggestions forum, and the culture comes from whoever shows up.</p>
+        <p class="kicker">All rise. There's a new posse making waves in the scene.</p>
+      </div>
+      <figure class="quote" data-reveal>
+        <blockquote><p>Every one of you holds a piece of EG, like stock in a company.</p></blockquote>
+        <figcaption><b>Calvin</b>, co-founder <span>·</span> one-week serversary</figcaption>
+      </figure>
+      <div class="cert-wrap" data-reveal style="--d:.15s">
+        <article class="cert" id="cert" aria-label="A certificate of membership">
+          <svg class="cert-frame" aria-hidden="true"></svg>
+          <div class="cert-body">
+            <p class="cert-kicker">Certificate of membership</p>
+            <p class="cert-name">Envious Gluttony™</p>
+            <p class="cert-text">This certifies that the bearer holds <b>one (1) share</b> in Envious Gluttony™, with full voting rights in the suggestions forum.</p>
+            <div class="cert-meta">
+              <span>Share No. <b id="cert-no">000281</b></span>
+              <span>Issued <b>09.02.26</b></span>
+            </div>
+            <div class="cert-sigs">
+              <div><span class="sig">Calvin</span><small>Co-founder</small></div>
+              <div><span class="sig">The people</span><small>Majority shareholders</small></div>
+            </div>
+            <p class="cert-fine">Non-transferable. Dividends paid in Nitro, occasionally.</p>
+          </div>
+          <svg class="cert-seal" viewBox="0 0 120 120" aria-hidden="true"></svg>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ MILESTONES ============================ -->
+  <section class="milestones" id="milestones" aria-labelledby="ms-title" data-spy-section="about">
+    <div class="container section-head split">
+      <div data-reveal>
+        <p class="eyebrow"><span class="num">02</span> Recent milestones</p>
+        <h2 class="h-lg" id="ms-title"><span id="ms-age">Three weeks in.</span> <span class="grad">Already loud.</span></h2>
+        <p class="sub">Every milestone gets celebrated. Usually with free stuff.</p>
+      </div>
+      <div class="track-btns" data-reveal style="--d:.1s">
+        <button class="round" type="button" data-dir="-1" aria-label="Earlier milestones"><i data-icon="chevron-left"></i></button>
+        <button class="round" type="button" data-dir="1" aria-label="Later milestones"><i data-icon="chevron-right"></i></button>
+      </div>
+    </div>
+    <ol class="track" id="ms-track" tabindex="0" aria-label="Milestones. Scroll sideways for more."></ol>
+  </section>
+
+  <!-- ============================ WHAT MAKES EG DIFFERENT ============================ -->
+  <section class="community" id="community" aria-labelledby="com-title" data-spy-section="community">
+    <div class="container com-grid">
+      <div class="com-side">
+        <div class="com-sticky" data-reveal>
+          <p class="eyebrow"><span class="num">03</span> What makes EG different</p>
+          <h2 class="h-lg" id="com-title">More than a server. <span class="grad">A whole planet.</span></h2>
+          <p class="sub">Six reasons people show up, and don't leave.</p>
+          <div class="orb" id="orb" aria-hidden="true">
+            <span class="orb-glow"></span>
+            <span class="orb-ring back"></span>
+            <span class="orb-core"></span>
+            <span class="orb-ring front"></span>
+            <span class="orb-icon" id="orb-icon"></span>
+          </div>
+        </div>
+      </div>
+      <ol class="features" id="features"></ol>
+    </div>
+  </section>
+
+  <!-- ============================ CONFESSION ============================ -->
+  <section class="confession" id="confession" aria-labelledby="conf-title" data-spy-section="community">
+    <div class="container">
+      <div class="conf-head">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">04</span> Self-assigned roles</p>
+          <h2 class="h-display" id="conf-title">Confession</h2>
+        </div>
+        <div class="conf-aside" data-reveal style="--d:.1s">
+          <p class="conf-sub">The sins you earn.<br>The vices you confess.</p>
+          <p class="conf-note"><i data-icon="mouse-pointer-click"></i><span>Tap once to confess, again to recant. Only you see the reply.</span></p>
+        </div>
+      </div>
+      <ul class="tarot" id="roles"></ul>
+    </div>
+  </section>
+
+  <!-- ============================ THE LADDER ============================ -->
+  <section class="ladder" id="ladder" aria-labelledby="lad-title" data-spy-section="community">
+    <div class="container">
+      <div class="section-head split">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">05</span> Leveling</p>
+          <h2 class="h-xl" id="lad-title">The Ladder</h2>
+        </div>
+        <p class="sub ladder-sub" data-reveal style="--d:.1s">Climb higher. Different sins. Same family.<br><span>XP comes from messages and time in voice with others.</span></p>
+      </div>
+      <div class="steps-wrap">
+        <svg class="constellation" id="constellation" aria-hidden="true"></svg>
+        <ol class="steps" id="steps"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ STATS ============================ -->
+  <section class="stats" id="stats" aria-labelledby="stats-title" data-spy-section="stats">
+    <div class="container">
+      <div class="section-head split">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">06</span> Server stats</p>
+          <h2 class="h-lg" id="stats-title">Real activity. Real people. <span class="grad">Real chaos.</span></h2>
+        </div>
+        <p class="sub" data-reveal style="--d:.1s">Straight from the Gluttony™ bot. Snapshot from <time id="stats-date" datetime="2026-09-25">Sep 25, 2026</time>, with live counts from Discord where it lets us.</p>
+      </div>
+
+      <div class="bento">
+        <article class="tile t-msg" data-reveal>
+          <div class="bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <p class="t-label"><i data-icon="message-square"></i>Messages</p>
+          <p class="t-big"><b data-count data-stat="messages">11,199</b></p>
+          <p class="t-cap">messages sent, and counting.</p>
+          <p class="t-foot" id="msg-rate">≈ 487 a day since the doors opened</p>
+        </article>
+
+        <article class="tile t-now" data-reveal style="--d:.08s">
+          <div class="radar" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="t-label"><i data-icon="radio"></i>Right now <span class="live-badge" id="live-badge" hidden>Live</span></p>
+          <p class="t-big sm"><b data-count data-stat="members">280</b><span>members</span></p>
+          <p class="t-line"><span class="dot" aria-hidden="true"></span><b data-stat="third">10</b> <span data-stat-label>in voice</span></p>
+          <div class="joins">
+            <div><b data-count data-stat="joins24h">9</b><span>joined in 24h</span></div>
+            <div><b data-count data-stat="joins7d">68</b><span>joined in 7 days</span></div>
+          </div>
+        </article>
+
+        <article class="tile t-voice" data-reveal>
+          <p class="t-label"><i data-icon="mic"></i>Voice</p>
+          <p class="t-big sm"><b data-count data-stat="voiceHours">4,240</b><span>hours</span></p>
+          <p class="t-cap">across <b data-stat="voicePeople">223</b> people. <span id="voice-days">That's about 177 days of nonstop talking.</span></p>
+          <div class="wave" id="wave" aria-hidden="true"></div>
+        </article>
+
+        <article class="tile t-cmd" data-reveal style="--d:.08s">
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>gluttony — command log</span></div>
+          <p class="term-prompt"><span>$</span> stats commands --all-time</p>
+          <ol class="cmds" id="cmds"></ol>
+          <p class="term-total"><b data-count id="cmd-total">604</b> commands run</p>
+        </article>
+
+        <article class="tile t-xp" data-reveal style="--d:.16s">
+          <p class="t-label"><i data-icon="trending-up"></i>XP</p>
+          <div class="ring" id="xp-ring">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <defs><linearGradient id="xpgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#73ffce"/><stop offset=".5" stop-color="#63f4ff"/><stop offset="1" stop-color="#8e44ff"/></linearGradient></defs>
+              <circle class="ring-track" cx="60" cy="60" r="52"/><circle class="fill" cx="60" cy="60" r="52"/>
+            </svg>
+            <p><b id="xp-pct">94%</b><span>of the server</span></p>
+          </div>
+          <p class="t-cap"><b data-count data-stat="xpPeople">262</b> people have earned XP.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ RULES ============================ -->
+  <section class="rules" id="rules" aria-labelledby="rules-title" data-spy-section="rules">
+    <div class="container">
+      <div class="section-head split">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">07</span> Ground rules</p>
+          <h2 class="h-lg" id="rules-title">Seven rules. <span class="grad">No grey area.</span></h2>
+        </div>
+        <p class="sub" data-reveal style="--d:.1s">Firm, short and fair. They keep EG worth staying in.</p>
+      </div>
+      <div class="rules-grid">
+        <article class="r1" id="r1" data-reveal></article>
+        <ol class="rule-list" id="rule-list"></ol>
+      </div>
+      <div class="rules-more" data-reveal>
+        <button class="btn btn-line" type="button" id="open-rules"><i data-icon="scroll-text"></i><span>Read the full rules</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ RECRUITMENT POSTER ============================ -->
+  <section class="poster-sec" id="apply" aria-labelledby="apply-title">
+    <div class="container">
+      <div class="poster" id="poster" data-reveal>
+        <div class="poster-art">
+          <img src="assets/home/poster-1200.webp"
+               srcset="assets/home/poster-1200.webp 1200w, assets/home/poster-2400.webp 2400w"
+               sizes="(max-width: 1360px) 100vw, 1320px" width="2400" height="925" loading="lazy" decoding="async"
+               alt="An astronaut with a crown on his backpack sits on a rock, looking out at two cyan ringed planets.">
+        </div>
+        <div class="poster-body">
+          <p class="stamp">Now recruiting <span>·</span> Helpers</p>
+          <h2 class="poster-title" id="apply-title">Help shape <span>Envious Gluttony™</span></h2>
+          <p class="poster-copy">As our community grows, we need more hands on deck. If you want to help build something worthwhile, apply to become a Helper.</p>
+          <div class="poster-ctas">
+            <a class="btn btn-apply" href="/apply/" id="apply-btn"><span>Apply today</span><i data-icon="arrow-right" class="arrow"></i></a>
+            <span class="poster-meta" id="apply-meta">About 10 minutes · 14 questions</span>
+          </div>
+        </div>
+        <p class="tag tag-poster" aria-hidden="true"><span>Same planet.</span> <span>Different breed.</span></p>
+        <p class="tag tag-poster2" aria-hidden="true"><span>Community.</span><span>Culture.</span><span>Conversation.</span><span>Chaos.</span></p>
+        <p class="billing" aria-hidden="true">
+          Envious Gluttony™ presents <i>·</i> a community production <i>·</i> starring <b>you</b> <i>·</i>
+          with the sinners, the lurkers and the talkers <i>·</i> hosted 24/7 by Gluttony™ <i>·</i> by the people, for the people, with the people
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer class="foot">
+  <img class="foot-watermark" src="assets/home/eg-mark-lg.webp" alt="" width="520" height="391" loading="lazy" decoding="async">
+  <div class="container foot-grid">
+    <div class="foot-brand">
+      <img src="assets/home/eg-mark.webp" alt="" width="56" height="42" loading="lazy">
+      <div>
+        <strong>Envious Gluttony™</strong>
+        <p>Built for the sinners, the lurkers, the talkers, and the ones who stay.</p>
+      </div>
+    </div>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="#top">Home</a>
+      <a href="#about">About</a>
+      <a href="#community">Community</a>
+      <a href="#rules">Rules</a>
+      <a href="/apply/">Apply</a>
+      <a href="/signin/">Sign in</a>
+    </nav>
+    <a class="foot-discord" href="https://discord.gg/enviousgluttony" target="_blank" rel="noopener" data-invite aria-label="Join Envious Gluttony on Discord"><i data-icon="discord"></i></a>
+  </div>
+  <div class="container foot-base">
+    <span>© <span id="year">2026</span> Envious Gluttony™</span>
+    <span>Not affiliated with Discord Inc.</span>
+  </div>
+</footer>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<dialog class="rules-dialog" id="rules-dialog" aria-labelledby="rules-dialog-title">
+  <div class="rd-head">
+    <div>
+      <p class="eyebrow">Envious Gluttony™</p>
+      <h2 id="rules-dialog-title">The rules, in full</h2>
+    </div>
+    <button class="round" type="button" id="close-rules" aria-label="Close"><i data-icon="x"></i></button>
+  </div>
+  <ol class="rd-list" id="rd-list"></ol>
+  <p class="rd-foot">Questions about a rule? Ask a staff member in the server.</p>
+</dialog>
+
+<script src="assets/icons.js?v=4"></script>
+<script src="assets/config.js?v=4"></script>
+<script src="assets/home-data.js?v=4"></script>
+<script src="assets/home.js?v=4"></script>
+<!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="assets/icons.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/supa.js"></script>
-<script src="assets/nav.js"></script>
-<script src="assets/app.js"></script>
+<script src="assets/supa.js?v=4"></script>
+<script src="assets/nav.js?v=4"></script>
 </body>
 </html>

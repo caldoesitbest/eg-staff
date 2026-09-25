@@ -20,10 +20,16 @@
     return node;
   }
 
+  // Optional: data-mark="image url" shows a logo instead of the crown,
+  // data-sections="About:#about,Stats:#stats" adds "On this page" links (the homepage uses both).
+  const mark = slot.dataset.mark
+    ? el("img", { class: "brand-mark", src: slot.dataset.mark, alt: "", width: "44", height: "32" })
+    : icon("crown");
+  const sections = (slot.dataset.sections || "").split(",").map((s) => s.split(":")).filter((p) => p.length === 2);
   const button = el("button", {
     type: "button", class: "brand brand-btn", id: "brand-btn",
     "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": "brand-menu"
-  }, [icon("crown"), el("span", { text: "Envious Gluttony™" }), icon("chevron-down", "chev")]);
+  }, [mark, el("span", { class: "brand-name", text: "Envious Gluttony™" }), icon("chevron-down", "chev")]);
   const menu = el("div", { class: "menu", id: "brand-menu", role: "menu", "aria-labelledby": "brand-btn", hidden: true });
   slot.replaceChildren(button, menu);
 
@@ -45,8 +51,20 @@
         el("strong", { text: state.username ? "@" + state.username : (state.user.email || "your account") })
       ]));
     }
-    items.push(link("/", "house", "Home"));
-    items.push(link("/", "clipboard-list", "Staff Recruitment", { current: path === "/" }));
+    items.push(link("/", "house", "Home", { current: path === "/" }));
+    items.push(link("/apply/", "clipboard-list", "Staff Recruitment", { current: path === "/apply/" }));
+    if (sections.length) {
+      const group = el("div", { class: "menu-page", role: "group", "aria-label": "On this page" }, [
+        el("div", { class: "menu-sep", role: "separator" }),
+        el("span", { class: "menu-label", text: "On this page" })
+      ]);
+      for (const [label, href] of sections) {
+        const a = link(href, "chevron-right", label);
+        a.classList.add("menu-sub");
+        group.append(a);
+      }
+      items.push(group);
+    }
     items.push(el("div", { class: "menu-sep", role: "separator" }));
     if (state.user) {
       items.push(link("/account/", "user-round", "My account", { current: path === "/account/" }));
@@ -66,7 +84,8 @@
     menu.replaceChildren(...items);
   }
 
-  const focusables = () => Array.from(menu.querySelectorAll(".menu-item"));
+  // Skips items hidden by CSS (the homepage hides "On this page" on wide screens).
+  const focusables = () => Array.from(menu.querySelectorAll(".menu-item")).filter((n) => n.offsetParent !== null);
   function open() {
     menu.hidden = false;
     button.setAttribute("aria-expanded", "true");

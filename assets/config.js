@@ -3,15 +3,15 @@
    ===================================================================== */
 window.EG_CONFIG = {
   // From Supabase → Project Settings → API. Both are safe to have on a public website.
-    SUPABASE_URL: "https://ybtsdtpcxinttnshbicl.supabase.co",          // looks like https://abcdefgh.supabase.co
-  SUPABASE_KEY: "sb_publishable_OxlLbOFv4jUFr9ZYZZouMg_zk9qagSR",      // the publishable (or "anon") key
+  SUPABASE_URL: "https://ybtsdtpcxinttnshbicl.supabase.co",   // your project API URL (not the dashboard link)
+  SUPABASE_KEY: "sb_publishable_OxlLbOFv4jUFr9ZYZZouMg_zk9qagSR",  // publishable key (safe to be public)
 
   // The Discord link in the menu and the "Back to the server" button.
   DISCORD_INVITE: "https://discord.gg/enviousgluttony",
 
   // Sign-in buttons. Turn one off with false.
   DISCORD_LOGIN: true,
-  GOOGLE_LOGIN: true,
+  GOOGLE_LOGIN: false,   // off for now; flip to true once Google is set up in Supabase
 
   // Set to false to close applications. The page stays up but the quiz hides.
   APPLICATIONS_OPEN: true,

@@ -137,6 +137,12 @@
   }
 
   /* ---------- start ---------- */
+  const C = window.EG_CONFIG || {};
+  const ways = document.getElementById("perk-ways");
+  if (ways) {
+    const list = [C.DISCORD_LOGIN && "Discord", C.GOOGLE_LOGIN && "Google"].filter(Boolean);
+    ways.textContent = "Sign in with " + (list.length ? list.join(", ") + (list.length > 1 ? "," : "") + " or your email" : "your email");
+  }
   const createLink = document.querySelector(".create-panel a.btn");
   if (createLink && location.search) createLink.href = "../signup/" + location.search;
   (async () => {

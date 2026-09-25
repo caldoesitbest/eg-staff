@@ -6,16 +6,15 @@
 <title>Sign in · Envious Gluttony™</title>
 <meta name="description" content="Sign in to your Envious Gluttony account.">
 <meta name="theme-color" content="#38e8ff">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2304050f'/%3E%3Cpath d='M12 3c.4 5 2.4 7.3 9 9-6.6 1.7-8.6 4-9 9-.4-5-2.4-7.3-9-9 6.6-1.7 8.6-4 9-9z' fill='%2338e8ff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Rajdhani:wght@600;700&display=swap">
-<link rel="stylesheet" href="../assets/style.css">
+<link rel="icon" type="image/png" href="../assets/home/favicon-64.png">
+<link rel="apple-touch-icon" href="../assets/home/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts.css?v=4">
+<link rel="stylesheet" href="../assets/style.css?v=4">
 </head>
 <body>
 <div class="wrap">
   <header class="topbar">
-    <div class="brand-slot" id="brand-slot"><a class="brand" href="/"><i data-icon="crown"></i><span>Envious Gluttony™</span></a></div>
+    <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
   </header>
 
   <main class="auth-wrap">
@@ -26,7 +25,7 @@
       <ul class="perks">
         <li><i data-icon="clipboard-list"></i><span>Track your staff application from submitted to decision</span></li>
         <li><i data-icon="message-square-text"></i><span>Read messages from the team about your application</span></li>
-        <li><i data-icon="sparkles"></i><span>Sign in with Discord, Google, or your email</span></li>
+        <li><i data-icon="sparkles"></i><span id="perk-ways">Sign in with Discord or your email</span></li>
       </ul>
       <a class="btn btn-outline btn-block" href="../signup/">Create my Envious Gluttony™ Account</a>
     </aside>
@@ -34,11 +33,11 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="../assets/icons.js"></script>
-<script src="../assets/config.js"></script>
-<script src="../assets/supa.js"></script>
-<script src="../assets/nav.js"></script>
-<script src="../assets/authui.js"></script>
-<script src="../assets/signin.js"></script>
+<script src="../assets/icons.js?v=4"></script>
+<script src="../assets/config.js?v=4"></script>
+<script src="../assets/supa.js?v=4"></script>
+<script src="../assets/nav.js?v=4"></script>
+<script src="../assets/authui.js?v=4"></script>
+<script src="../assets/signin.js?v=4"></script>
 </body>
 </html>
