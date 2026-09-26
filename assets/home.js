@@ -652,7 +652,10 @@
   const canvas = $("#stars");
   const ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
   const heroArt = $("#hero-art");
-  const moon = $("#moon");
+  const rocket = $("#rocket");
+  const trailSvg = $("#rocket-trail");
+  const trailPath = $("#rk-trail-path");
+  const trailGrad = $("#rk-trail-g");
   const hero = $(".hero");
   let W = 0, H = 0, DPR = 1, stars = [];
   let scrollY = window.scrollY, lastDrawScroll = -1, lastDraw = 0;
@@ -709,16 +712,78 @@
       }
     }
   }
+  /* The rocket: lifts off in the open sky and flies into the blue planet as you scroll.
+     Worked out in screen coordinates so the whole flight stays in view. */
+  // where it heads, as a share of the hero art: the planet's lower left, by the ring (clear of the menu bar)
+  const PLANET = () => (window.innerWidth >= 760 ? { x: 0.3, y: 0.33 } : { x: 0.26, y: 0.36 });
+  const ART_LAG = () => (window.innerWidth >= 760 ? 0.5 : 0.4);   // the art scrolls at half speed, so the planet stays up longer
+  let rk = null;
+  function rocketLayout() {
+    if (!rocket || !hero || !heroArt) return;
+    rk = {
+      sx: rocket.offsetLeft + rocket.offsetWidth / 2,
+      sy: rocket.offsetTop + rocket.offsetHeight / 2,
+      h: rocket.offsetHeight,
+      ax: heroArt.offsetLeft, ay: heroArt.offsetTop, aw: heroArt.offsetWidth, ah: heroArt.offsetHeight,
+      end: window.innerWidth >= 760 ? Math.max(220, window.innerHeight * 0.36) : 120
+    };
+    if (trailSvg) { trailSvg.setAttribute("width", hero.offsetWidth); trailSvg.setAttribute("height", hero.offsetHeight); }
+  }
+  const bez = (a, b, c, d, t) => { const u = 1 - t; return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d; };
+  const bezD = (a, b, c, d, t) => { const u = 1 - t; return 3 * u * u * (b - a) + 6 * u * t * (c - b) + 3 * t * t * (d - c); };
+  function moveRocket(tx, ty) {
+    if (!rk) return;
+    const sc = scrollY;
+    const p = Math.min(1, Math.max(0, sc / rk.end));
+    const sx = rk.sx + ptr.x * -18, sy = rk.sy + ptr.y * -14;                        // start, on screen
+    const aim = PLANET();
+    const ex = rk.ax + aim.x * rk.aw + tx, ey = rk.ay + aim.y * rk.ah + ty - sc;      // the planet, on screen
+    const dx = ex - sx;
+    const X = [sx, sx + dx * 0.15, ex - dx * 0.45, ex];
+    const Y = [sy, sy - Math.abs(dx) * 0.16 - 16, ey + Math.abs(dx) * 0.06, ey];
+    const at = (t) => [bez(X[0], X[1], X[2], X[3], t), bez(Y[0], Y[1], Y[2], Y[3], t)];
+    const dir = (t) => [bezD(X[0], X[1], X[2], X[3], t), bezD(Y[0], Y[1], Y[2], Y[3], t)];
+    const size = (t) => 1 / (1 + 5 * t * t);                                           // smaller as it gets further away
+    const [x, y] = at(p);
+    const [vx, vy] = dir(p);
+    const angle = (Math.atan2(vy, vx) * 180) / Math.PI + 90;
+    const fade = p < 0.8 ? 1 : Math.max(0, 1 - (p - 0.8) / 0.2);
+    rocket.style.transform = "translate3d(" + (x - rk.sx).toFixed(1) + "px," + (y + sc - rk.sy).toFixed(1) + "px,0) rotate(" + angle.toFixed(1) + "deg) scale(" + size(p).toFixed(3) + ")";
+    rocket.style.opacity = fade.toFixed(3);
+    rocket.style.setProperty("--thrust", (1 + Math.min(1, p * 4) * 0.7).toFixed(2));
+    // exhaust trail: a tapered plume behind the nozzle (drawn in page coordinates)
+    if (!trailPath) return;
+    if (p < 0.004) { trailPath.setAttribute("d", ""); return; }
+    const back = rk.h * 0.42 * size(p);
+    const len = Math.hypot(vx, vy) || 1;
+    const hx = x - (vx / len) * back, hy = y - (vy / len) * back;
+    const t0 = Math.max(0, p - 0.55);
+    const N = 30, L = [], Rt = [];
+    for (let i = 0; i <= N; i++) {
+      const k = i / N;
+      const t = t0 + (p - t0) * k;
+      let [px, py] = at(t);
+      if (i === N) { px = hx; py = hy; }
+      const [ux, uy] = dir(t);
+      const ul = Math.hypot(ux, uy) || 1;
+      const w = 9 * Math.pow(k, 1.5) * size(t);
+      L.push((px - (uy / ul) * w).toFixed(1) + " " + (py + sc + (ux / ul) * w).toFixed(1));
+      Rt.push((px + (uy / ul) * w).toFixed(1) + " " + (py + sc - (ux / ul) * w).toFixed(1));
+    }
+    trailPath.setAttribute("d", "M" + L.join(" L") + " L" + Rt.reverse().join(" L") + "Z");
+    const [tailx, taily] = at(t0);
+    trailGrad.setAttribute("x1", tailx.toFixed(1)); trailGrad.setAttribute("y1", (taily + sc).toFixed(1));
+    trailGrad.setAttribute("x2", hx.toFixed(1)); trailGrad.setAttribute("y2", (hy + sc).toFixed(1));
+    trailSvg.style.opacity = fade.toFixed(3);
+  }
   function parallax() {
     if (reduce || !hero) return;
     const hh = hero.offsetHeight;
     if (scrollY > hh * 1.2) return;
-    if (heroArt && window.innerWidth >= 760) {
-      heroArt.style.transform = "translate3d(" + (ptr.x * -12).toFixed(1) + "px," + (scrollY * 0.14 + ptr.y * -10).toFixed(1) + "px,0)";
-    } else if (heroArt) {
-      heroArt.style.transform = "translate3d(0," + (scrollY * 0.12).toFixed(1) + "px,0)";
-    }
-    if (moon) moon.style.transform = "translate3d(" + (ptr.x * -26).toFixed(1) + "px," + (scrollY * 0.34 + ptr.y * -20 + Math.sin(performance.now() / 1600) * 6).toFixed(1) + "px,0)";
+    let tx = 0, ty = scrollY * ART_LAG();
+    if (heroArt && window.innerWidth >= 760) { tx = ptr.x * -12; ty += ptr.y * -10; }
+    if (heroArt) heroArt.style.transform = "translate3d(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px,0)";
+    moveRocket(tx, ty);
   }
   let running = false;
   function frame(t) {
@@ -738,11 +803,12 @@
   function stop() { running = false; }
 
   buildStars();
+  rocketLayout();
   if (reduce) drawStars(0); else start();
   let rt;
   window.addEventListener("resize", () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { buildStars(); if (reduce) drawStars(0); drawCert(); drawConstellation(); }, 150);
+    rt = setTimeout(() => { buildStars(); rocketLayout(); if (reduce) drawStars(0); drawCert(); drawConstellation(); }, 150);
   });
   document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
   window.addEventListener("scroll", () => {
@@ -768,7 +834,7 @@
   }
 
   /* layout-dependent drawings once fonts and images have settled */
-  const settle = () => { drawCert(); drawConstellation(); };
+  const settle = () => { drawCert(); drawConstellation(); rocketLayout(); };
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(settle);
   window.addEventListener("load", settle);
   settle();

@@ -293,20 +293,23 @@ button { font: inherit; color: inherit; }
 }
 .tag-crown { display: block; width: 2.1em; height: auto; margin: 0 0 0.25em 0.9em; fill: none; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 8px rgba(255, 66, 208, 0.7)); }
 
-.moon {
-  position: absolute; z-index: -1; top: 15%; left: 41%;
-  width: clamp(54px, 5.6vw, 92px); aspect-ratio: 1; border-radius: 50%;
-  background: radial-gradient(circle at 32% 28%, #e9fff7 0%, #8effd6 18%, #2fb69a 48%, #0b4a4f 76%, #041b26 100%);
-  box-shadow: 0 0 50px -6px rgba(115, 255, 206, 0.55), inset -8px -10px 18px rgba(2, 10, 30, 0.7);
-  will-change: transform;
+/* rocket: flies to the blue planet as you scroll (home.js moves it) */
+.rocket {
+  position: absolute; z-index: -1; top: 15%; left: 40%;
+  width: 60px; height: 120px;
+  transform: rotate(38deg);
+  will-change: transform, opacity;
+  pointer-events: none;
 }
-.moon-ring {
-  position: absolute; left: -38%; right: -38%; top: 42%; height: 20%;
-  border-radius: 50%; border: 2px solid rgba(160, 255, 230, 0.55);
-  border-top-color: transparent;
-  transform: rotate(-16deg);
-  box-shadow: 0 0 14px rgba(115, 255, 206, 0.4);
-}
+.rocket-bob { width: 100%; height: 100%; animation: rk-bob 3.4s ease-in-out infinite alternate; }
+.rocket-svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 12px rgba(99, 244, 255, 0.35)); }
+.rk-flame { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(var(--thrust, 1)); filter: drop-shadow(0 0 8px rgba(255, 66, 208, 0.9)); }
+.rk-flame path { transform-box: fill-box; transform-origin: 50% 0; animation: rk-flicker 0.16s ease-in-out infinite alternate; }
+.rk-flame path:nth-child(2) { animation-duration: 0.12s; }
+.rk-flame path:nth-child(3) { animation-duration: 0.09s; }
+@keyframes rk-bob { from { transform: translateY(0); } to { transform: translateY(-7px); } }
+@keyframes rk-flicker { from { transform: scale(1, 1); } to { transform: scale(0.9, 0.8); } }
+.rocket-trail { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; filter: blur(0.6px); }
 
 .hero-inner { width: 100%; max-width: var(--container); margin: 0 auto; padding-inline: var(--gutter); }
 .hero-copy { display: grid; justify-items: start; gap: 22px; max-width: 700px; padding-block: 40px 96px; }
@@ -349,7 +352,7 @@ button { font: inherit; color: inherit; }
 @media (max-width: 1023px) and (min-width: 760px) {
   .hero-art { width: 74vw; right: -12vw; top: 4%; opacity: 0.95; }
   .hero-copy { max-width: 600px; }
-  .moon { left: 56%; top: 14%; }
+  .rocket { left: 50%; top: 26%; width: 52px; height: 104px; }
   .tag-hero { right: 14%; bottom: 20%; }
 }
 @media (max-width: 759px) {
@@ -363,7 +366,7 @@ button { font: inherit; color: inherit; }
     -webkit-mask-composite: source-over; mask-composite: add;
   }
   .tag-hero { display: none; }
-  .moon { top: 16%; left: 7%; width: 46px; }
+  .rocket { top: 62vw; left: 5vw; width: 40px; height: 80px; }
   .hero-copy { gap: 18px; padding-block: 0 72px; }
   .hero-logo { width: 150px; margin-bottom: -10px; }
   .hero-title { font-size: clamp(2.2rem, 10.3vw, 3.6rem); }

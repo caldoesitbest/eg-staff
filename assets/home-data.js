@@ -58,11 +58,9 @@ window.EG_HOME = {
   /* "What makes EG different". icon names come from assets/icons.js */
   features: [
     { icon: "message-square-heart", color: "#ff5fd8", title: "Confessions",
-      text: "The sins you earn. The vices you confess. Pick yours and wear it with pride.", chip: "6 on the menu" },
+      text: "The sins you earn. The vices you confess. Pick your roles and wear them with pride.", chip: "#get-roles-here" },
     { icon: "gift", color: "#ffc861", title: "Giveaways",
       text: "Nitro, cash and gift cards, dropped for every milestone and sometimes just because.", chip: "Nitro · $25 drops" },
-    { icon: "drama", color: "#a57bff", title: "Roles & identity",
-      text: "Colors, titles and a spot on the member list that actually says something about you.", chip: "#get-roles-here" },
     { icon: "chart-no-axes-column-increasing", color: "#63f4ff", title: "Leveling & XP",
       text: "Talk, hang out in voice, climb the ladder. Seven sins and one very exclusive top spot.", chip: "{xpPeople} ranked" },
     { icon: "mic", color: "#73ffce", title: "Voice",

@@ -21,7 +21,7 @@
 <link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
 <link rel="stylesheet" href="assets/fonts.css?v=5">
-<link rel="stylesheet" href="assets/home.css?v=5">
+<link rel="stylesheet" href="assets/home.css?v=6">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -64,7 +64,38 @@
         <span>Good people.</span><span>Bad habits.</span><span>Great conversations.</span>
       </p>
     </div>
-    <div class="moon" id="moon" aria-hidden="true"><span class="moon-ring"></span></div>
+    <svg class="rocket-trail" id="rocket-trail" aria-hidden="true">
+      <defs><linearGradient id="rk-trail-g" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#ff42d0" stop-opacity="0"/><stop offset=".6" stop-color="#ff42d0" stop-opacity=".5"/><stop offset="1" stop-color="#9ff9ff" stop-opacity=".95"/>
+      </linearGradient></defs>
+      <path id="rk-trail-path" fill="url(#rk-trail-g)"/>
+    </svg>
+    <div class="rocket" id="rocket" aria-hidden="true">
+      <div class="rocket-bob">
+        <svg viewBox="0 0 80 160" class="rocket-svg">
+          <defs><radialGradient id="rk-glass" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#b8fbff"/><stop offset=".45" stop-color="#36dfff"/><stop offset="1" stop-color="#1b2470"/></radialGradient></defs>
+          <g class="rk-flame">
+            <path d="M26 114 C26 134 34 148 40 160 C46 148 54 134 54 114 Z" fill="#ff42d0"/>
+            <path d="M30 114 C30 130 36 142 40 152 C44 142 50 130 50 114 Z" fill="#63f4ff"/>
+            <path d="M34 114 C34 126 38 134 40 140 C42 134 46 126 46 114 Z" fill="#fff"/>
+          </g>
+          <g stroke="#10132e" stroke-width="2.4" stroke-linejoin="round">
+            <path d="M24 84 L8 112 L10 122 L27 108 Z" fill="#a855f7"/>
+            <path d="M56 84 L72 112 L70 122 L53 108 Z" fill="#6d28d9"/>
+            <path d="M40 6 C54 20 60 46 58 76 L55 110 H25 L22 76 C20 46 26 20 40 6 Z" fill="#f5f0e6"/>
+          </g>
+          <path d="M40 6 C54 20 60 46 58 76 L55 110 H45 C49 80 49 40 40 6 Z" fill="#b9a6ff" opacity=".55"/>
+          <path d="M35 15 C29 27 25.5 48 26.5 76" fill="none" stroke="#63f4ff" stroke-width="2" stroke-linecap="round" opacity=".85"/>
+          <g stroke="#10132e" stroke-width="2.2" stroke-linejoin="round">
+            <path d="M40 6 C46 12 50 18 52 26 H28 C30 18 34 12 40 6 Z" fill="#ff42d0"/>
+            <path d="M23.4 86 H56.6 L56.2 92 H23.8 Z" fill="#63f4ff"/>
+            <path d="M28 110 H52 L48 118 H32 Z" fill="#2a2f55"/>
+            <circle cx="40" cy="54" r="10" fill="url(#rk-glass)"/>
+          </g>
+          <ellipse cx="36.5" cy="50" rx="3.2" ry="2" fill="#fff" opacity=".9" transform="rotate(-35 36.5 50)"/>
+        </svg>
+      </div>
+    </div>
 
     <div class="hero-inner">
       <div class="hero-copy">
@@ -162,7 +193,7 @@
         <div class="com-sticky" data-reveal>
           <p class="eyebrow"><span class="num">03</span> What makes EG different</p>
           <h2 class="h-lg" id="com-title">More than a server. <span class="grad">A whole planet.</span></h2>
-          <p class="sub">Six reasons people show up, and don't leave.</p>
+          <p class="sub">Five reasons people show up, and don't leave.</p>
           <div class="orb" id="orb" aria-hidden="true">
             <span class="orb-glow"></span>
             <span class="orb-ring back"></span>
@@ -380,9 +411,9 @@
 
 <script src="assets/icons.js?v=5"></script>
 <script src="assets/config.js?v=5"></script>
-<script src="assets/home-data.js?v=5"></script>
+<script src="assets/home-data.js?v=6"></script>
 <script src="assets/home-chart.js?v=5"></script>
-<script src="assets/home.js?v=5"></script>
+<script src="assets/home.js?v=6"></script>
 <!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="assets/supa.js?v=5"></script>
