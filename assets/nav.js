@@ -80,6 +80,7 @@
       items.push(link("/signin/", "log-in", "Sign in", { current: path === "/signin/" || path === "/signup/" }));
     }
     items.push(el("div", { class: "menu-sep", role: "separator" }));
+    items.push(link("/appeal/", "gavel", "Ban appeal", { current: path === "/appeal/" }));
     items.push(link(C.DISCORD_INVITE || "https://discord.gg/enviousgluttony", "message-circle", "Discord", { ext: true }));
     menu.replaceChildren(...items);
   }

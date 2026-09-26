@@ -169,8 +169,8 @@
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, slide: state.slide, startedAt: state.startedAt, appId: state.appId, values: values }));
     } catch (e) { /* storage blocked: the quiz still works */ }
   }
-  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ } }
   let saveTimer = null;
+  function clearDraft() { clearTimeout(saveTimer); try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ } }
   function saveDraftSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveDraft, 400); }
 
   /* ---------- sending ---------- */

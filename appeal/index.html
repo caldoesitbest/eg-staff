@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ban Appeal · Envious Gluttony™</title>
+<meta name="description" content="Banned from Envious Gluttony? Own what happened, tell your side, and show us why you should be let back in.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://enviousgluttony.com/appeal/">
+<meta property="og:title" content="Envious Gluttony™ Ban Appeal">
+<meta property="og:description" content="Own what happened. Tell your side. Show us why you should be let back in.">
+<meta property="og:image" content="https://enviousgluttony.com/assets/appeal/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#38e8ff">
+<link rel="icon" type="image/png" href="../assets/home/favicon-64.png">
+<link rel="apple-touch-icon" href="../assets/home/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts.css?v=5">
+<link rel="stylesheet" href="../assets/style.css?v=6">
+</head>
+<body class="appeal-page">
+<div class="side-art" aria-hidden="true"><span class="side-l"></span><span class="side-r"></span></div>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
+    <ol class="stepper" id="stepper" aria-label="Progress">
+      <li><span class="dot">1</span><span class="label">Welcome</span></li>
+      <li><span class="dot">2</span><span class="label">Ban Appeal</span></li>
+      <li><span class="dot">3</span><span class="label">Final Review</span></li>
+    </ol>
+  </header>
+
+  <form id="appeal" novalidate>
+    <!-- Step 1: welcome -->
+    <section class="slide" id="slide-0" aria-labelledby="intro-title">
+      <div class="intro-grid">
+        <div class="intro-copy">
+          <h1 class="intro-title" id="intro-title" tabindex="-1">Ban<svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg><br><span class="grad">Appeal</span></h1>
+          <p class="intro-lede">Banned from the server? Own what happened, tell your side, and show us why you should be let back in.</p>
+          <ul class="intro-facts">
+            <li><i data-icon="clock"></i>About 5 minutes</li>
+            <li><i data-icon="file-text"></i>8 questions</li>
+            <li><i data-icon="lock"></i>Only staff see your answers</li>
+          </ul>
+          <div class="intro-cta">
+            <button type="button" class="btn btn-primary" id="start">Start my appeal <i data-icon="arrow-right"></i></button>
+            <button type="button" class="btn btn-ghost" id="check-open"><i data-icon="search-check"></i><span id="check-open-label">Check on an appeal</span></button>
+          </div>
+        </div>
+        <div class="intro-art"><img src="../assets/appeal/astronaut.webp" alt="" width="1320" height="676" fetchpriority="high"></div>
+      </div>
+      <ol class="how" aria-label="How appeals work">
+        <li><span class="how-n">1</span><div><strong>Tell your side</strong><p>Answer 8 questions honestly. Your answers save on this device as you type.</p></div></li>
+        <li><span class="how-n">2</span><div><strong>Staff review it</strong><p>The staff team reads every appeal and makes the call together.</p></div></li>
+        <li><span class="how-n">3</span><div><strong>Check back here</strong><p>Your appeal ID shows the decision and any message from staff.</p></div></li>
+      </ol>
+      <div class="glow-line"></div>
+      <div class="slide-foot"><span class="spaced">Envious Gluttony™</span><span class="cyan">One appeal every 14 days. Make it count.</span></div>
+    </section>
+
+    <!-- Step 2: the appeal -->
+    <section class="slide" id="slide-1" aria-labelledby="part1-title" hidden>
+      <h2 class="sr-only" id="part1-title" tabindex="-1">Ban Appeal</h2>
+      <picture>
+        <source media="(max-width: 760px)" srcset="../assets/appeal/banner-phone.webp">
+        <img class="banner" src="../assets/appeal/banner-1180.webp" srcset="../assets/appeal/banner-1180.webp 1180w, ../assets/appeal/banner-2360.webp 2360w" sizes="(max-width: 1212px) calc(100vw - 32px), 1180px" width="2360" height="467" alt="Envious Gluttony™ Ban Appeal. Own what happened. Tell your side. Show us why you should be let back in.">
+      </picture>
+      <div class="cards" id="cards-appeal"></div>
+      <div class="pledge"><i data-icon="shield-check"></i><span class="bar"></span><p>We review appeals fairly, but being unbanned is <em>not guaranteed.</em></p></div>
+    </section>
+
+    <div class="alert" id="alert" role="alert" hidden></div>
+    <div class="nav" id="nav" hidden>
+      <button type="button" class="btn btn-ghost" id="back"><i data-icon="arrow-left"></i>Back</button>
+      <button type="submit" class="btn btn-primary" id="next">Submit appeal <i data-icon="arrow-right"></i></button>
+      <div class="nav-note"><span>Low-effort, dishonest, or hostile appeals will be denied.</span><button type="button" class="linkish" id="reset">Start over</button></div>
+    </div>
+    <div class="hp" aria-hidden="true">
+      <label for="eg-hp">Leave this empty</label>
+      <input type="text" id="eg-hp" name="eg_hp" tabindex="-1" autocomplete="off">
+    </div>
+  </form>
+
+  <!-- Step 3: final review (after sending) -->
+  <section class="done-card glow-card" id="done" hidden aria-labelledby="done-title">
+    <svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C12.6 8.2 15.8 11.4 24 12 15.8 12.6 12.6 15.8 12 24 11.4 15.8 8.2 12.6 0 12 8.2 11.4 11.4 8.2 12 0Z"/></svg>
+    <h2 id="done-title" tabindex="-1">Appeal sent</h2>
+    <p>It's now in final review with the staff team. Every appeal gets read. Save your appeal ID: it's how you check on the decision.</p>
+    <dl class="receipt">
+      <dt>Appeal ID</dt><dd class="code" id="done-id"></dd>
+      <dt>Discord</dt><dd id="done-user"></dd>
+      <dt>User ID</dt><dd id="done-did"></dd>
+    </dl>
+    <p class="muted-note">This page remembers your appeal on this device. Anywhere else, tap Check on an appeal and enter your appeal ID and user ID.</p>
+    <div class="nav">
+      <button type="button" class="btn btn-primary" id="done-status">See my appeal's status <i data-icon="arrow-right"></i></button>
+      <button type="button" class="btn btn-ghost" id="done-copy"><i data-icon="copy"></i>Copy appeal ID</button>
+    </div>
+  </section>
+
+  <!-- Check on an appeal -->
+  <section class="appeal-status" id="status" hidden aria-labelledby="status-title">
+    <div class="status-head">
+      <button type="button" class="btn btn-ghost btn-sm" id="status-back"><i data-icon="arrow-left"></i>Back</button>
+      <h2 id="status-title" tabindex="-1">Check on an appeal</h2>
+    </div>
+    <form class="lookup-card glow-card" id="lookup" novalidate>
+      <p>Enter the appeal ID you got after sending it (it starts with AP-) and your Discord user ID.</p>
+      <div class="claim-row">
+        <div class="field"><label class="sub-label" for="lookup-id">Appeal ID</label><input class="inp" id="lookup-id" placeholder="AP-XXXXXX" autocapitalize="characters" spellcheck="false" autocomplete="off" maxlength="13"></div>
+        <div class="field"><label class="sub-label" for="lookup-did">User ID</label><input class="inp" id="lookup-did" placeholder="e.g. 123456789012345678" inputmode="numeric" spellcheck="false" autocomplete="off" maxlength="24"></div>
+        <button type="submit" class="btn btn-primary" id="lookup-go">Check</button>
+      </div>
+      <div class="alert" id="lookup-alert" role="alert" hidden></div>
+    </form>
+    <div id="status-result" aria-live="polite"></div>
+  </section>
+
+  <section class="done-card glow-card" id="closed" hidden aria-labelledby="closed-title">
+    <h2 id="closed-title" tabindex="-1">Appeals are closed</h2>
+    <p>We're not taking ban appeals right now. Already sent one? You can still check on it.</p>
+    <div class="nav"><button type="button" class="btn btn-ghost" id="closed-check"><i data-icon="search-check"></i>Check on an appeal</button></div>
+  </section>
+</div>
+
+<dialog class="rules-peek" id="rules-dialog" aria-labelledby="rules-dialog-title">
+  <div class="rp-head">
+    <div><p class="eyebrow">Envious Gluttony™</p><h2 id="rules-dialog-title">The rules, in full</h2></div>
+    <button class="btn btn-ghost btn-sm" type="button" id="rules-close" aria-label="Close"><i data-icon="x"></i></button>
+  </div>
+  <ol class="rp-list" id="rules-full"></ol>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="../assets/icons.js?v=6"></script>
+<script src="../assets/config.js?v=6"></script>
+<script src="../assets/home-data.js?v=6"></script>
+<script src="../assets/supa.js?v=5"></script>
+<script src="../assets/nav.js?v=6"></script>
+<script src="../assets/appeal.js?v=1"></script>
+</body>
+</html>

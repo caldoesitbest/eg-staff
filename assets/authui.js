@@ -210,15 +210,16 @@
     ]);
   }
 
-  /* An application's answers, grouped like the quiz. answers = [{id, label, value}] */
-  function answersView(answers) {
+  /* Answers grouped like the form they came from. answers = [{id, label, value}].
+     sections defaults to the staff quiz; pass [{ title, cards }] for another form (the ban appeal). */
+  function answersView(answers, sections) {
     const byId = {};
     (Array.isArray(answers) ? answers : []).forEach((a) => { if (a && a.id) byId[a.id] = a; });
     const used = new Set();
-    const groups = [
+    const groups = (sections || [
       { title: "Staff Recruitment", cards: C.recruitment },
       { title: "Rules & Judgment Check", cards: C.judgment }
-    ].map((g) => el("div", { class: "qa-group" }, [el("h3", { text: g.title })].concat(g.cards.map((card) => {
+    ]).map((g) => el("div", { class: "qa-group" }, [el("h3", { text: g.title })].concat(g.cards.map((card) => {
       const rows = card.fields.map((f) => {
         used.add(f.id);
         const v = byId[f.id] ? byId[f.id].value : "";

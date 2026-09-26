@@ -18,6 +18,10 @@ window.EG_CONFIG = {
 
   FORM_ID: "eg-staff-v2",
 
+  // Set to false to stop taking ban appeals. The page stays up so people can still check on one.
+  APPEALS_OPEN: true,
+  APPEAL_FORM_ID: "eg-appeal-v1",
+
   /* Questions. Reword freely.
      - id:    unique, lowercase, no spaces. Keep name, discord_username and age.
      - short: the label shown on the admin page and in Discord.
@@ -79,6 +83,38 @@ window.EG_CONFIG = {
     ] },
     { n: "6", q: "Why are these rules important, and how would you enforce them fairly?", fields: [
       { id: "fair_enforcement", short: "Enforcing fairly", type: "textarea", required: true, minLength: 20, maxLength: 1500 }
+    ] }
+  ],
+
+  /* Ban appeal questions (the /appeal/ page). Reword freely, but keep discord_username and discord_id. */
+  appeal: [
+    { n: "01", icon: "user", q: "What is your Discord username and user ID?", fields: [
+      { id: "discord_username", short: "Discord username", label: "Discord username", type: "text", required: true,
+        maxLength: 40, pattern: "discord", placeholder: "e.g. nightowl.eg" },
+      { id: "discord_id", short: "User ID", label: "User ID", type: "text", required: true, maxLength: 24, pattern: "snowflake",
+        numeric: true, placeholder: "e.g. 123456789012345678",
+        hint: "Turn on Developer Mode (Discord Settings → Advanced), then open your profile and tap Copy User ID." }
+    ] },
+    { n: "02", icon: "calendar-days", q: "When were you banned, and if you know, what was the reason given?", fields: [
+      { id: "banned_when", short: "When + reason given", type: "textarea", required: true, minLength: 5, maxLength: 800 }
+    ] },
+    { n: "03", icon: "message-square", q: "In your own words, what happened that led to the ban?", fields: [
+      { id: "what_happened", short: "What happened", type: "textarea", required: true, minLength: 20, maxLength: 1500 }
+    ] },
+    { n: "04", icon: "file-text", q: "Do you understand which rule(s) you broke? Explain briefly.", fields: [
+      { id: "rules_broken", short: "Rules broken", type: "textarea", required: true, minLength: 10, maxLength: 1000 }
+    ] },
+    { n: "05", icon: "scale", q: "Why do you believe your appeal should be accepted?", fields: [
+      { id: "why_accept", short: "Why accept", type: "textarea", required: true, minLength: 20, maxLength: 1500 }
+    ] },
+    { n: "06", icon: "lightbulb", q: "What would you do differently if you were allowed back into the server?", fields: [
+      { id: "do_differently", short: "Would do differently", type: "textarea", required: true, minLength: 20, maxLength: 1500 }
+    ] },
+    { n: "07", icon: "book-open", q: "Have you read the rules again, and can you follow them moving forward?", rules: true, fields: [
+      { id: "read_rules", short: "Read the rules again", type: "textarea", required: true, minLength: 5, maxLength: 800 }
+    ] },
+    { n: "08", icon: "message-circle-more", q: "Is there anything else you want the staff team to know?", fields: [
+      { id: "anything_else", short: "Anything else", type: "textarea", maxLength: 1500 }
     ] }
   ]
 };
