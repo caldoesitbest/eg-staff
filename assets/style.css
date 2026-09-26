@@ -282,8 +282,8 @@ input[type="number"].inp::-webkit-inner-spin-button { opacity: 0.35; }
   height: 300px;
   object-fit: cover;
   object-position: 50% 62%;
-  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent);
-  mask-image: linear-gradient(180deg, #000 55%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 14%, #000 55%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 14%, #000 55%, transparent);
 }
 .intro-copy { display: grid; gap: 18px; justify-items: start; margin-top: -70px; position: relative; }
 .intro-title {
@@ -325,8 +325,10 @@ input[type="number"].inp::-webkit-inner-spin-button { opacity: 0.35; }
   .intro-art img {
     height: 560px;
     object-position: 50% 50%;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%), linear-gradient(180deg, #000 80%, transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 28%);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%, #000 86%, transparent), linear-gradient(180deg, transparent, #000 12%, #000 78%, transparent);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(90deg, transparent, #000 28%, #000 86%, transparent), linear-gradient(180deg, transparent, #000 12%, #000 78%, transparent);
+    mask-composite: intersect;
   }
   .intro-copy { margin-top: 0; }
 }

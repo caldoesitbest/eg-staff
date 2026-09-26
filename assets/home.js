@@ -12,7 +12,7 @@
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const fmt = (n) => Number(n).toLocaleString("en-US");
-  const S = D.stats;
+  const S = Object.assign({}, D.stats, { commands: D.stats.commands.map((c) => Object.assign({}, c)) });
 
   function el(tag, props, kids) {
     const n = document.createElement(tag);
@@ -36,7 +36,9 @@
     boosts: S.boosts,
     third: S.inVoice,
     thirdLabel: "in voice",
-    live: false
+    bot: false,          // numbers came from the Gluttony bot
+    botAt: 0,            // when the bot last sent them (ms)
+    invite: false        // numbers came from Discord's public invite info
   };
   const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
   const word = (n) => (n <= 12 ? WORDS[n] : String(n));
@@ -44,6 +46,7 @@
   const dayMs = 86400000;
   const founded = new Date(D.founded + "T12:00:00");
   const updated = new Date(D.updated + "T12:00:00");
+  const FRESH = 10 * 60e3;   // bot data older than this counts as "last seen", not live
 
   /* counters: count up the first time they're seen, glide to new values after */
   function animateNum(node, to) {
@@ -67,6 +70,9 @@
       else n.textContent = fmt(value);
     });
   }
+  let roleCards = [];
+  let ladderSteps = [];
+  let paintCommands = () => {};
   function bindAll() {
     setStat("members", state.members);
     setStat("boosts", state.boosts);
@@ -81,17 +87,57 @@
       bar.querySelector(".bar i").style.setProperty("--p", pct.toFixed(1) + "%");
       bar.querySelector(".cur").textContent = fmt(state.members);
     }
-    const badge = $("#live-badge");
-    if (badge) badge.hidden = !state.live;
-  }
-
-  /* ---------- derived copy ---------- */
-  (function derived() {
-    const days = Math.max(1, Math.round((updated - founded) / dayMs));
+    // derived copy
+    const asOf = state.bot ? new Date(state.botAt) : updated;
+    const days = Math.max(1, (asOf - founded) / dayMs);
     const rate = $("#msg-rate");
     if (rate) rate.textContent = "≈ " + fmt(Math.round(S.messages / days)) + " a day since the doors opened";
     const vd = $("#voice-days");
     if (vd) vd.textContent = "That's about " + fmt(Math.round(S.voiceHours / 24)) + " days of nonstop talking.";
+    const pct = Math.min(100, Math.round((S.xpPeople / Math.max(1, state.members)) * 100));
+    const xp = $("#xp-pct");
+    if (xp) xp.textContent = pct + "%";
+    const ring = $("#xp-ring");
+    if (ring) {
+      ring.dataset.pct = pct;
+      const fill = $(".fill", ring);
+      if (fill && ring.closest(".in")) fill.style.strokeDashoffset = (327 * (1 - pct / 100)).toFixed(1);
+    }
+    roleCards.forEach((c) => c.paint());
+    ladderSteps.forEach((st) => st.paint());
+    paintCommands();
+    if (chart) chart.setNow(state.members, state.bot ? state.botAt : Date.now());
+    paintStatus();
+  }
+
+  /* "Live" badge and the "updated 20s ago" line */
+  function ago(ms) {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 45) return "just now";
+    if (s < 90) return "a minute ago";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " minutes ago";
+    const h = Math.round(m / 60);
+    if (h < 36) return h + (h === 1 ? " hour ago" : " hours ago");
+    const d = Math.round(h / 24);
+    return d + " days ago";
+  }
+  function paintStatus() {
+    const fresh = state.bot && Date.now() - state.botAt < FRESH;
+    const badge = $("#live-badge");
+    if (badge) badge.hidden = !fresh;
+    const up = $("#stock-updated");
+    if (up) up.textContent = state.bot ? "Updated " + ago(state.botAt) : "";
+    const src = $("#stats-source");
+    if (src) {
+      if (fresh) src.textContent = "Live from the Gluttony™ bot. Updates by itself, no refresh needed.";
+      else if (state.bot) src.textContent = "From the Gluttony™ bot, last updated " + ago(state.botAt) + ".";
+    }
+  }
+  setInterval(paintStatus, 15000);
+
+  /* ---------- derived copy ---------- */
+  (function derived() {
     const sd = $("#stats-date");
     if (sd) { sd.dateTime = D.updated; sd.textContent = updated.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
     const age = $("#ms-age");
@@ -106,11 +152,6 @@
     }
     const y = $("#year");
     if (y) y.textContent = new Date().getFullYear();
-    const pct = Math.round((S.xpPeople / S.members) * 100);
-    const xp = $("#xp-pct");
-    if (xp) xp.textContent = pct + "%";
-    const ring = $("#xp-ring");
-    if (ring) ring.dataset.pct = pct;
   })();
 
   /* ---------- invite links + applications switch ---------- */
@@ -201,12 +242,14 @@
   if (rolesEl) {
     D.roles.forEach((r, i) => {
       const foot = el("span", { class: "card-foot" });
-      const setFoot = (extra) => {
+      let mine = 0;   // this visitor's pretend confession
+      const setFoot = () => {
         foot.replaceChildren();
-        if (r.count === null || r.count === undefined) foot.append(extra ? "Confessed" : "Clean record");
-        else foot.append(el("b", { text: fmt(r.count + extra) }), " on record");
+        if (r.hideCount || r.count === null || r.count === undefined) foot.append(mine ? "Confessed" : "Clean record");
+        else foot.append(el("b", { text: fmt(r.count + mine) }), " on record");
       };
-      setFoot(0);
+      setFoot();
+      roleCards.push({ key: r.emoji, role: r, paint: setFoot });
       const btn = el("button", {
         type: "button", class: "card", "aria-pressed": "false",
         style: "--c1:" + r.c1 + ";--c2:" + r.c2 + ";--anim:" + (ANIMS[r.emoji] || "a-float")
@@ -224,7 +267,8 @@
       btn.addEventListener("click", () => {
         const on = btn.getAttribute("aria-pressed") !== "true";
         btn.setAttribute("aria-pressed", String(on));
-        setFoot(on ? 1 : 0);
+        mine = on ? 1 : 0;
+        setFoot();
         toast(r, on);
       });
       if (finePointer && !reduce) {
@@ -281,8 +325,13 @@
         ? el("span", { class: "lvl" }, [el("small", { text: "Level" }), el("b", { text: String(s.level) })])
         : el("span", { class: "lvl" }, [el("small", { text: "Level" }), el("b", { text: "Cannot be earned" })]);
       const who = el("span", { class: "who" });
-      if (s.members === 0) who.append("Nobody yet");
-      else who.append(el("b", { text: fmt(s.members) }), s.members === 1 ? (earned ? " member" : " holder") : " members");
+      const paintWho = () => {
+        who.replaceChildren();
+        if (!s.members) who.append("Nobody yet");
+        else who.append(el("b", { text: fmt(s.members) }), s.members === 1 ? (earned ? " member" : " holder") : " members");
+      };
+      paintWho();
+      ladderSteps.push({ key: s.emoji, step: s, paint: paintWho });
       stepsEl.append(el("li", {
         class: "step" + (earned ? "" : " envy"),
         style: "--c1:" + s.c1 + ";--c2:" + s.c2 + ";--i:" + i + ";--h:" + h + "px;--w:" + w + "%"
@@ -322,17 +371,33 @@
   /* commands */
   const cmdsEl = $("#cmds");
   if (cmdsEl) {
-    const list = S.commands.slice().sort((a, b) => b.uses - a.uses);
-    const max = list[0] ? list[0].uses : 1;
     const colors = ["var(--cyan)", "#a57bff", "var(--magenta)", "var(--mint)", "var(--amber)"];
-    list.forEach((c, i) => cmdsEl.append(el("li", { class: "cmd", style: "--c:" + colors[i % colors.length] + ";--i:" + i }, [
-      el("code", { text: c.cmd }),
-      el("span", { class: "bar" }, el("i", { style: "--p:" + ((c.uses / max) * 100).toFixed(1) + "%" })),
-      el("b", { text: fmt(c.uses) })
-    ])));
-    const total = $("#cmd-total");
-    const sum = list.reduce((a, c) => a + c.uses, 0);
-    if (total) { total.dataset.target = sum; total.textContent = fmt(sum); }
+    const rows = new Map();
+    paintCommands = () => {
+      const list = S.commands.slice().sort((a, b) => b.uses - a.uses);
+      const max = list[0] ? Math.max(1, list[0].uses) : 1;
+      list.forEach((c, i) => {
+        let row = rows.get(c.cmd);
+        if (!row) {
+          const bar = el("i");
+          const num = el("b");
+          row = { li: el("li", { class: "cmd" }, [el("code", { text: c.cmd }), el("span", { class: "bar" }, bar), num]), bar: bar, num: num };
+          rows.set(c.cmd, row);
+        }
+        row.li.style.setProperty("--c", colors[i % colors.length]);
+        row.li.style.setProperty("--i", i);
+        row.bar.style.setProperty("--p", ((c.uses / max) * 100).toFixed(1) + "%");
+        row.num.textContent = fmt(c.uses);
+        if (cmdsEl.children[i] !== row.li) cmdsEl.insertBefore(row.li, cmdsEl.children[i] || null);
+      });
+      const total = $("#cmd-total");
+      const sum = list.reduce((a, c) => a + c.uses, 0);
+      if (total) {
+        total.dataset.target = sum;
+        if (total.dataset.counted) animateNum(total, sum); else total.textContent = fmt(sum);
+      }
+    };
+    paintCommands();
   }
 
   /* voice waveform */
@@ -432,6 +497,99 @@
       '<g transform="translate(46 44) scale(1.15)" fill="none" stroke="#63f4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (window.EG_ICONS.crown || "") + "</g>";
   })();
 
+  /* =====================================================================
+     $EG CHART
+     ===================================================================== */
+  const HOUR = 3600e3;
+  const tabs = $$(".stock-tabs [data-range]");
+  const chartEl = $("#stock-chart");
+  const chart = chartEl && window.EGChart ? window.EGChart.create(chartEl, { range: "7d", onSummary: paintQuote }) : null;
+  function paintQuote(q) {
+    const set = (id, v) => { const n = $("#" + id); if (n) n.textContent = v; };
+    const ch = $("#stock-change");
+    if (!q) { ["q-open", "q-high", "q-low", "q-vol"].forEach((k) => set(k, "–")); if (ch) ch.hidden = true; return; }
+    set("q-open", fmt(q.open)); set("q-high", fmt(q.high)); set("q-low", fmt(q.low)); set("q-vol", fmt(q.volume));
+    if (ch) {
+      ch.hidden = false;
+      ch.classList.toggle("down", q.change < 0);
+      ch.classList.toggle("flat", q.change === 0);
+      $(".arrow", ch).textContent = q.change < 0 ? "▼" : q.change > 0 ? "▲" : "■";
+      $("b", ch).textContent = (q.change > 0 ? "+" : q.change < 0 ? "−" : "") + fmt(Math.abs(q.change));
+      $(".pct", ch).textContent = "(" + (q.change < 0 ? "−" : q.change > 0 ? "+" : "") + Math.abs(q.pct).toFixed(1) + "%)";
+      $(".rl", ch).textContent = q.label;
+    }
+  }
+  /* Until the bot has sent history, the chart uses the milestone counts + join log in home-data.js */
+  function fallbackPoints(range) {
+    const F = D.chartFallback || { anchors: [], joins: [] };
+    const bucket = chart ? chart.bucket(range) : HOUR;
+    const pts = F.anchors.map((a) => ({ t: Date.parse(a[0]), tm: Date.parse(a[0]), m: a[1], j: 0 }));
+    const counts = new Map();
+    for (const ts of F.joins) {
+      const d = new Date(ts * 1000);
+      if (bucket >= 24 * HOUR) d.setHours(0, 0, 0, 0);
+      else { const step = Math.round(bucket / HOUR); d.setHours(d.getHours() - (d.getHours() % step), 0, 0, 0); }
+      counts.set(d.getTime(), (counts.get(d.getTime()) || 0) + 1);
+    }
+    counts.forEach((n, t) => pts.push({ t: t, tm: t + bucket, m: null, j: n }));
+    return pts;
+  }
+  let historyLoader = null;
+  let loadSeq = 0;
+  async function loadChart() {
+    if (!chart) return;
+    const range = chart.range;
+    const seq = ++loadSeq;
+    let pts = null;
+    if (historyLoader) {
+      try { pts = await historyLoader(range); } catch (e) { pts = null; }
+    }
+    if (seq !== loadSeq) return;               // a newer request won
+    chartEl.dataset.source = pts && pts.length ? "bot" : "fallback";
+    chart.setPoints(pts && pts.length ? pts : fallbackPoints(range));
+  }
+  tabs.forEach((b) => b.addEventListener("click", () => {
+    if (!chart || b.getAttribute("aria-pressed") === "true") return;
+    tabs.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    chart.setRange(b.dataset.range);
+    chartEl.classList.add("switching");
+    loadChart().finally(() => requestAnimationFrame(() => chartEl.classList.remove("switching")));
+  }));
+  if (chart) { chart.setNow(state.members); loadChart(); }
+
+  /* =====================================================================
+     LIVE DATA (home-live.js calls these)
+     ===================================================================== */
+  function applyLive(data, at) {
+    if (!data || typeof data !== "object") return;
+    const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+    state.bot = true;
+    state.botAt = at || Date.now();
+    if (num(data.members) !== null) state.members = data.members;
+    if (num(data.boosts) !== null) state.boosts = data.boosts;
+    if (num(data.in_voice) !== null) { state.third = data.in_voice; state.thirdLabel = "in voice"; }
+    const map = { messages: "messages", voice_hours: "voiceHours", voice_people: "voicePeople", joins_24h: "joins24h", joins_7d: "joins7d", xp_people: "xpPeople" };
+    for (const k in map) if (num(data[k]) !== null) S[map[k]] = data[k];
+    if (data.commands && typeof data.commands === "object") {
+      for (const name in data.commands) {
+        const v = num(data.commands[name]);
+        if (v === null) continue;
+        const cmd = "!" + name.replace(/^!/, "");
+        const row = S.commands.find((c) => c.cmd === cmd);
+        if (row) row.uses = v; else S.commands.push({ cmd: cmd, uses: v });
+      }
+    }
+    if (data.vices) roleCards.forEach((c) => { const v = num(data.vices[c.key]); if (v !== null) c.role.count = v; });
+    if (data.ladder) ladderSteps.forEach((st) => { const v = num(data.ladder[st.key]); if (v !== null) st.step.members = v; });
+    bindAll();
+  }
+  window.EG_HOME_API = {
+    applyLive: applyLive,
+    setHistoryLoader: (fn) => { historyLoader = fn; loadChart(); },
+    reloadChart: () => loadChart(),
+    state: state
+  };
+
   bindAll();
 
   /* =====================================================================
@@ -450,6 +608,7 @@
       const ring = $(".ring .fill", node);
       if (ring) ring.style.strokeDashoffset = (327 * (1 - Number($("#xp-ring").dataset.pct || 0) / 100)).toFixed(1);
     }
+    if (node.classList.contains("t-stock") && chart) chart.render();
   }
   const revealables = $$("[data-reveal]");
   if ("IntersectionObserver" in window && !reduce) {
@@ -617,7 +776,9 @@
   /* =====================================================================
      LIVE COUNTS FROM DISCORD (public invite info; falls back quietly)
      ===================================================================== */
-  (async function live() {
+  (async function inviteCounts() {
+    await new Promise((r) => setTimeout(r, 2500));   // give the bot's numbers a head start
+    if (state.bot) return;
     const code = String(C.DISCORD_INVITE || "").split("/").filter(Boolean).pop();
     if (!code || !window.fetch) return;
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
@@ -628,10 +789,11 @@
       });
       if (!res.ok) return;
       const j = await res.json();
+      if (state.bot) return;                  // the bot's numbers win
       if (j.approximate_member_count) state.members = j.approximate_member_count;
       if (j.guild && typeof j.guild.premium_subscription_count === "number") state.boosts = j.guild.premium_subscription_count;
       if (j.approximate_presence_count) { state.third = j.approximate_presence_count; state.thirdLabel = "online now"; }
-      state.live = true;
+      state.invite = true;
       bindAll();
     } catch (e) {
       /* offline, blocked or rate-limited: the numbers in home-data.js stay */

@@ -5,27 +5,39 @@
    ===================================================================== */
 window.EG_HOME = {
   founded: "2026-09-02",          // the day the server opened (used for "per day" math)
-  updated: "2026-09-25",          // when you last copied the stats below from the bot
+  updated: "2026-09-25",          // when the numbers below were copied from the bot (shown until the bot connects)
 
   stats: {
-    members: 280,
-    boosts: 31,
-    inVoice: 10,                  // shown until Discord's live online count loads
-    messages: 11199,
-    voiceHours: 4240,
+    members: 281,
+    boosts: 32,
+    inVoice: 12,
+    messages: 11249,
+    voiceHours: 4258,
     voicePeople: 223,
     joins24h: 9,
-    joins7d: 68,
-    xpPeople: 262,
+    joins7d: 66,
+    xpPeople: 263,
     commands: [                   // any order; the page sorts them
-      { cmd: "!toke", uses: 191 },
+      { cmd: "!toke", uses: 193 },
       { cmd: "!dab", uses: 63 },
       { cmd: "!shot", uses: 62 },
-      { cmd: "!line", uses: 288 }
+      { cmd: "!line", uses: 292 }
     ]
   },
 
   nextGoal: 500,                  // "Next stop" on the milestones and the progress bar
+
+  /* $EG chart, used only until the bot connects (after that the chart comes from the bot).
+     anchors: member counts we know for sure. joins: when people joined (from sins.db). */
+  chartFallback: {
+    anchors: [
+      ["2026-09-05T00:19:00Z", 100],   // member #100
+      ["2026-09-09T12:52:00Z", 154],   // one-week serversary
+      ["2026-09-22T22:33:00Z", 250],   // 250 sinners
+      ["2026-09-25T23:02:00Z", 281]    // bot /stats
+    ],
+    joins: [1789771326, 1789771415, 1789774915, 1789775039, 1789776486, 1789777266, 1789786085, 1789794069, 1789815350, 1789834118, 1789843247, 1789847354, 1789860598, 1789899095, 1789914723, 1789962842, 1790015422, 1790020813, 1790022514, 1790025365, 1790036241, 1790045314, 1790047392, 1790060447, 1790067112, 1790084305, 1790102190, 1790108111, 1790108228, 1790113799, 1790115726, 1790116950, 1790121304, 1790134117, 1790138840, 1790148734, 1790166433, 1790173311, 1790177697, 1790178198, 1790198458, 1790199570, 1790204501, 1790206718, 1790212641, 1790221507, 1790223080, 1790226511, 1790227615, 1790233851, 1790235406, 1790241927, 1790243312, 1790243976, 1790249776, 1790253998, 1790269055, 1790273857, 1790279575, 1790282239, 1790289458, 1790301972, 1790302553, 1790312082, 1790313859, 1790325995, 1790335343, 1790343131, 1790369636, 1790370886, 1790375786]
+  },
 
   /* big: the huge label on the card. color: cyan | violet | magenta | amber | mint */
   milestones: [
@@ -59,23 +71,24 @@ window.EG_HOME = {
       text: "The suggestions forum is open. Members asked for a music bot and Jockie Music showed up.", chip: "Your idea next" }
   ],
 
-  /* Confession roles. emoji = file in assets/home/emoji/. count: null hides the number. */
+  /* Confession roles. emoji = file in assets/home/emoji/ (and the key the bot uses).
+     count = fallback until the bot connects. hideCount: true never shows a number (like Discord). */
   roles: [
     { name: "Garbage Head", emoji: "garbage-head", c1: "#8b7dff", c2: "#6f86ff",
       text: "Downers, and whatever else is going round.", count: 21 },
     { name: "Speed Freak", emoji: "speed-freak", c1: "#ffc21a", c2: "#ff7a1d",
-      text: "Uppers. Hasn't sat down since Tuesday.", count: 35 },
+      text: "Uppers. Hasn't sat down since Tuesday.", count: 36 },
     { name: "Psychonaut", emoji: "psychonaut", c1: "#e07dff", c2: "#9d9cff",
-      text: "Psychedelics. Currently negotiating with the carpet.", count: 32 },
+      text: "Psychedelics. Currently negotiating with the carpet.", count: 33 },
     { name: "Pot-Head", emoji: "pot-head", c1: "#6ad35a", c2: "#b4ea4f",
-      text: "Cannabinoids. Will get to it in a minute.", count: 49 },
+      text: "Cannabinoids. Will get to it in a minute.", count: 51 },
     { name: "Freak", emoji: "freak", c1: "#ff2d55", c2: "#c21fe0", adult: true,
       text: "NSFW. Opens the back room.", count: 54 },
     { name: "Sobriety", emoji: "sobriety", c1: "#b8ffe4", c2: "#6fe6ab",
-      text: "Clean. Watching the rest of you with quiet interest.", count: null }
+      text: "Clean. Watching the rest of you with quiet interest.", count: null, hideCount: true }
   ],
 
-  /* The Ladder, lowest to highest. level: null = cannot be earned. */
+  /* The Ladder, lowest to highest. level: null = cannot be earned. members = fallback until the bot connects. */
   ladder: [
     { name: "Sloth", emoji: "sloth", level: 1, members: 46, c1: "#b8bfe0", c2: "#8e97c7" },
     { name: "Gluttony", emoji: "gluttony", level: 5, members: 36, c1: "#ff4f8b", c2: "#c2307a" },

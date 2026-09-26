@@ -20,8 +20,8 @@
 <link rel="apple-touch-icon" href="assets/home/apple-touch-icon.png">
 <link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
-<link rel="stylesheet" href="assets/fonts.css?v=4">
-<link rel="stylesheet" href="assets/home.css?v=4">
+<link rel="stylesheet" href="assets/fonts.css?v=5">
+<link rel="stylesheet" href="assets/home.css?v=5">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -68,7 +68,7 @@
 
     <div class="hero-inner">
       <div class="hero-copy">
-        <img class="hero-logo" src="assets/home/eg-logo.webp" width="540" height="430" alt="Envious Gluttony">
+        <img class="hero-logo" src="assets/home/eg-logo.webp" width="560" height="460" alt="Envious Gluttony">
         <p class="eyebrow">Discord community <span class="sep">/</span> Est. 09.02.26</p>
         <h1 class="hero-title" id="hero-title">
           <span>By the people.</span>
@@ -218,10 +218,37 @@
           <p class="eyebrow"><span class="num">06</span> Server stats</p>
           <h2 class="h-lg" id="stats-title">Real activity. Real people. <span class="grad">Real chaos.</span></h2>
         </div>
-        <p class="sub" data-reveal style="--d:.1s">Straight from the Gluttony™ bot. Snapshot from <time id="stats-date" datetime="2026-09-25">Sep 25, 2026</time>, with live counts from Discord where it lets us.</p>
+        <p class="sub" data-reveal style="--d:.1s"><span id="stats-source">Straight from the Gluttony™ bot. Snapshot from <time id="stats-date" datetime="2026-09-25">Sep 25, 2026</time>.</span></p>
       </div>
 
       <div class="bento">
+        <article class="tile t-stock" id="stock" data-reveal aria-labelledby="stock-title">
+          <div class="stock-head">
+            <div class="stock-id">
+              <p class="t-label" id="stock-title"><span class="ticker">$EG</span>Envious Gluttony™ · Members
+                <span class="live-badge" id="live-badge" hidden><span class="dot" aria-hidden="true"></span>Live</span></p>
+              <p class="stock-price"><b data-stat="members">281</b><span>sinners</span></p>
+              <p class="stock-change" id="stock-change"><span class="arrow" aria-hidden="true">▲</span><b>+0</b><span class="pct">(0%)</span><span class="rl">past 7 days</span></p>
+            </div>
+            <div class="stock-tabs" role="group" aria-label="Chart range">
+              <button type="button" data-range="24h" aria-pressed="false">24H</button>
+              <button type="button" data-range="7d" aria-pressed="true">7D</button>
+              <button type="button" data-range="30d" aria-pressed="false">30D</button>
+              <button type="button" data-range="all" aria-pressed="false">ALL</button>
+            </div>
+          </div>
+          <div class="stock-chart" id="stock-chart"></div>
+          <dl class="stock-quote">
+            <div><dt>Open</dt><dd id="q-open">–</dd></div>
+            <div><dt>High</dt><dd id="q-high">–</dd></div>
+            <div><dt>Low</dt><dd id="q-low">–</dd></div>
+            <div><dt>Volume</dt><dd><span id="q-vol">–</span> joins</dd></div>
+            <div><dt>Joined 24h</dt><dd data-stat="joins24h">9</dd></div>
+            <div><dt>Joined 7d</dt><dd data-stat="joins7d">68</dd></div>
+          </dl>
+          <p class="stock-foot"><span>Every one of you holds a piece of EG. Here's how the stock's doing.</span><span id="stock-updated"></span></p>
+        </article>
+
         <article class="tile t-msg" data-reveal>
           <div class="bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
           <p class="t-label"><i data-icon="message-square"></i>Messages</p>
@@ -230,21 +257,11 @@
           <p class="t-foot" id="msg-rate">≈ 487 a day since the doors opened</p>
         </article>
 
-        <article class="tile t-now" data-reveal style="--d:.08s">
-          <div class="radar" aria-hidden="true"><i></i><i></i><i></i></div>
-          <p class="t-label"><i data-icon="radio"></i>Right now <span class="live-badge" id="live-badge" hidden>Live</span></p>
-          <p class="t-big sm"><b data-count data-stat="members">280</b><span>members</span></p>
-          <p class="t-line"><span class="dot" aria-hidden="true"></span><b data-stat="third">10</b> <span data-stat-label>in voice</span></p>
-          <div class="joins">
-            <div><b data-count data-stat="joins24h">9</b><span>joined in 24h</span></div>
-            <div><b data-count data-stat="joins7d">68</b><span>joined in 7 days</span></div>
-          </div>
-        </article>
-
         <article class="tile t-voice" data-reveal>
           <p class="t-label"><i data-icon="mic"></i>Voice</p>
           <p class="t-big sm"><b data-count data-stat="voiceHours">4,240</b><span>hours</span></p>
           <p class="t-cap">across <b data-stat="voicePeople">223</b> people. <span id="voice-days">That's about 177 days of nonstop talking.</span></p>
+          <p class="t-line"><span class="dot" aria-hidden="true"></span><b data-stat="third">10</b> <span data-stat-label>in voice</span> right now</p>
           <div class="wave" id="wave" aria-hidden="true"></div>
         </article>
 
@@ -361,13 +378,15 @@
   <p class="rd-foot">Questions about a rule? Ask a staff member in the server.</p>
 </dialog>
 
-<script src="assets/icons.js?v=4"></script>
-<script src="assets/config.js?v=4"></script>
-<script src="assets/home-data.js?v=4"></script>
-<script src="assets/home.js?v=4"></script>
+<script src="assets/icons.js?v=5"></script>
+<script src="assets/config.js?v=5"></script>
+<script src="assets/home-data.js?v=5"></script>
+<script src="assets/home-chart.js?v=5"></script>
+<script src="assets/home.js?v=5"></script>
 <!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="assets/supa.js?v=4"></script>
-<script src="assets/nav.js?v=4"></script>
+<script src="assets/supa.js?v=5"></script>
+<script src="assets/nav.js?v=5"></script>
+<script src="assets/home-live.js?v=5"></script>
 </body>
 </html>
