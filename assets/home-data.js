@@ -55,17 +55,17 @@ window.EG_HOME = {
       text: "Giveaways keep coming. So do the sinners." }
   ],
 
-  /* "What makes EG different". icon names come from assets/icons.js */
+  /* "What makes EG different": one world each. art = assets/home/worlds/<art>.webp, tag = the graffiti line on the planet */
   features: [
-    { icon: "message-square-heart", color: "#ff5fd8", title: "Confessions",
+    { art: "confessions", color: "#ff4fd8", title: "Confessions", tag: "Confess it.",
       text: "The sins you earn. The vices you confess. Pick your roles and wear them with pride.", chip: "#get-roles-here" },
-    { icon: "gift", color: "#ffc861", title: "Giveaways",
+    { art: "giveaways", color: "#ffc44d", title: "Giveaways", tag: "Free stuff.",
       text: "Nitro, cash and gift cards, dropped for every milestone and sometimes just because.", chip: "Nitro · $25 drops" },
-    { icon: "chart-no-axes-column-increasing", color: "#63f4ff", title: "Leveling & XP",
+    { art: "leveling", color: "#5cb8ff", title: "Leveling & XP", tag: "Climb.",
       text: "Talk, hang out in voice, climb the ladder. Seven sins and one very exclusive top spot.", chip: "{xpPeople} ranked" },
-    { icon: "mic", color: "#73ffce", title: "Voice",
+    { art: "voice", color: "#3ff2dc", title: "Voice", tag: "Pull up.",
       text: "Actual conversation with actual people. Day, night and the weird hours in between.", chip: "{voiceHours} hrs logged" },
-    { icon: "lightbulb", color: "#ff8a5c", title: "Community-led",
+    { art: "community", color: "#ff7a3d", title: "Community-led", tag: "Your call.",
       text: "The suggestions forum is open. Members asked for a music bot and Jockie Music showed up.", chip: "Your idea next" }
   ],
 

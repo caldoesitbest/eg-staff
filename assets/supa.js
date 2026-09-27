@@ -64,10 +64,10 @@
       if (error) throw error;
     },
 
-    /** Where to go after signing in. Only same-site paths are allowed. */
+    /** Where to go after signing in. Only same-site paths (plus a #section) are allowed. */
     nextPath(fallback) {
       const n = new URLSearchParams(location.search).get("next");
-      return n && /^\/[A-Za-z0-9/_-]*$/.test(n) && !n.startsWith("//") ? n : (fallback || "/account/");
+      return n && /^\/[A-Za-z0-9/_-]*(#[A-Za-z0-9_-]+)?$/.test(n) && !n.startsWith("//") ? n : (fallback || "/account/");
     },
 
     providers(user) {

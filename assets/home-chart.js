@@ -81,8 +81,12 @@
     const line = el("path", { class: "sc-line", stroke: "url(#" + id + "-line)" }, svg);
     const gAxis = el("g", { class: "sc-axis" }, svg);
     const nowDot = el("g", { class: "sc-now" }, svg);
-    el("circle", { class: "sc-now-ring", r: "10" }, nowDot);
     el("circle", { class: "sc-now-dot", r: "4" }, nowDot);
+    // the "live" ping is a plain element over the chart: the browser animates it without redrawing the SVG
+    const ring = document.createElement("span");
+    ring.className = "sc-ring";
+    ring.setAttribute("aria-hidden", "true");
+    ring.appendChild(document.createElement("i"));
     const cross = el("g", { class: "sc-cross" }, svg);
     const vline = el("line", { class: "sc-vline" }, cross);
     const hdot = el("circle", { class: "sc-hdot", r: "5" }, cross);
@@ -96,7 +100,7 @@
     hint.id = id + "-hint";
     hint.className = "sr-only";
     hint.textContent = "Use the left and right arrow keys to read the chart.";
-    root.append(svg, tip, hint);
+    root.append(svg, ring, tip, hint);
 
     const state = { range: opts.range || "7d", points: [], now: null, view: null, hover: -1, drawn: false };
 
@@ -143,16 +147,29 @@
 
     function summarize(v) {
       if (!v.line.length) return null;
-      const ms = v.line.map((p) => p.m);
-      const open = v.line[0].m;
+      // A range that reaches back before launch starts at 0 members, and growth from 0 has no %.
+      // Like a stock's IPO price, measure from the members at the end of launch day instead.
+      let from = 0;
+      if (!(v.line[0].m > 0)) {
+        const k = v.line.findIndex((p) => p.m > 0);
+        if (k >= 0) {
+          const day = localStart(v.line[k].t, DAY);
+          from = k;
+          while (from + 1 < v.line.length && localStart(v.line[from + 1].t, DAY) === day && !v.line[from + 1].now) from++;
+        }
+      }
+      const ms = v.line.slice(from).map((p) => p.m);
+      const open = v.line[from].m;
       const close = v.line[v.line.length - 1].m;
       const volume = v.bars.reduce((a, b) => a + (b.s >= v.t0 - 1 ? b.n : Math.round(b.n * (b.e - v.t0) / (b.e - b.s))), 0);
+      const all = v.line.map((p) => p.m);
       return {
         range: state.range, label: RANGES[state.range].label,
         open: Math.round(open), close: Math.round(close),
         high: Math.round(Math.max.apply(null, ms)), low: Math.round(Math.min.apply(null, ms)),
         change: Math.round(close - open), pct: open ? ((close - open) / open) * 100 : 0,
-        volume: volume
+        volume: volume,
+        scaleLo: Math.min.apply(null, all), scaleHi: Math.max.apply(null, all)
       };
     }
 
@@ -179,13 +196,13 @@
       empty.textContent = sum ? "" : "Waiting for data";
       empty.setAttribute("x", W / 2); empty.setAttribute("y", H / 2);
       if (!sum) {
-        line.setAttribute("d", ""); area.setAttribute("d", ""); nowDot.style.display = "none"; base.style.display = "none";
+        line.setAttribute("d", ""); area.setAttribute("d", ""); nowDot.style.display = "none"; ring.style.display = "none"; base.style.display = "none";
         if (opts.onSummary) opts.onSummary(null);
         return;
       }
 
-      // price scale
-      let lo = sum.low, hi = sum.high;
+      // price scale (everything drawn, including the climb from 0 at launch)
+      let lo = sum.scaleLo, hi = sum.scaleHi;
       const padV = Math.max(2, (hi - lo) * 0.14);
       lo = Math.max(0, lo - padV); hi = hi + padV;
       const step = niceStep(lo, hi, H < 260 ? 3 : 4);
@@ -246,6 +263,8 @@
       const last = pts[pts.length - 1];
       nowDot.style.display = v.line[v.line.length - 1].now ? "" : "none";
       nowDot.setAttribute("transform", "translate(" + last[0].toFixed(1) + " " + last[1].toFixed(1) + ")");
+      ring.style.display = nowDot.style.display;
+      ring.style.transform = "translate(" + last[0].toFixed(1) + "px," + last[1].toFixed(1) + "px)";
 
       // first appearance: draw the line in
       if (!state.drawn && !reduce && root.closest(".in")) {

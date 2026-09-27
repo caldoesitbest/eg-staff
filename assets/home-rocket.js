@@ -442,7 +442,7 @@
   }
 
   /* ---------- the frame loop ---------- */
-  let running = false, lastT = 0;
+  let running = false, lastT = 0, lastClip = "";
   function frame(ms) {
     if (!running) return;
     const now = ms / 1000;
@@ -450,7 +450,8 @@
     lastT = now;
     const off = artOff(), o = origin(), C = planetAt(off), onScreen = heroOnScreen();
     const cx = C.x.toFixed(1), cy = C.y.toFixed(1), r = C.r.toFixed(1), d2 = (2 * C.r).toFixed(1);
-    clipPath.setAttribute("d", "M-9999 -9999H19999V19999H-9999ZM" + (C.x - C.r).toFixed(1) + " " + cy + "a" + r + " " + r + " 0 1 0 " + d2 + " 0a" + r + " " + r + " 0 1 0 -" + d2 + " 0Z");
+    const clipD = "M-9999 -9999H19999V19999H-9999ZM" + (C.x - C.r).toFixed(1) + " " + cy + "a" + r + " " + r + " 0 1 0 " + d2 + " 0a" + r + " " + r + " 0 1 0 -" + d2 + " 0Z";
+    if (clipD !== lastClip) { clipPath.setAttribute("d", clipD); lastClip = clipD; }   // only when the planet moved
     stateT += dt;
 
     if (state === "loop") {

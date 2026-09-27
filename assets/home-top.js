@@ -541,8 +541,6 @@
       const on = es[es.length - 1].isIntersecting;
       slots.forEach((s) => s.av.play(on));
     }, { threshold: 0.15 }).observe(podium);
-    // nothing in here animates while the section is off screen
-    new IntersectionObserver((es) => root.classList.toggle("idle", !es[es.length - 1].isIntersecting)).observe(root);
   } else {
     seen = true;
     root.classList.add("go");

@@ -21,7 +21,7 @@
 <link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
 <link rel="stylesheet" href="assets/fonts.css?v=5">
-<link rel="stylesheet" href="assets/home.css?v=8">
+<link rel="stylesheet" href="assets/home.css?v=9">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -198,22 +198,27 @@
 
   <!-- ============================ WHAT MAKES EG DIFFERENT ============================ -->
   <section class="community" id="community" aria-labelledby="com-title" data-spy-section="community">
-    <div class="container com-grid">
-      <div class="com-side">
-        <div class="com-sticky" data-reveal>
+    <div class="container">
+      <div class="section-head split">
+        <div data-reveal>
           <p class="eyebrow"><span class="num">03</span> What makes EG different</p>
           <h2 class="h-lg" id="com-title">More than a server. <span class="grad">A whole planet.</span></h2>
-          <p class="sub">Five reasons people show up, and don't leave.</p>
-          <div class="orb" id="orb" aria-hidden="true">
-            <span class="orb-glow"></span>
-            <span class="orb-ring back"></span>
-            <span class="orb-core"></span>
-            <span class="orb-ring front"></span>
-            <span class="orb-icon" id="orb-icon"></span>
-          </div>
         </div>
+        <p class="sub" data-reveal style="--d:.1s">Five worlds in one orbit. The reasons people show up, and don't leave.</p>
       </div>
-      <ol class="features" id="features"></ol>
+      <!-- the five worlds (home.js builds them from home-data.js; art in assets/home/worlds/) -->
+      <div class="worlds" id="worlds">
+        <div class="w-stage" id="w-stage" data-reveal>
+          <div class="w-space" aria-hidden="true">
+            <span class="w-num" id="w-num"></span>
+            <span class="w-wave" id="w-wave"></span>
+            <div class="w-planets" id="w-planets"></div>
+            <p class="w-tag" id="w-tag"></p>
+          </div>
+          <div class="w-rail" id="w-rail" aria-label="The five worlds"></div>
+        </div>
+        <ol class="w-list" id="features"></ol>
+      </div>
     </div>
   </section>
 
@@ -228,6 +233,7 @@
         <div class="conf-aside" data-reveal style="--d:.1s">
           <p class="conf-sub">The sins you earn.<br>The vices you confess.</p>
           <p class="conf-note"><i data-icon="mouse-pointer-click"></i><span>Tap once to confess, again to recant. Only you see the reply.</span></p>
+          <p class="conf-link" id="conf-link" hidden></p>
         </div>
       </div>
       <ul class="tarot" id="roles"></ul>
@@ -460,14 +466,14 @@
 
 <script src="assets/icons.js?v=6"></script>
 <script src="assets/config.js?v=6"></script>
-<script src="assets/home-data.js?v=6"></script>
-<script src="assets/home-chart.js?v=5"></script>
-<script src="assets/home.js?v=8"></script>
-<script src="assets/home-top.js?v=1"></script>
-<script src="assets/home-rocket.js?v=1"></script>
+<script src="assets/home-data.js?v=7"></script>
+<script src="assets/home-chart.js?v=6"></script>
+<script src="assets/home.js?v=9"></script>
+<script src="assets/home-top.js?v=2"></script>
+<script src="assets/home-rocket.js?v=2"></script>
 <!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="assets/supa.js?v=5"></script>
+<script src="assets/supa.js?v=6"></script>
 <script src="assets/nav.js?v=6"></script>
 <script src="assets/home-live.js?v=5"></script>
 </body>

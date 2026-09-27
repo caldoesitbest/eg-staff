@@ -103,6 +103,7 @@
       const fill = $(".fill", ring);
       if (fill && ring.closest(".in")) fill.style.strokeDashoffset = (327 * (1 - pct / 100)).toFixed(1);
     }
+    worldChips.forEach((c) => (c.node.textContent = chipText(c.text)));
     roleCards.forEach((c) => c.paint());
     ladderSteps.forEach((st) => st.paint());
     paintCommands();
@@ -199,57 +200,117 @@
     sync();
   }
 
-  /* what makes EG different */
-  const featList = $("#features");
-  const orb = $("#orb");
-  const orbIcon = $("#orb-icon");
+  /* what makes EG different: five worlds. Desktop: the planet on the left follows the chapter
+     you're reading. Phones: a swipeable row of cards. The rail jumps to any world. */
   const chipText = (t) => t.replace(/\{(\w+)\}/g, (_, k) => (S[k] !== undefined ? fmt(S[k]) : ""));
-  function activate(li) {
-    if (!li || li.classList.contains("active")) return;
-    $$(".feature.active", featList).forEach((n) => n.classList.remove("active"));
-    li.classList.add("active");
-    if (orb) {
-      orb.style.setProperty("--oc", li.dataset.color);
-      orbIcon.replaceChildren(ic(li.dataset.icon));
-    }
-  }
-  if (featList) {
+  const worldChips = [];
+  const worlds = $("#worlds");
+  const featList = $("#features");
+  if (worlds && featList && D.features && D.features.length) {
+    const planetsEl = $("#w-planets"), rail = $("#w-rail"), numEl = $("#w-num"), tagEl = $("#w-tag"), waveEl = $("#w-wave"), stage = $("#w-stage");
+    const art = (f, w) => "assets/home/worlds/" + f.art + (w < 1200 ? "-" + w : "") + ".webp";
+    const set = (f) => art(f, 600) + " 600w, " + art(f, 900) + " 900w, " + art(f, 1200) + " 1200w";
+    const n = D.features.length;
+    const pad = (i) => String(i + 1).padStart(2, "0");
+    const planets = [], chapters = [], dots = [];
     D.features.forEach((f, i) => {
-      const li = el("li", { class: "feature", style: "--fc:" + f.color, "data-color": f.color, "data-icon": f.icon, "data-reveal": true }, [
-        el("span", { class: "f-ico" }, ic(f.icon)),
-        el("div", { class: "f-text" }, [
-          el("div", { class: "f-top" }, [el("span", { class: "f-num", text: String(i + 1).padStart(2, "0") }), el("h3", { text: f.title })]),
-          el("p", { text: f.text }),
-          f.chip ? el("span", { class: "chip", text: chipText(f.chip) }) : null
-        ])
+      planets.push(el("span", { class: "w-planet " + (i ? "after" : "on") }, el("span", { class: "w-float" },
+        el("img", { src: art(f, 1200), srcset: set(f), sizes: "(min-width: 960px) 46vw, 80vw", alt: "", width: "1200", height: "900", decoding: "async", loading: i ? "lazy" : null, draggable: "false" }))));
+      const chip = f.chip ? el("span", { class: "chip", text: chipText(f.chip) }) : null;
+      if (chip && /\{/.test(f.chip)) worldChips.push({ node: chip, text: f.chip });
+      chapters.push(el("li", { class: "world" + (i ? "" : " active"), style: "--wc:" + f.color }, [
+        el("span", { class: "world-art", "aria-hidden": "true" }, [
+          el("img", { src: art(f, 600), srcset: set(f), sizes: "80vw", alt: "", width: "600", height: "450", decoding: "async", loading: "lazy", draggable: "false" }),
+          el("span", { class: "world-tag", text: f.tag })
+        ]),
+        el("p", { class: "world-idx" }, [el("b", { text: pad(i) }), el("span", { text: "/ " + pad(n - 1) })]),
+        el("h3", { text: f.title }),
+        el("p", { class: "world-text", text: f.text }),
+        chip
+      ]));
+      const dot = el("button", { type: "button", class: "w-dot" + (i ? "" : " on"), style: "--wc:" + f.color, "aria-label": pad(i) + " " + f.title, "aria-current": i ? "false" : "true" }, [
+        el("span", { class: "w-dot-pic" }, el("img", { src: art(f, 300), alt: "", width: "300", height: "225", decoding: "async", loading: "lazy", draggable: "false" })),
+        el("span", { class: "w-dot-num", text: pad(i) })
       ]);
-      li.addEventListener("mouseenter", () => activate(li));
-      featList.append(li);
+      dot.addEventListener("click", () => go(i));
+      dots.push(dot);
     });
-    activate(featList.firstElementChild);
-    if ("IntersectionObserver" in window) {
-      const io = new IntersectionObserver((entries) => {
-        entries.forEach((e) => { if (e.isIntersecting) activate(e.target); });
-      }, { rootMargin: "-45% 0px -45% 0px" });
-      $$(".feature", featList).forEach((n) => io.observe(n));
+    planetsEl.append(...planets);
+    featList.append(...chapters);
+    rail.append(...dots);
+
+    let active = 0;
+    const restart = (node, cls) => { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); };
+    function paintStage(i, animate) {
+      const f = D.features[i];
+      worlds.style.setProperty("--pc", f.color);
+      rail.style.setProperty("--p", n > 1 ? (i / (n - 1)).toFixed(3) : "0");
+      numEl.textContent = pad(i);
+      tagEl.textContent = f.tag;
+      if (animate && !reduce) { restart(numEl, "in"); restart(tagEl, "in"); restart(waveEl, "in"); }
+    }
+    function setActive(i) {
+      if (i === active || i < 0 || i >= n) return;
+      active = i;
+      planets.forEach((p, k) => { p.classList.toggle("on", k === i); p.classList.toggle("before", k < i); p.classList.toggle("after", k > i); });
+      chapters.forEach((c, k) => c.classList.toggle("active", k === i));
+      dots.forEach((d, k) => { d.classList.toggle("on", k === i); d.classList.toggle("done", k < i); d.setAttribute("aria-current", String(k === i)); });
+      paintStage(i, true);
+    }
+    paintStage(0, false);
+
+    const wide = window.matchMedia("(min-width: 960px)");
+    function go(i) {
+      const c = chapters[i];
+      if (wide.matches) {
+        const r = c.getBoundingClientRect();
+        window.scrollBy({ top: r.top + r.height / 2 - window.innerHeight / 2, behavior: reduce ? "auto" : "smooth" });
+      } else {
+        featList.scrollTo({ left: c.offsetLeft - (featList.clientWidth - c.offsetWidth) / 2, behavior: reduce ? "auto" : "smooth" });
+      }
+      setActive(i);
+    }
+    // which world you're on: the chapter crossing the middle of the screen, or the card in the middle of the row
+    let io = null;
+    function watch() {
+      if (io) io.disconnect();
+      if (!("IntersectionObserver" in window)) return;
+      io = wide.matches
+        ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setActive(chapters.indexOf(e.target)); }), { rootMargin: "-46% 0px -46% 0px" })
+        : new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setActive(chapters.indexOf(e.target)); }), { root: featList, threshold: 0.6 });
+      chapters.forEach((c) => io.observe(c));
+    }
+    watch();
+    if (wide.addEventListener) wide.addEventListener("change", watch);
+
+    // the planet leans toward the pointer
+    if (finePointer && !reduce && stage) {
+      let raf = 0, px = 0, py = 0;
+      stage.addEventListener("pointermove", (e) => {
+        const b = stage.getBoundingClientRect();
+        px = (e.clientX - b.left) / b.width - 0.5; py = (e.clientY - b.top) / b.height - 0.5;
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; planetsEl.style.transform = "translate3d(" + (px * 18).toFixed(1) + "px," + (py * 12).toFixed(1) + "px,0) rotateY(" + (px * 10).toFixed(1) + "deg) rotateX(" + (-py * 8).toFixed(1) + "deg)"; });
+      });
+      stage.addEventListener("pointerleave", () => { planetsEl.style.transform = ""; });
     }
   }
 
-  /* confession cards */
+  /* confession cards. For visitors they're a preview. Signed in with Discord (and with the bot up),
+     a tap is the real thing: the Gluttony™ bot gives or takes the role in the server, same rules as its panel. */
   const ANIMS = { "garbage-head": "a-wobble", "speed-freak": "a-jitter", psychonaut: "a-trip", "pot-head": "a-sway", freak: "a-beat", sobriety: "a-float" };
   const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+  const INVITE = C.DISCORD_INVITE || "https://discord.gg/enviousgluttony";
   const rolesEl = $("#roles");
+  const linkEl = $("#conf-link");
+  // user: signed in with Discord. bot: the bot takes website confessions. member: in the server (null = not checked yet)
+  const link = { user: null, name: "", bot: false, member: null, locked: false, held: null, heldId: 0, asking: false, asked: 0 };
+  const linked = () => !!(link.user && link.bot && link.member !== false);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const roleNamed = (key) => { const c = roleCards.find((x) => x.key === key); return c ? c.role : null; };
+  const clicks = (node, fn) => { node.addEventListener("click", fn); return node; };
   if (rolesEl) {
     D.roles.forEach((r, i) => {
       const foot = el("span", { class: "card-foot" });
-      let mine = 0;   // this visitor's pretend confession
-      const setFoot = () => {
-        foot.replaceChildren();
-        if (r.hideCount || r.count === null || r.count === undefined) foot.append(mine ? "Confessed" : "Clean record");
-        else foot.append(el("b", { text: fmt(r.count + mine) }), " on record");
-      };
-      setFoot();
-      roleCards.push({ key: r.emoji, role: r, paint: setFoot });
       const btn = el("button", {
         type: "button", class: "card", "aria-pressed": "false",
         style: "--c1:" + r.c1 + ";--c2:" + r.c2 + ";--anim:" + (ANIMS[r.emoji] || "a-float")
@@ -264,13 +325,19 @@
         foot,
         el("span", { class: "stampmark", "aria-hidden": "true", text: "Confessed" })
       ]);
-      btn.addEventListener("click", () => {
-        const on = btn.getAttribute("aria-pressed") !== "true";
-        btn.setAttribute("aria-pressed", String(on));
-        mine = on ? 1 : 0;
-        setFoot();
-        toast(r, on);
-      });
+      const c = { key: r.emoji, role: r, btn: btn, mine: 0, adj: null, busy: 0, gate: null };
+      c.on = () => btn.getAttribute("aria-pressed") === "true";
+      c.set = (on) => btn.setAttribute("aria-pressed", String(!!on));
+      c.paint = () => {
+        foot.replaceChildren();
+        if (c.busy) { foot.append(ic("loader-circle", "spin"), Date.now() - c.busy > 12000 ? "Still sending" : "Sending"); return; }
+        const extra = linked() ? (c.adj ? c.adj.d : 0) : c.mine;
+        if (r.hideCount || r.count === null || r.count === undefined) foot.append(c.on() ? "Confessed" : "Clean record");
+        else foot.append(el("b", { text: fmt(Math.max(0, r.count + extra)) }), " on record");
+      };
+      c.paint();
+      roleCards.push(c);
+      btn.addEventListener("click", () => (linked() ? confessReal(c) : confessPretend(c)));
       if (finePointer && !reduce) {
         btn.addEventListener("pointermove", (e) => {
           const b = btn.getBoundingClientRect();
@@ -287,30 +354,228 @@
     });
   }
 
+  /* the preview: nothing leaves the page */
+  function confessPretend(c) {
+    const on = !c.on();
+    c.set(on);
+    c.mine = on ? 1 : 0;
+    c.paint();
+    const meta = [];
+    if (on && link.bot && !link.user) meta.push(clicks(el("button", { type: "button", class: "toast-link", text: "Sign in with Discord to make it official" }), signIn));
+    else if (on) meta.push(el("a", { href: INVITE, target: "_blank", rel: "noopener", text: link.member === false ? "Join the server to make it official" : "Make it official in the server" }));
+    toast(c.role.c1, on ? ["You confessed to ", el("b", { text: "@" + c.role.name }), "."] : ["Recanted. ", el("b", { text: "@" + c.role.name }), " never happened."], meta);
+  }
+
+  /* the real thing: ask the bot, wait for its answer */
+  async function ask(vice, action, adult, c) {
+    const sb = window.EG && window.EG.sb;
+    if (!sb) throw new Error("not connected");
+    const r = await sb.rpc("confess", { p_vice: vice, p_action: action, p_adult: !!adult });
+    if (r.error) throw r.error;
+    if (!r.data || !r.data.ok) return r.data || { ok: false };
+    const id = Number(r.data.id) || 0;
+    const started = Date.now();
+    const late = { ok: false, code: "timeout", error: "The bot didn't get to it, so nothing changed. Try again in a minute." };
+    let misses = 0;
+    for (let n = 0; ; n++) {
+      await sleep(n < 20 ? 500 : 1500);
+      if (c) c.paint();                                   // "Still sending" after a while
+      const q = await sb.from("confession_requests").select("status,result").eq("id", r.data.id).maybeSingle();
+      if (q.error || !q.data) { if (++misses > 6) throw q.error || new Error("lost"); continue; }
+      const st = q.data.status;
+      if (st === "done" || st === "failed") return Object.assign({ ok: false }, q.data.result, { id: id });
+      if (st === "expired") return late;
+      const waited = Date.now() - started;
+      if (st === "pending" && waited > 36000) return late;   // the database drops it at 30s, so it can't happen later
+      if (waited > 75000) return { ok: false, code: "slow", error: "Still going through. Check your roles in the server in a minute." };
+    }
+  }
+  function setHeld(list, at, id) {
+    if (id && id < link.heldId) return;                  // an older answer than the one on screen
+    if (id) link.heldId = id;
+    const now = new Set(Array.isArray(list) ? list : []);
+    roleCards.forEach((c) => {
+      const was = link.held ? link.held.has(c.key) : c.on();
+      const on = now.has(c.key);
+      if (at && was !== on) c.adj = { d: (c.adj ? c.adj.d : 0) + (on ? 1 : -1), at: at };   // until the bot's next count
+      c.mine = 0;
+      c.set(on);
+      c.paint();
+    });
+    link.held = now;
+  }
+  async function checkRecord() {
+    if (!link.user || !link.bot || link.asking) return;
+    link.asking = true;
+    link.asked = Date.now();
+    paintLink();
+    let res = null;
+    try { res = await ask(null, "status", false); } catch (e) { res = null; }
+    link.asking = false;
+    if (res && res.ok) { link.member = true; link.locked = !!res.locked; setHeld(res.held, 0, res.id); }
+    else if (res && res.code === "not_member") { link.member = false; setHeld([], 0, res.id); }
+    else if (res && res.code === "offline") link.bot = false;
+    else setTimeout(() => { if (!link.held) checkRecord(); }, 30000);   // couldn't check just now: taps still work
+    linkChanged();
+  }
+  async function confessReal(c, adult) {
+    if (c.busy) return;
+    const add = !c.on();
+    if (add && c.role.adult && !adult) { gate(c); return; }
+    c.busy = Date.now();
+    c.btn.setAttribute("aria-busy", "true");
+    c.paint();
+    let res;
+    try { res = await ask(c.key, add ? "add" : "remove", adult, c); }
+    catch (e) {
+      const expired = /permission denied|jwt/i.test(String((e && e.message) || e));
+      res = { ok: false, error: expired ? "Your sign-in ran out. Sign in with Discord again." : window.EG ? window.EG.friendlyError(e) : "Couldn't reach the server. Try again." };
+      if (expired) setTimeout(findUser, 0);
+    }
+    c.busy = 0;
+    c.btn.removeAttribute("aria-busy");
+    if (res.code === "not_member") link.member = false;
+    if (res.code === "offline") link.bot = false;
+    if (typeof res.locked === "boolean" || res.code === "locked") link.locked = !!res.locked || res.code === "locked";
+    if (Array.isArray(res.held)) setHeld(res.held, res.ok && !res.same ? Number(res.at) || 1 : 0, res.id);
+    else c.paint();
+    paintLink();
+    const name = el("b", { text: "@" + c.role.name });
+    if (!res.ok) {
+      c.btn.classList.remove("nope"); void c.btn.offsetWidth; c.btn.classList.add("nope");
+      const meta = res.code === "not_member" ? [el("a", { href: INVITE, target: "_blank", rel: "noopener", text: "Join the server" })] : [];
+      toast(c.role.c1, ["That didn't take. ", res.error || "Try again in a moment."], meta);
+      return;
+    }
+    if (res.same) { toast(c.role.c1, add ? [name, " is already on your record."] : [name, " wasn't on your record."]); return; }
+    if (add) { c.btn.classList.remove("hit"); void c.btn.offsetWidth; c.btn.classList.add("hit"); }
+    const msg = add ? ["You confessed to ", name, ". "] : ["You recanted ", name, ". "];
+    if (res.line) msg.push(res.line);
+    const extra = [];
+    const cleared = (res.cleared || []).map(roleNamed).filter(Boolean);
+    if (cleared.length) {
+      extra.push(el("p", { class: "toast-also" }, ["Also cleared: "].concat(cleared.map((r, k) => [k ? ", " : "", el("s", { text: "@" + r.name })]).flat())));
+    }
+    toast(c.role.c1, msg, [el("span", { class: "toast-done" }, [ic("check"), "Done in the server"])], { extra: extra });
+  }
+
+  /* 18+ on the way in, like the bot's own confirm */
+  function gate(c) {
+    if (c.gate && c.gate.open()) return;
+    const yes = el("button", { type: "button", class: "toast-btn danger", text: "I'm 18 or older" });
+    const no = el("button", { type: "button", class: "toast-btn", text: "Never mind" });
+    const t = toast(c.role.c1, [el("b", { text: "@" + c.role.name }), " The back room is 18+. That's Discord's rule, not ours."], [], { actions: [yes, no], stay: 60000 });
+    c.gate = t;
+    if (!t) return;
+    yes.addEventListener("click", () => { t.close(); c.gate = null; confessReal(c, true); });
+    no.addEventListener("click", () => {
+      c.gate = null;
+      t.update(["Left as it was. Nothing went on your record."]);
+    });
+    setTimeout(() => yes.focus({ preventScroll: true }), 50);
+  }
+
+  /* who's here (supa.js loads after this file) */
+  async function signIn() {
+    const next = "/#confession";
+    const EG = window.EG;
+    try {
+      if (EG && EG.configured && C.DISCORD_LOGIN) { await EG.oauth("discord", next); return; }
+    } catch (e) { /* use the sign-in page instead */ }
+    location.href = "/signin/?next=" + encodeURIComponent(next);
+  }
+  function paintLink() {
+    if (!linkEl) return;
+    linkEl.replaceChildren();
+    linkEl.className = "conf-link";
+    linkEl.hidden = !link.bot;
+    if (!link.bot) return;
+    if (!link.user) {
+      linkEl.append(clicks(el("button", { type: "button", class: "conf-signin" }, [ic("discord"), el("span", { text: "Sign in with Discord" }), ic("arrow-right", "arrow")]), signIn),
+        el("span", { class: "conf-why", text: "to make it official." }));
+      return;
+    }
+    const who = el("b", { text: "@" + (link.name || "you") });
+    if (link.member === false) {
+      linkEl.classList.add("warn");
+      linkEl.append(el("span", { class: "dot" }), el("span", {}, ["Signed in as ", who, ", but you're not in the server yet. ",
+        el("a", { href: INVITE, target: "_blank", rel: "noopener", text: "Join it" }), " and your taps count."]));
+      return;
+    }
+    linkEl.classList.add(link.locked ? "warn" : "on");
+    linkEl.append(el("span", { class: "dot" }), el("span", {}, ["Linked to Discord as ", who, ". ",
+      link.locked ? "Your record's locked right now." : link.asking && !link.held ? "Checking your record…" : "Your taps are the real thing."]));
+  }
+  function linkChanged() {
+    paintLink();
+    roleCards.forEach((c) => c.paint());
+    if (linked() && !link.asked) checkRecord();
+  }
+  async function findUser() {
+    const EG = window.EG;
+    if (!EG || !EG.configured) return;
+    let user = null;
+    try { user = await EG.user(); } catch (e) { user = null; }
+    const idn = ((user && user.identities) || []).find((i) => i.provider === "discord");
+    const d = (idn && idn.identity_data) || {};
+    const was = link.user ? link.user.id : null;
+    link.user = idn ? user : null;
+    link.name = idn ? String(d.full_name || d.name || d.user_name || "").replace(/#0$/, "") : "";
+    if ((link.user ? link.user.id : null) !== was) {
+      Object.assign(link, { member: null, locked: false, held: null, heldId: 0, asked: 0 });
+      if (was) roleCards.forEach((c) => { c.set(false); c.mine = 0; c.adj = null; });   // signed out: their record leaves the screen too
+    }
+    linkChanged();
+  }
+  function watchUser() {
+    findUser();
+    try {
+      window.EG.sb.auth.onAuthStateChange((ev) => {
+        if (ev === "SIGNED_IN" || ev === "SIGNED_OUT" || ev === "USER_UPDATED") setTimeout(findUser, 0);
+      });
+    } catch (e) { /* no accounts on this site */ }
+    // check the record again when the cards come back into view or the tab comes back (roles change in Discord too)
+    const recheck = () => { if (link.user && link.bot && Date.now() - link.asked > (link.member === false ? 15000 : 90000)) checkRecord(); };
+    const sec = $("#confession");
+    if (sec && "IntersectionObserver" in window) {
+      new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) recheck(); }).observe(sec);
+    }
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) recheck(); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchUser);
+  else setTimeout(watchUser, 0);
+
   /* toasts, styled like the bot's "only you can see this" replies */
   const toastZone = $("#toasts");
-  function toast(role, on) {
-    if (!toastZone) return;
+  function toast(color, msgParts, metaParts, opts) {
+    if (!toastZone) return null;
+    opts = opts || {};
     while (toastZone.children.length >= 3) toastZone.firstElementChild.remove();
-    const msg = el("p", { class: "toast-msg" });
-    if (on) msg.append("You confessed to ", el("b", { text: "@" + role.name }), ".");
-    else msg.append("Recanted. ", el("b", { text: "@" + role.name }), " never happened.");
+    const msg = el("p", { class: "toast-msg" }, msgParts);
     const x = el("button", { type: "button", class: "toast-x", "aria-label": "Dismiss" }, ic("x"));
     const meta = el("p", { class: "toast-meta" }, [ic("eye"), "Only you can see this"]);
-    if (on) meta.append(" · ", el("a", { href: C.DISCORD_INVITE || "https://discord.gg/enviousgluttony", target: "_blank", rel: "noopener", text: "Make it official in the server" }));
-    const t = el("div", { class: "toast", style: "--c1:" + role.c1 }, [
+    (metaParts || []).forEach((m) => meta.append(" · ", m));
+    const acts = opts.actions ? el("div", { class: "toast-acts" }, opts.actions) : null;
+    const t = el("div", { class: "toast", style: "--c1:" + color }, [
       el("img", { src: "assets/home/eg-mark.webp", alt: "" }),
       el("p", { class: "toast-who" }, ["Gluttony™", el("small", { text: "APP" })]),
-      x, msg, meta
-    ]);
+      x, msg
+    ].concat(opts.extra || [], acts ? [acts] : [], [meta]));
     let timer;
-    const close = () => { clearTimeout(timer); t.classList.add("out"); setTimeout(() => t.remove(), 300); };
-    const arm = () => { clearTimeout(timer); timer = setTimeout(close, 5200); };
+    let gone = false;
+    const close = () => { if (gone) return; gone = true; clearTimeout(timer); t.classList.add("out"); setTimeout(() => t.remove(), 300); };
+    let life = opts.stay || 5200;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(close, life); };
     x.addEventListener("click", close);
     t.addEventListener("mouseenter", () => clearTimeout(timer));
     t.addEventListener("mouseleave", arm);
     toastZone.append(t);
     arm();
+    return {
+      close: close,
+      open: () => !gone && t.isConnected,
+      update(parts) { msg.replaceChildren(...parts); if (acts) acts.remove(); life = 5200; arm(); }
+    };
   }
 
   /* the ladder */
@@ -579,7 +844,13 @@
         if (row) row.uses = v; else S.commands.push({ cmd: cmd, uses: v });
       }
     }
-    if (data.vices) roleCards.forEach((c) => { const v = num(data.vices[c.key]); if (v !== null) c.role.count = v; });
+    if (data.vices) roleCards.forEach((c) => {
+      const v = num(data.vices[c.key]);
+      if (v !== null) c.role.count = v;
+      if (c.adj && num(data.at) !== null && data.at > c.adj.at) c.adj = null;   // the bot's count now includes the tap
+    });
+    const bot = data.confess === 1 && Date.now() - state.botAt < FRESH;
+    if (bot !== link.bot) { link.bot = bot; linkChanged(); }
     if (data.ladder) ladderSteps.forEach((st) => { const v = num(data.ladder[st.key]); if (v !== null) st.step.members = v; });
     bindAll();
     if (window.EG_TOP) window.EG_TOP.update(data.top, state.botAt);
@@ -663,9 +934,10 @@
 
   function buildStars() {
     if (!ctx) return;
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth;
     H = window.innerHeight;
+    // big screens don't need a 2x canvas for pinpoint stars; it keeps every redraw cheap
+    DPR = Math.min(window.devicePixelRatio || 1, W * H > 1.6e6 ? 1.5 : 2);
     canvas.width = Math.round(W * DPR);
     canvas.height = Math.round(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -679,7 +951,7 @@
         r: 0.35 + z * 1.35,
         a: 0.25 + rs() * 0.55 + z * 0.2,
         tw: 0.4 + rs() * 1.6, ph: rs() * 6.283,
-        c: TINTS[Math.floor(rs() * TINTS.length)],
+        c: "rgb(" + TINTS[Math.floor(rs() * TINTS.length)] + ")",
         sparkle: z > 0.8 && rs() > 0.55
       });
     }
@@ -689,35 +961,38 @@
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
     const sy = scrollY;
+    ctx.lineWidth = 0.7;
     for (const s of stars) {
       let y = (s.y - sy * (0.02 + s.z * 0.1) + ptr.y * s.z * 10) % H;
       if (y < 0) y += H;
       const x = s.x + ptr.x * s.z * 14;
       const tw = reduce ? 1 : 0.62 + 0.38 * Math.sin(t * 0.001 * s.tw + s.ph);
       const a = Math.min(1, s.a * tw);
-      ctx.fillStyle = "rgba(" + s.c + "," + a.toFixed(3) + ")";
+      ctx.globalAlpha = a;                            // no new colour strings every frame (less garbage to collect)
+      ctx.fillStyle = s.c;
       if (s.r < 0.9) ctx.fillRect(x, y, s.r * 1.6, s.r * 1.6);
       else { ctx.beginPath(); ctx.arc(x, y, s.r, 0, 6.283); ctx.fill(); }
       if (s.sparkle) {
         const L = 4 + s.r * 3.5 * tw;
-        ctx.strokeStyle = "rgba(" + s.c + "," + (a * 0.55).toFixed(3) + ")";
-        ctx.lineWidth = 0.7;
+        ctx.globalAlpha = a * 0.55;
+        ctx.strokeStyle = s.c;
         ctx.beginPath();
         ctx.moveTo(x - L, y); ctx.lineTo(x + L, y);
         ctx.moveTo(x, y - L); ctx.lineTo(x, y + L);
         ctx.stroke();
       }
     }
+    ctx.globalAlpha = 1;
   }
   let artTx = 0, artTy = 0;                          // where the hero art sits right now (home-rocket.js reads it)
+  let heroH = hero ? hero.offsetHeight : 0, lastArt = "";
   function parallax() {
-    if (reduce || !hero) return;
-    const hh = hero.offsetHeight;
-    if (scrollY > hh * 1.2) return;
-    if (!heroArt) return;
+    if (reduce || !hero || !heroArt) return;
+    if (scrollY > heroH * 1.2) return;
     if (window.innerWidth >= 760) { artTx = ptr.x * -12; artTy = scrollY * 0.14 + ptr.y * -10; }
     else { artTx = 0; artTy = scrollY * 0.12; }
-    heroArt.style.transform = "translate3d(" + artTx.toFixed(1) + "px," + artTy.toFixed(1) + "px,0)";
+    const tf = "translate3d(" + artTx.toFixed(1) + "px," + artTy.toFixed(1) + "px,0)";
+    if (tf !== lastArt) { heroArt.style.transform = tf; lastArt = tf; }   // only touch the style when it moved
   }
   window.EG_HOME_API.art = () => ({ tx: artTx, ty: artTy });
   let running = false;
@@ -726,7 +1001,7 @@
     ptr.x += (ptr.tx - ptr.x) * 0.06;
     ptr.y += (ptr.ty - ptr.y) * 0.06;
     const moving = Math.abs(ptr.tx - ptr.x) > 0.001 || Math.abs(ptr.ty - ptr.y) > 0.001;
-    if (scrollY !== lastDrawScroll || moving || t - lastDraw > 40) {
+    if (scrollY !== lastDrawScroll || moving || t - lastDraw > 66) {     // twinkling alone only needs ~15 fps
       drawStars(t);
       lastDraw = t;
       lastDrawScroll = scrollY;
@@ -742,8 +1017,13 @@
   let rt;
   window.addEventListener("resize", () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { buildStars(); if (reduce) drawStars(0); drawCert(); drawConstellation(); }, 150);
+    rt = setTimeout(() => { heroH = hero ? hero.offsetHeight : 0; buildStars(); if (reduce) drawStars(0); drawCert(); drawConstellation(); }, 150);
   });
+  /* sections that are off screen stop their CSS animations (see .off in home.css) */
+  if ("IntersectionObserver" in window) {
+    const offIO = new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle("off", !e.isIntersecting)), { rootMargin: "120px 0px" });
+    $$(".hero, .ticker, main > section, .foot").forEach((n) => offIO.observe(n));
+  }
   document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
   window.addEventListener("scroll", () => {
     scrollY = window.scrollY;
@@ -768,7 +1048,7 @@
   }
 
   /* layout-dependent drawings once fonts and images have settled */
-  const settle = () => { drawCert(); drawConstellation(); };
+  const settle = () => { heroH = hero ? hero.offsetHeight : 0; drawCert(); drawConstellation(); };
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(settle);
   window.addEventListener("load", settle);
   settle();
