@@ -582,6 +582,7 @@
     if (data.vices) roleCards.forEach((c) => { const v = num(data.vices[c.key]); if (v !== null) c.role.count = v; });
     if (data.ladder) ladderSteps.forEach((st) => { const v = num(data.ladder[st.key]); if (v !== null) st.step.members = v; });
     bindAll();
+    if (window.EG_TOP) window.EG_TOP.update(data.top, state.botAt);
   }
   window.EG_HOME_API = {
     applyLive: applyLive,

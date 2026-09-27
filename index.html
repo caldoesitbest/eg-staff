@@ -21,7 +21,7 @@
 <link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
 <link rel="stylesheet" href="assets/fonts.css?v=5">
-<link rel="stylesheet" href="assets/home.css?v=7">
+<link rel="stylesheet" href="assets/home.css?v=8">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -32,13 +32,14 @@
 <header class="nav" id="nav">
   <div class="nav-inner">
     <div class="brand-slot" id="brand-slot" data-mark="assets/home/eg-mark.webp"
-         data-sections="About:#about,Milestones:#milestones,Community:#community,Confession:#confession,The Ladder:#ladder,Stats:#stats,Rules:#rules">
+         data-sections="About:#about,Milestones:#milestones,Community:#community,Confession:#confession,The Ladder:#ladder,Top 10:#top10,Stats:#stats,Rules:#rules">
       <a class="brand" href="/"><img class="brand-mark" src="assets/home/eg-mark.webp" alt="" width="44" height="33"><span class="brand-name">Envious Gluttony™</span></a>
     </div>
     <nav class="nav-links" aria-label="Sections">
       <a href="#top" data-spy="top">Home</a>
       <a href="#about" data-spy="about">About</a>
       <a href="#community" data-spy="community">Community</a>
+      <a href="#top10" data-spy="top10">Top 10</a>
       <a href="#stats" data-spy="stats">Stats</a>
       <a href="#rules" data-spy="rules">Rules</a>
       <a href="/apply/">Apply</a>
@@ -250,12 +251,39 @@
     </div>
   </section>
 
+  <!-- ============================ TOP 10 (live from the bot's /top, drawn by home-top.js) ============================ -->
+  <section class="top10 empty" id="top10" aria-labelledby="top-title" data-spy-section="top10">
+    <div class="container">
+      <div class="section-head split">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">06</span> Leaderboard</p>
+          <h2 class="h-xl" id="top-title">The Top <span class="gold">10</span></h2>
+        </div>
+        <div class="top-aside" data-reveal style="--d:.1s">
+          <p class="top-sub">Sinners of the highest order.</p>
+          <p class="sub">Ranked by XP, straight from Gluttony™'s <code>/top</code>. It's live, so it moves while you watch.</p>
+          <p class="top-live" id="top-live" hidden><span class="dot" aria-hidden="true"></span><b>Live</b><span id="top-ago"></span></p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="beam" aria-hidden="true"></span>
+        <ol class="podium" id="podium" aria-label="Top three"></ol>
+      </div>
+      <ol class="board" id="board" start="4" aria-label="Ranks 4 to 10"></ol>
+      <p class="top-empty" id="top-empty">The leaderboard lights up as soon as Gluttony™ checks in.</p>
+      <div class="top-foot" data-reveal>
+        <p>Top 10 of <b data-stat="xpPeople">263</b> ranked. Every message and every minute in voice counts. Run <code>/top</code> in the server for the full board.</p>
+        <a class="btn btn-line" href="https://discord.gg/enviousgluttony" target="_blank" rel="noopener" data-invite><i data-icon="trophy"></i><span>Start climbing</span><i data-icon="arrow-right" class="arrow"></i></a>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================ STATS ============================ -->
   <section class="stats" id="stats" aria-labelledby="stats-title" data-spy-section="stats">
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">06</span> Server stats</p>
+          <p class="eyebrow"><span class="num">07</span> Server stats</p>
           <h2 class="h-lg" id="stats-title">Real activity. Real people. <span class="grad">Real chaos.</span></h2>
         </div>
         <p class="sub" data-reveal style="--d:.1s"><span id="stats-source">Straight from the Gluttony™ bot. Snapshot from <time id="stats-date" datetime="2026-09-25">Sep 25, 2026</time>.</span></p>
@@ -332,7 +360,7 @@
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">07</span> Ground rules</p>
+          <p class="eyebrow"><span class="num">08</span> Ground rules</p>
           <h2 class="h-lg" id="rules-title">Seven rules. <span class="grad">No grey area.</span></h2>
         </div>
         <p class="sub" data-reveal style="--d:.1s">Firm, short and fair. They keep EG worth staying in.</p>
@@ -434,7 +462,8 @@
 <script src="assets/config.js?v=6"></script>
 <script src="assets/home-data.js?v=6"></script>
 <script src="assets/home-chart.js?v=5"></script>
-<script src="assets/home.js?v=7"></script>
+<script src="assets/home.js?v=8"></script>
+<script src="assets/home-top.js?v=1"></script>
 <script src="assets/home-rocket.js?v=1"></script>
 <!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
