@@ -21,7 +21,7 @@
 <link rel="preload" href="assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" as="image" href="assets/home/hero-1600.webp" imagesrcset="assets/home/hero-960.webp 960w, assets/home/hero-1600.webp 1600w" imagesizes="(max-width: 759px) 100vw, 64vw" fetchpriority="high">
 <link rel="stylesheet" href="assets/fonts.css?v=5">
-<link rel="stylesheet" href="assets/home.css?v=9">
+<link rel="stylesheet" href="assets/home.css?v=11">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -32,7 +32,7 @@
 <header class="nav" id="nav">
   <div class="nav-inner">
     <div class="brand-slot" id="brand-slot" data-mark="assets/home/eg-mark.webp"
-         data-sections="About:#about,Milestones:#milestones,Community:#community,Confession:#confession,The Ladder:#ladder,Top 10:#top10,Stats:#stats,Rules:#rules">
+         data-sections="About:#about,Milestones:#milestones,Community:#community,Confession:#confession,Hobbies:#hobbies,The Ladder:#ladder,Top 10:#top10,Stats:#stats,Rules:#rules">
       <a class="brand" href="/"><img class="brand-mark" src="assets/home/eg-mark.webp" alt="" width="44" height="33"><span class="brand-name">Envious Gluttony™</span></a>
     </div>
     <nav class="nav-links" aria-label="Sections">
@@ -215,9 +215,13 @@
             <div class="w-planets" id="w-planets"></div>
             <p class="w-tag" id="w-tag"></p>
           </div>
-          <div class="w-rail" id="w-rail" aria-label="The five worlds"></div>
+          <div class="w-nav">
+            <button class="round w-step" type="button" data-dir="-1" aria-label="Previous world"><i data-icon="chevron-left"></i></button>
+            <div class="w-rail" id="w-rail" role="tablist" aria-label="The five worlds"></div>
+            <button class="round w-step" type="button" data-dir="1" aria-label="Next world"><i data-icon="chevron-right"></i></button>
+          </div>
         </div>
-        <ol class="w-list" id="features"></ol>
+        <div class="w-list" id="features"></div>
       </div>
     </div>
   </section>
@@ -240,12 +244,30 @@
     </div>
   </section>
 
+  <!-- ============================ HOBBIES (the second panel in #get-roles-here; home.js builds the cards) ============================ -->
+  <section class="hobbies" id="hobbies" aria-labelledby="hob-title" data-spy-section="community">
+    <div class="container">
+      <div class="conf-head">
+        <div data-reveal>
+          <p class="eyebrow"><span class="num">05</span> Find your people</p>
+          <h2 class="h-display" id="hob-title">Hobbies</h2>
+        </div>
+        <div class="conf-aside" data-reveal style="--d:.1s">
+          <p class="conf-sub">Bad habits get confessed.<br>Good ones get a channel.</p>
+          <p class="conf-note"><i data-icon="mouse-pointer-click"></i><span>Tap once to pick it up, again to drop it. Only you see the reply.</span></p>
+          <p class="conf-link" id="hob-link" hidden></p>
+        </div>
+      </div>
+      <ul class="tarot hob-cards" id="hobby-cards"></ul>
+    </div>
+  </section>
+
   <!-- ============================ THE LADDER ============================ -->
   <section class="ladder" id="ladder" aria-labelledby="lad-title" data-spy-section="community">
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">05</span> Leveling</p>
+          <p class="eyebrow"><span class="num">06</span> Leveling</p>
           <h2 class="h-xl" id="lad-title">The Ladder</h2>
         </div>
         <p class="sub ladder-sub" data-reveal style="--d:.1s">Climb higher. Different sins. Same family.<br><span>XP comes from messages and time in voice with others.</span></p>
@@ -262,7 +284,7 @@
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">06</span> Leaderboard</p>
+          <p class="eyebrow"><span class="num">07</span> Leaderboard</p>
           <h2 class="h-xl" id="top-title">The Top <span class="gold">10</span></h2>
         </div>
         <div class="top-aside" data-reveal style="--d:.1s">
@@ -289,7 +311,7 @@
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">07</span> Server stats</p>
+          <p class="eyebrow"><span class="num">08</span> Server stats</p>
           <h2 class="h-lg" id="stats-title">Real activity. Real people. <span class="grad">Real chaos.</span></h2>
         </div>
         <p class="sub" data-reveal style="--d:.1s"><span id="stats-source">Straight from the Gluttony™ bot. Snapshot from <time id="stats-date" datetime="2026-09-25">Sep 25, 2026</time>.</span></p>
@@ -366,7 +388,7 @@
     <div class="container">
       <div class="section-head split">
         <div data-reveal>
-          <p class="eyebrow"><span class="num">08</span> Ground rules</p>
+          <p class="eyebrow"><span class="num">09</span> Ground rules</p>
           <h2 class="h-lg" id="rules-title">Seven rules. <span class="grad">No grey area.</span></h2>
         </div>
         <p class="sub" data-reveal style="--d:.1s">Firm, short and fair. They keep EG worth staying in.</p>
@@ -466,9 +488,9 @@
 
 <script src="assets/icons.js?v=6"></script>
 <script src="assets/config.js?v=6"></script>
-<script src="assets/home-data.js?v=7"></script>
+<script src="assets/home-data.js?v=8"></script>
 <script src="assets/home-chart.js?v=6"></script>
-<script src="assets/home.js?v=9"></script>
+<script src="assets/home.js?v=11"></script>
 <script src="assets/home-top.js?v=2"></script>
 <script src="assets/home-rocket.js?v=2"></script>
 <!-- accounts (only used here for the menu's signed-in state), loaded last so a slow CDN never holds up the page -->

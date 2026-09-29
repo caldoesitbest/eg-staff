@@ -157,6 +157,10 @@ textarea.inp { min-height: 92px; resize: vertical; }
 input[type="number"].inp::-webkit-inner-spin-button { opacity: 0.35; }
 
 .err { margin: 6px 0 0; color: var(--danger); font-size: 0.86rem; font-weight: 500; }
+/* character counter under each written answer */
+.count { margin: 6px 0 0; text-align: right; color: var(--faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.count.near { color: var(--amber); }
+.count.full { color: var(--danger); font-weight: 600; }
 .sub-label {
   display: block;
   margin-bottom: 6px;

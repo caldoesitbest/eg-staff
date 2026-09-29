@@ -46,16 +46,27 @@
   }
 
   /* ---------- render questions ---------- */
+  // written answers show "120 / 1,500" under the box (the limits are in config.js)
+  const hasCount = (f) => f.type === "textarea" && f.maxLength > 0;
+  function paintCount(f) {
+    const n = hasCount(f) ? $("f-" + f.id + "-count") : null;
+    if (!n) return;
+    const len = control(f).value.length;
+    n.textContent = len.toLocaleString("en-US") + " / " + f.maxLength.toLocaleString("en-US");
+    n.classList.toggle("near", len >= f.maxLength * 0.9 && len < f.maxLength);
+    n.classList.toggle("full", len >= f.maxLength);
+  }
   function renderField(f, card, kind, qid) {
     const id = "f-" + f.id;
     const errId = id + "-err";
+    const countId = hasCount(f) ? id + "-count" : null;
     const pair = card.fields.length > 1;
     const attrs = {
       id: id,
       name: f.id,
       class: "inp",
       "aria-labelledby": pair ? qid + " " + id + "-lbl" : qid,
-      "aria-describedby": errId,
+      "aria-describedby": [errId, countId].filter(Boolean).join(" "),
       placeholder: f.placeholder || (kind === "rec" ? "Your answer..." : "Applicant response"),
       autocomplete: "off"
     };
@@ -74,6 +85,7 @@
     const parts = [];
     if (pair) parts.push(el("label", { class: "sub-label", id: id + "-lbl", for: id, text: f.label || f.short }));
     parts.push(kind === "jud" ? el("div", { class: "pencil-wrap" }, [icon("pencil"), control]) : control);
+    if (countId) parts.push(el("p", { class: "count", id: countId }));
     parts.push(el("p", { class: "err", id: errId, hidden: true }));
     return el("div", { class: "fld", "data-field": f.id }, parts);
   }
@@ -104,6 +116,7 @@
       const n = Number(v);
       if (!Number.isInteger(n) || n < f.min || n > f.max) return "Enter a whole number from " + f.min + " to " + f.max + ".";
     }
+    if (f.maxLength && v.length > f.maxLength) return "Too long: keep it to " + f.maxLength.toLocaleString("en-US") + " characters (you have " + v.length.toLocaleString("en-US") + ").";
     if (f.minLength && v.length < f.minLength) return "Write a bit more: at least " + f.minLength + " characters (you have " + v.length + ").";
     return "";
   }
@@ -250,6 +263,7 @@
     const wrap = e.target.closest("[data-field]");
     if (!wrap) return;
     const f = allFields.find((x) => x.id === wrap.dataset.field);
+    if (f) paintCount(f);
     if (f && touched.has(f.id)) {
       showError(f, validate(f));
       if (!form.querySelector('[aria-invalid="true"]')) hideAlert();
@@ -285,7 +299,7 @@
     clearDraft();
     form.reset();
     touched.clear();
-    allFields.forEach((f) => showError(f, ""));
+    allFields.forEach((f) => { showError(f, ""); paintCount(f); });
     state.startedAt = Date.now();
     state.appId = makeId();
     go(0, { focus: true });
@@ -300,9 +314,11 @@
   }
   const draft = readDraft();
   if (draft) {
-    allFields.forEach((f) => { if (draft.values && typeof draft.values[f.id] === "string") control(f).value = draft.values[f.id]; });
+    // a draft saved before the limits (or with a bigger one) comes back trimmed to fit
+    allFields.forEach((f) => { if (draft.values && typeof draft.values[f.id] === "string") control(f).value = draft.values[f.id].slice(0, f.maxLength || undefined); });
     if (typeof draft.startedAt === "number") state.startedAt = draft.startedAt;
     if (typeof draft.appId === "string" && /^EG-[A-Z0-9]{6}$/.test(draft.appId)) state.appId = draft.appId;
   }
+  allFields.forEach(paintCount);
   go(draft && Number.isInteger(draft.slide) ? draft.slide : 0);
 })();

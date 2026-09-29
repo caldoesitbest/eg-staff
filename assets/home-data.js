@@ -86,6 +86,24 @@ window.EG_HOME = {
       text: "Clean. Watching the rest of you with quiet interest.", count: null, hideCount: true }
   ],
 
+  /* Hobbies: the second panel in #get-roles-here, right under Confession.
+     key = the hobby's key in the bot's HOBBIES list (that's how a tap finds the role). icon = file in assets/home/hobbies/.
+     perk = what the role gets you (the chip on the card). pings: true = the VC ping role. count = fallback until the bot connects (null = no number).
+     Adding one: add it to HOBBIES in sins_bot.py. The Discord panel updates itself, and this page gives it a card by itself
+     too (the bot's words, colour and server emoji). Add it here as well only to give it a proper picture and colours. */
+  hobbies: [
+    { key: "vc", name: "VC Pings", icon: "vc", c1: "#4fe3f2", c2: "#b36bff", pings: true,
+      text: "Voice. Hears about every new VC before the mic's warm.", perk: "New VC pings", count: null },
+    { key: "finance", name: "Hustler", icon: "finance", c1: "#b07bff", c2: "#7c3cf2",
+      text: "Finance. Has a spreadsheet for the spreadsheets.", perk: "Finance channel", count: null },
+    { key: "plants", name: "Tree-Hugger", icon: "plants", c1: "#5be38a", c2: "#1fae5b",
+      text: "Plants. Has a name for every single one of them.", perk: "Plant channel", count: null },
+    { key: "cooking", name: "Culinarian", icon: "cooking", c1: "#ff6a5f", c2: "#e0283b",
+      text: "Cooking. Photographs dinner before anyone's allowed to eat it.", perk: "Cooking channel", count: null },
+    { key: "art", name: "Creative", icon: "art", c1: "#ff6ab8", c2: "#8f7bff",
+      text: "Art. Twelve unfinished pieces and a thirteenth idea.", perk: "Art channel", count: null }
+  ],
+
   /* The Ladder, lowest to highest. level: null = cannot be earned. members = fallback until the bot connects. */
   ladder: [
     { name: "Sloth", emoji: "sloth", level: 1, members: 46, c1: "#b8bfe0", c2: "#8e97c7" },

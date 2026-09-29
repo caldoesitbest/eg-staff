@@ -71,6 +71,7 @@
     });
   }
   let roleCards = [];
+  let hobbyCards = [];
   let ladderSteps = [];
   let paintCommands = () => {};
   function bindAll() {
@@ -105,6 +106,7 @@
     }
     worldChips.forEach((c) => (c.node.textContent = chipText(c.text)));
     roleCards.forEach((c) => c.paint());
+    hobbyCards.forEach((c) => c.paint());
     ladderSteps.forEach((st) => st.paint());
     paintCommands();
     if (chart) chart.setNow(state.members, state.bot ? state.botAt : Date.now());
@@ -200,8 +202,8 @@
     sync();
   }
 
-  /* what makes EG different: five worlds. Desktop: the planet on the left follows the chapter
-     you're reading. Phones: a swipeable row of cards. The rail jumps to any world. */
+  /* what makes EG different: five worlds, shown one at a time. Scrolling always moves the page;
+     the rail, the arrows, the arrow keys or a sideways swipe on the card change the world. */
   const chipText = (t) => t.replace(/\{(\w+)\}/g, (_, k) => (S[k] !== undefined ? fmt(S[k]) : ""));
   const worldChips = [];
   const worlds = $("#worlds");
@@ -218,7 +220,7 @@
         el("img", { src: art(f, 1200), srcset: set(f), sizes: "(min-width: 960px) 46vw, 80vw", alt: "", width: "1200", height: "900", decoding: "async", loading: i ? "lazy" : null, draggable: "false" }))));
       const chip = f.chip ? el("span", { class: "chip", text: chipText(f.chip) }) : null;
       if (chip && /\{/.test(f.chip)) worldChips.push({ node: chip, text: f.chip });
-      chapters.push(el("li", { class: "world" + (i ? "" : " active"), style: "--wc:" + f.color }, [
+      chapters.push(el("div", { class: "world" + (i ? "" : " active"), style: "--wc:" + f.color, id: "world-" + i, role: "tabpanel", "aria-labelledby": "world-tab-" + i }, [
         el("span", { class: "world-art", "aria-hidden": "true" }, [
           el("img", { src: art(f, 600), srcset: set(f), sizes: "80vw", alt: "", width: "600", height: "450", decoding: "async", loading: "lazy", draggable: "false" }),
           el("span", { class: "world-tag", text: f.tag })
@@ -228,7 +230,7 @@
         el("p", { class: "world-text", text: f.text }),
         chip
       ]));
-      const dot = el("button", { type: "button", class: "w-dot" + (i ? "" : " on"), style: "--wc:" + f.color, "aria-label": pad(i) + " " + f.title, "aria-current": i ? "false" : "true" }, [
+      const dot = el("button", { type: "button", class: "w-dot" + (i ? "" : " on"), style: "--wc:" + f.color, id: "world-tab-" + i, role: "tab", "aria-controls": "world-" + i, "aria-label": pad(i) + " " + f.title, "aria-selected": i ? "false" : "true", tabindex: i ? "-1" : "0" }, [
         el("span", { class: "w-dot-pic" }, el("img", { src: art(f, 300), alt: "", width: "300", height: "225", decoding: "async", loading: "lazy", draggable: "false" })),
         el("span", { class: "w-dot-num", text: pad(i) })
       ]);
@@ -249,39 +251,48 @@
       tagEl.textContent = f.tag;
       if (animate && !reduce) { restart(numEl, "in"); restart(tagEl, "in"); restart(waveEl, "in"); }
     }
+    const steps = $$(".w-step", worlds);
     function setActive(i) {
       if (i === active || i < 0 || i >= n) return;
+      const was = active;
       active = i;
+      worlds.style.setProperty("--dir", i > was ? "1" : "-1");        // the new card slides in from the side you swiped toward
       planets.forEach((p, k) => { p.classList.toggle("on", k === i); p.classList.toggle("before", k < i); p.classList.toggle("after", k > i); });
-      chapters.forEach((c, k) => c.classList.toggle("active", k === i));
-      dots.forEach((d, k) => { d.classList.toggle("on", k === i); d.classList.toggle("done", k < i); d.setAttribute("aria-current", String(k === i)); });
+      chapters.forEach((c, k) => { c.classList.toggle("active", k === i); c.classList.toggle("was", k === was); });
+      dots.forEach((d, k) => {
+        d.classList.toggle("on", k === i); d.classList.toggle("done", k < i);
+        d.setAttribute("aria-selected", String(k === i)); d.tabIndex = k === i ? 0 : -1;
+      });
       paintStage(i, true);
+      paintSteps();
+    }
+    function paintSteps() {
+      if (steps.length === 2) { steps[0].disabled = active === 0; steps[1].disabled = active === n - 1; }
     }
     paintStage(0, false);
+    paintSteps();
 
-    const wide = window.matchMedia("(min-width: 960px)");
-    function go(i) {
-      const c = chapters[i];
-      if (wide.matches) {
-        const r = c.getBoundingClientRect();
-        window.scrollBy({ top: r.top + r.height / 2 - window.innerHeight / 2, behavior: reduce ? "auto" : "smooth" });
-      } else {
-        featList.scrollTo({ left: c.offsetLeft - (featList.clientWidth - c.offsetWidth) / 2, behavior: reduce ? "auto" : "smooth" });
-      }
-      setActive(i);
-    }
-    // which world you're on: the chapter crossing the middle of the screen, or the card in the middle of the row
-    let io = null;
-    function watch() {
-      if (io) io.disconnect();
-      if (!("IntersectionObserver" in window)) return;
-      io = wide.matches
-        ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setActive(chapters.indexOf(e.target)); }), { rootMargin: "-46% 0px -46% 0px" })
-        : new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setActive(chapters.indexOf(e.target)); }), { root: featList, threshold: 0.6 });
-      chapters.forEach((c) => io.observe(c));
-    }
-    watch();
-    if (wide.addEventListener) wide.addEventListener("change", watch);
+    function go(i) { setActive(Math.max(0, Math.min(n - 1, i))); }
+    steps.forEach((b) => b.addEventListener("click", () => go(active + Number(b.dataset.dir))));
+    // arrow keys on the rail, like any tab row
+    rail.addEventListener("keydown", (e) => {
+      const to = { ArrowLeft: active - 1, ArrowRight: active + 1, Home: 0, End: n - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      go(to);
+      dots[active].focus();
+    });
+    // a sideways swipe on the card changes the world. The card only claims sideways moves (touch-action: pan-y
+    // in home.css), so an up-or-down swipe is always the browser scrolling the page, never the cards.
+    let swipe = null;
+    featList.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" && e.isPrimary) swipe = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+    featList.addEventListener("pointerup", (e) => {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+      swipe = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.4) go(active + (dx < 0 ? 1 : -1));
+    });
+    featList.addEventListener("pointercancel", () => { swipe = null; });   // the page took it as a scroll
 
     // the planet leans toward the pointer
     if (finePointer && !reduce && stage) {
@@ -308,6 +319,20 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const roleNamed = (key) => { const c = roleCards.find((x) => x.key === key); return c ? c.role : null; };
   const clicks = (node, fn) => { node.addEventListener("click", fn); return node; };
+  // cards lean toward the pointer and the foil follows it (confession and hobby cards)
+  function tilt(btn) {
+    if (!finePointer || reduce) return;
+    btn.addEventListener("pointermove", (e) => {
+      const b = btn.getBoundingClientRect();
+      const px = (e.clientX - b.left) / b.width;
+      const py = (e.clientY - b.top) / b.height;
+      btn.style.setProperty("--ry", ((px - 0.5) * 16).toFixed(2) + "deg");
+      btn.style.setProperty("--rx", ((0.5 - py) * 12).toFixed(2) + "deg");
+      btn.style.setProperty("--mx", (px * 100).toFixed(1) + "%");
+      btn.style.setProperty("--my", (py * 100).toFixed(1) + "%");
+    });
+    btn.addEventListener("pointerleave", () => { btn.style.setProperty("--rx", "0deg"); btn.style.setProperty("--ry", "0deg"); });
+  }
   if (rolesEl) {
     D.roles.forEach((r, i) => {
       const foot = el("span", { class: "card-foot" });
@@ -338,18 +363,7 @@
       c.paint();
       roleCards.push(c);
       btn.addEventListener("click", () => (linked() ? confessReal(c) : confessPretend(c)));
-      if (finePointer && !reduce) {
-        btn.addEventListener("pointermove", (e) => {
-          const b = btn.getBoundingClientRect();
-          const px = (e.clientX - b.left) / b.width;
-          const py = (e.clientY - b.top) / b.height;
-          btn.style.setProperty("--ry", ((px - 0.5) * 16).toFixed(2) + "deg");
-          btn.style.setProperty("--rx", ((0.5 - py) * 12).toFixed(2) + "deg");
-          btn.style.setProperty("--mx", (px * 100).toFixed(1) + "%");
-          btn.style.setProperty("--my", (py * 100).toFixed(1) + "%");
-        });
-        btn.addEventListener("pointerleave", () => { btn.style.setProperty("--rx", "0deg"); btn.style.setProperty("--ry", "0deg"); });
-      }
+      tilt(btn);
       rolesEl.append(el("li", { "data-reveal": true, style: "--d:" + (i * 0.06).toFixed(2) + "s" }, btn));
     });
   }
@@ -373,14 +387,18 @@
     const r = await sb.rpc("confess", { p_vice: vice, p_action: action, p_adult: !!adult });
     if (r.error) throw r.error;
     if (!r.data || !r.data.ok) return r.data || { ok: false };
-    const id = Number(r.data.id) || 0;
+    return waitForBot(sb, "confession_requests", r.data.id, c);
+  }
+  /* a tap is a row in the database; the bot picks it up within seconds and writes its answer back */
+  async function waitForBot(sb, table, reqId, c) {
+    const id = Number(reqId) || 0;
     const started = Date.now();
     const late = { ok: false, code: "timeout", error: "The bot didn't get to it, so nothing changed. Try again in a minute." };
     let misses = 0;
     for (let n = 0; ; n++) {
       await sleep(n < 20 ? 500 : 1500);
       if (c) c.paint();                                   // "Still sending" after a while
-      const q = await sb.from("confession_requests").select("status,result").eq("id", r.data.id).maybeSingle();
+      const q = await sb.from(table).select("status,result").eq("id", reqId).maybeSingle();
       if (q.error || !q.data) { if (++misses > 6) throw q.error || new Error("lost"); continue; }
       const st = q.data.status;
       if (st === "done" || st === "failed") return Object.assign({ ok: false }, q.data.result, { id: id });
@@ -475,15 +493,213 @@
     setTimeout(() => yes.focus({ preventScroll: true }), 50);
   }
 
+  /* hobby cards: the second panel in #get-roles-here, built like the confession cards. A preview for visitors;
+     signed in with Discord (and with the bot up), a tap gives or takes the real role through the bot's /hobbies panel. */
+  const HOB_ANIMS = { vc: "a-beat", finance: "a-float", plants: "a-sway", cooking: "a-wobble", art: "a-trip" };
+  const hobbiesEl = $("#hobby-cards");
+  const hobLinkEl = $("#hob-link");
+  // bot: the bot takes website hobby taps. member: in the server (null = not checked yet). held: what the bot said you hold
+  const hob = { bot: false, member: null, locked: false, held: null, heldId: 0, asking: false, asked: 0 };
+  const hobLinked = () => !!(link.user && hob.bot && hob.member !== false);
+  let hobbyOrder = "";                                    // the bot's list, last time it changed the cards
+  function addHobbyCard(h) {
+    const foot = el("span", { class: "card-foot" });
+    const num = el("span");
+    const btn = el("button", {
+      type: "button", class: "card hob-card", "aria-pressed": "false",
+      style: "--c1:" + h.c1 + ";--c2:" + h.c2 + ";--anim:" + (HOB_ANIMS[h.key] || "a-float")
+    }, [
+      el("span", { class: "card-top", "aria-hidden": "true" }, [num, ic(h.pings ? "radio" : "hash")]),
+      el("span", { class: "card-emoji" }, el("img", { src: h.src || "assets/home/hobbies/" + h.icon + ".webp", alt: "", width: "88", height: "88", loading: "lazy", decoding: "async" })),
+      el("span", { class: "card-name", text: "@" + h.name }),
+      el("span", { class: "card-text", text: h.text }),
+      h.perk ? el("span", { class: "hob-perk" }, [ic(h.pings ? "radio" : "door-open"), el("span", { text: h.perk })]) : null,
+      foot,
+      el("span", { class: "stampmark", "aria-hidden": "true", text: "Picked up" })
+    ]);
+    const li = el("li", { "data-reveal": true }, btn);
+    const c = { key: h.key, h: h, btn: btn, li: li, num: num, mine: 0, adj: null, busy: 0 };
+    c.on = () => btn.getAttribute("aria-pressed") === "true";
+    c.set = (on) => btn.setAttribute("aria-pressed", String(!!on));
+    c.paint = () => {
+      foot.replaceChildren();
+      if (c.busy) { foot.append(ic("loader-circle", "spin"), Date.now() - c.busy > 12000 ? "Still sending" : "Sending"); return; }
+      if (h.count === null || h.count === undefined) { foot.append(c.on() ? "Picked up" : "Up for grabs"); return; }
+      const n = Math.max(0, h.count + (hobLinked() ? (c.adj ? c.adj.d : 0) : c.mine));
+      foot.append(el("b", { text: fmt(n) }), n === 1 ? " member" : " members");
+    };
+    c.paint();
+    hobbyCards.push(c);
+    btn.addEventListener("click", () => (hobLinked() ? hobbyReal(c) : hobbyPretend(c)));
+    tilt(btn);
+    hobbiesEl.append(li);
+    return c;
+  }
+  // numbers, stagger and columns follow the cards on show, in the bot's order once it has sent it
+  function layoutHobbies(order) {
+    let shown = hobbyCards;
+    if (order) {
+      shown = order.map((k) => hobbyCards.find((c) => c.key === k)).filter(Boolean);
+      hobbyCards.forEach((c) => { c.li.hidden = shown.indexOf(c) < 0; });   // a hobby the bot dropped
+      shown.forEach((c) => hobbiesEl.append(c.li));
+    }
+    shown.forEach((c, i) => { c.num.textContent = String(i + 1).padStart(2, "0"); c.li.style.setProperty("--d", (i * 0.06).toFixed(2) + "s"); });
+    hobbiesEl.style.setProperty("--cols", String(Math.max(1, Math.min(6, shown.length))));
+  }
+  /* the bot's hobby list (sent with its stats): a hobby added in Discord gets a card here by itself,
+     with the bot's words, colour and server emoji. The hand-made cards in home-data.js win where they exist. */
+  function syncHobbies(list) {
+    if (!hobbiesEl) return;
+    const order = [];
+    list.forEach((b) => {
+      if (!b || typeof b.key !== "string" || !/^[a-z0-9_-]{1,40}$/.test(b.key) || order.indexOf(b.key) >= 0) return;
+      order.push(b.key);
+      if (hobbyCards.some((c) => c.key === b.key)) return;
+      const colour = /^#[0-9a-f]{6}$/i.test(String(b.c || "")) ? b.c : "#63f4ff";
+      const emoji = /^\d{15,21}$/.test(String(b.emoji || "")) ? String(b.emoji) : "";
+      const c = addHobbyCard({
+        key: b.key, name: String(b.name || b.key).slice(0, 40), text: String(b.text || "").slice(0, 200), c1: colour, c2: colour,
+        pings: !!b.pings, perk: b.pings ? "New VC pings" : b.opens ? "Opens a channel" : "", count: null,
+        src: emoji ? "https://cdn.discordapp.com/emojis/" + emoji + ".webp?size=128" + (b.animated ? "&animated=true" : "") : "assets/home/eg-mark.webp"
+      });
+      c.li.classList.add("in");                         // arrived after the page's reveal animations were set up
+      c.set(!!(hob.held && hob.held.has(c.key)));
+      c.paint();
+    });
+    const key = order.join(",");
+    if (key !== hobbyOrder) { hobbyOrder = key; layoutHobbies(order); }
+  }
+  if (hobbiesEl && D.hobbies) {
+    D.hobbies.forEach(addHobbyCard);
+    layoutHobbies(null);
+  }
+
+  /* the preview: nothing leaves the page */
+  function hobbyPretend(c) {
+    const on = !c.on();
+    c.set(on);
+    c.mine = on ? 1 : 0;
+    c.paint();
+    const meta = [];
+    if (on && hob.bot && !link.user) meta.push(clicks(el("button", { type: "button", class: "toast-link", text: "Sign in with Discord to make it official" }), () => signInTo("/#hobbies")));
+    else if (on) meta.push(el("a", { href: INVITE, target: "_blank", rel: "noopener", text: hob.member === false ? "Join the server to make it official" : "Pick it up in the server" }));
+    toast(c.h.c1, on ? ["You picked up ", el("b", { text: "@" + c.h.name }), "."] : ["Dropped ", el("b", { text: "@" + c.h.name }), ". No hard feelings."], meta);
+  }
+
+  /* the real thing: same round trip as a confession, through the bot's hobby panel */
+  async function askHobby(key, action, c) {
+    const sb = window.EG && window.EG.sb;
+    if (!sb) throw new Error("not connected");
+    const r = await sb.rpc("hobby", { p_hobby: key, p_action: action });
+    if (r.error) throw r.error;
+    if (!r.data || !r.data.ok) return r.data || { ok: false };
+    return waitForBot(sb, "hobby_requests", r.data.id, c);
+  }
+  function setHobbyHeld(list, at, id) {
+    if (id && id < hob.heldId) return;                   // an older answer than the one on screen
+    if (id) hob.heldId = id;
+    const now = new Set(Array.isArray(list) ? list : []);
+    hobbyCards.forEach((c) => {
+      const was = hob.held ? hob.held.has(c.key) : c.on();
+      const on = now.has(c.key);
+      if (at && was !== on) c.adj = { d: (c.adj ? c.adj.d : 0) + (on ? 1 : -1), at: at };   // until the bot's next count
+      c.mine = 0;
+      c.set(on);
+      c.paint();
+    });
+    hob.held = now;
+  }
+  async function checkHobbies() {
+    if (!link.user || !hob.bot || hob.asking) return;
+    hob.asking = true;
+    hob.asked = Date.now();
+    paintHobLink();
+    let res = null;
+    try { res = await askHobby(null, "status"); } catch (e) { res = null; }
+    hob.asking = false;
+    if (res && res.ok) { hob.member = true; hob.locked = !!res.locked; setHobbyHeld(res.held, 0, res.id); }
+    else if (res && res.code === "not_member") { hob.member = false; setHobbyHeld([], 0, res.id); }
+    else if (res && res.code === "offline") hob.bot = false;
+    else setTimeout(() => { if (!hob.held) checkHobbies(); }, 30000);   // couldn't check just now: taps still work
+    hobLinkChanged();
+  }
+  async function hobbyReal(c) {
+    if (c.busy) return;
+    const add = !c.on();
+    c.busy = Date.now();
+    c.btn.setAttribute("aria-busy", "true");
+    c.paint();
+    let res;
+    try { res = await askHobby(c.key, add ? "add" : "remove", c); }
+    catch (e) {
+      const expired = /permission denied|jwt/i.test(String((e && e.message) || e));
+      res = { ok: false, error: expired ? "Your sign-in ran out. Sign in with Discord again." : window.EG ? window.EG.friendlyError(e) : "Couldn't reach the server. Try again." };
+      if (expired) setTimeout(findUser, 0);
+    }
+    c.busy = 0;
+    c.btn.removeAttribute("aria-busy");
+    if (res.code === "not_member") hob.member = false;
+    if (res.code === "offline") hob.bot = false;
+    if (typeof res.locked === "boolean" || res.code === "locked") hob.locked = !!res.locked || res.code === "locked";
+    if (Array.isArray(res.held)) setHobbyHeld(res.held, res.ok && !res.same ? Number(res.at) || 1 : 0, res.id);
+    else c.paint();
+    paintHobLink();
+    const name = el("b", { text: "@" + c.h.name });
+    if (!res.ok) {
+      c.btn.classList.remove("nope"); void c.btn.offsetWidth; c.btn.classList.add("nope");
+      const meta = res.code === "not_member" ? [el("a", { href: INVITE, target: "_blank", rel: "noopener", text: "Join the server" })] : [];
+      toast(c.h.c1, ["That didn't take. ", res.error || "Try again in a moment."], meta);
+      return;
+    }
+    if (res.same) { toast(c.h.c1, add ? [name, " is already yours."] : [name, " wasn't yours to drop."]); return; }
+    if (add) { c.btn.classList.remove("hit"); void c.btn.offsetWidth; c.btn.classList.add("hit"); }
+    const msg = add ? ["You picked up ", name, ". "] : ["You dropped ", name, ". "];
+    if (res.line) msg.push(res.line);
+    const meta = [el("span", { class: "toast-done" }, [ic("check"), "Done in the server"])];
+    const open = add && res.open;                        // the channel it opens, straight from the bot
+    if (open && /^\d{15,21}$/.test(String(open.guild)) && /^\d{15,21}$/.test(String(open.channel))) {
+      meta.push(el("a", { href: "https://discord.com/channels/" + open.guild + "/" + open.channel, target: "_blank", rel: "noopener",
+        text: "Open #" + String(open.name || "the channel").slice(0, 60) }));
+    }
+    toast(c.h.c1, msg, meta);
+  }
+  function paintHobLink() {
+    if (!hobLinkEl) return;
+    hobLinkEl.replaceChildren();
+    hobLinkEl.className = "conf-link";
+    hobLinkEl.hidden = !hob.bot;
+    if (!hob.bot) return;
+    if (!link.user) {
+      hobLinkEl.append(clicks(el("button", { type: "button", class: "conf-signin" }, [ic("discord"), el("span", { text: "Sign in with Discord" }), ic("arrow-right", "arrow")]), () => signInTo("/#hobbies")),
+        el("span", { class: "conf-why", text: "to pick them up for real." }));
+      return;
+    }
+    const who = el("b", { text: "@" + (link.name || "you") });
+    if (hob.member === false) {
+      hobLinkEl.classList.add("warn");
+      hobLinkEl.append(el("span", { class: "dot" }), el("span", {}, ["Signed in as ", who, ", but you're not in the server yet. ",
+        el("a", { href: INVITE, target: "_blank", rel: "noopener", text: "Join it" }), " and your taps count."]));
+      return;
+    }
+    hobLinkEl.classList.add(hob.locked ? "warn" : "on");
+    hobLinkEl.append(el("span", { class: "dot" }), el("span", {}, ["Linked to Discord as ", who, ". ",
+      hob.locked ? "Hobbies are on hold for you right now." : hob.asking && !hob.held ? "Checking your hobbies…" : "Your taps are the real thing."]));
+  }
+  function hobLinkChanged() {
+    paintHobLink();
+    hobbyCards.forEach((c) => c.paint());
+    if (hobLinked() && !hob.asked) checkHobbies();
+  }
+
   /* who's here (supa.js loads after this file) */
-  async function signIn() {
-    const next = "/#confession";
+  async function signInTo(next) {
     const EG = window.EG;
     try {
       if (EG && EG.configured && C.DISCORD_LOGIN) { await EG.oauth("discord", next); return; }
     } catch (e) { /* use the sign-in page instead */ }
     location.href = "/signin/?next=" + encodeURIComponent(next);
   }
+  function signIn() { return signInTo("/#confession"); }
   function paintLink() {
     if (!linkEl) return;
     linkEl.replaceChildren();
@@ -523,9 +739,14 @@
     link.name = idn ? String(d.full_name || d.name || d.user_name || "").replace(/#0$/, "") : "";
     if ((link.user ? link.user.id : null) !== was) {
       Object.assign(link, { member: null, locked: false, held: null, heldId: 0, asked: 0 });
-      if (was) roleCards.forEach((c) => { c.set(false); c.mine = 0; c.adj = null; });   // signed out: their record leaves the screen too
+      Object.assign(hob, { member: null, locked: false, held: null, heldId: 0, asked: 0 });
+      if (was) {                                         // signed out: their record and hobbies leave the screen too
+        roleCards.forEach((c) => { c.set(false); c.mine = 0; c.adj = null; });
+        hobbyCards.forEach((c) => { c.set(false); c.mine = 0; c.adj = null; });
+      }
     }
     linkChanged();
+    hobLinkChanged();
   }
   function watchUser() {
     findUser();
@@ -536,11 +757,14 @@
     } catch (e) { /* no accounts on this site */ }
     // check the record again when the cards come back into view or the tab comes back (roles change in Discord too)
     const recheck = () => { if (link.user && link.bot && Date.now() - link.asked > (link.member === false ? 15000 : 90000)) checkRecord(); };
-    const sec = $("#confession");
-    if (sec && "IntersectionObserver" in window) {
-      new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) recheck(); }).observe(sec);
-    }
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) recheck(); });
+    const recheckHobbies = () => { if (link.user && hob.bot && Date.now() - hob.asked > (hob.member === false ? 15000 : 90000)) checkHobbies(); };
+    const watch = (sel, fn) => {
+      const sec = $(sel);
+      if (sec && "IntersectionObserver" in window) new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) fn(); }).observe(sec);
+    };
+    watch("#confession", recheck);
+    watch("#hobbies", recheckHobbies);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) { recheck(); recheckHobbies(); } });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchUser);
   else setTimeout(watchUser, 0);
@@ -851,6 +1075,14 @@
     });
     const bot = data.confess === 1 && Date.now() - state.botAt < FRESH;
     if (bot !== link.bot) { link.bot = bot; linkChanged(); }
+    if (Array.isArray(data.hobby_cards)) syncHobbies(data.hobby_cards);
+    if (data.hobbies) hobbyCards.forEach((c) => {
+      const v = num(data.hobbies[c.key]);
+      if (v !== null) c.h.count = v;
+      if (c.adj && num(data.at) !== null && data.at > c.adj.at) c.adj = null;   // the bot's count now includes the tap
+    });
+    const hobBot = data.hobby === 1 && Date.now() - state.botAt < FRESH;
+    if (hobBot !== hob.bot) { hob.bot = hobBot; hobLinkChanged(); }
     if (data.ladder) ladderSteps.forEach((st) => { const v = num(data.ladder[st.key]); if (v !== null) st.step.members = v; });
     bindAll();
     if (window.EG_TOP) window.EG_TOP.update(data.top, state.botAt);

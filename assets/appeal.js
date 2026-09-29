@@ -60,17 +60,28 @@
   };
 
   /* ---------- the questions ---------- */
+  // written answers show "120 / 1,500" under the box (the limits are in config.js)
+  const hasCount = (f) => f.type === "textarea" && f.maxLength > 0;
+  function paintCount(f) {
+    const n = hasCount(f) ? $("f-" + f.id + "-count") : null;
+    if (!n) return;
+    const len = control(f).value.length;
+    n.textContent = len.toLocaleString("en-US") + " / " + f.maxLength.toLocaleString("en-US");
+    n.classList.toggle("near", len >= f.maxLength * 0.9 && len < f.maxLength);
+    n.classList.toggle("full", len >= f.maxLength);
+  }
   function renderField(f, card, qid) {
     const id = "f-" + f.id;
     const errId = id + "-err";
     const hintId = f.hint ? id + "-hint" : null;
+    const countId = hasCount(f) ? id + "-count" : null;
     const pair = card.fields.length > 1;
     const attrs = {
       id: id,
       name: f.id,
       class: "inp",
       "aria-labelledby": pair ? qid + " " + id + "-lbl" : qid,
-      "aria-describedby": [errId, hintId].filter(Boolean).join(" "),
+      "aria-describedby": [errId, countId, hintId].filter(Boolean).join(" "),
       placeholder: f.placeholder || "Your answer...",
       autocomplete: "off"
     };
@@ -85,6 +96,7 @@
     return el("div", { class: "fld", "data-field": f.id }, [
       pair ? el("label", { class: "sub-label", id: id + "-lbl", for: id, text: f.label || f.short }) : null,
       control,
+      countId ? el("p", { class: "count", id: countId }) : null,
       el("p", { class: "err", id: errId, hidden: true }),
       f.hint ? el("p", { class: "hint", id: hintId, text: f.hint }) : null
     ]);
@@ -128,6 +140,7 @@
     if (!v) return f.required ? "Answer this to continue." : "";
     const p = f.pattern && PATTERNS[f.pattern];
     if (p && !p.re.test(v)) return p.msg;
+    if (f.maxLength && v.length > f.maxLength) return "Too long: keep it to " + f.maxLength.toLocaleString("en-US") + " characters (you have " + v.length.toLocaleString("en-US") + ").";
     if (f.minLength && v.length < f.minLength) return "Write a bit more: at least " + f.minLength + " characters (you have " + v.length + ").";
     return "";
   }
@@ -365,6 +378,7 @@
     const wrap = e.target.closest("[data-field]");
     if (!wrap) return;
     const f = field(wrap.dataset.field);
+    if (f) paintCount(f);
     if (f && touched.has(f.id)) {
       showError(f, validate(f));
       if (!form.querySelector('[aria-invalid="true"]')) hideAlert(alertBox);
@@ -399,7 +413,7 @@
     store.del(DRAFT_KEY);
     form.reset();
     touched.clear();
-    allFields.forEach((f) => showError(f, ""));
+    allFields.forEach((f) => { showError(f, ""); paintCount(f); });
     state.startedAt = Date.now();
     state.appealId = makeId();
     go(0, { focus: true });
@@ -416,10 +430,18 @@
   }
   const draft = store.get(DRAFT_KEY);
   if (draft && draft.v === 1) {
-    allFields.forEach((f) => { if (draft.values && typeof draft.values[f.id] === "string") control(f).value = draft.values[f.id]; });
+    // a draft saved before the limits (or with a bigger one) comes back trimmed to fit
+    allFields.forEach((f) => { if (draft.values && typeof draft.values[f.id] === "string") control(f).value = draft.values[f.id].slice(0, f.maxLength || undefined); });
     if (typeof draft.startedAt === "number") state.startedAt = draft.startedAt;
     if (typeof draft.appealId === "string" && /^AP-[A-Z0-9]{6}$/.test(draft.appealId)) state.appealId = draft.appealId;
   }
+  // the bot's ban DM links here with ?u=username&uid=user ID, so those two boxes come filled in
+  [["discord_username", params.get("u")], ["discord_id", cleanId(params.get("uid"))]].forEach(([id, v]) => {
+    const f = field(id);
+    v = String(v || "").trim();
+    if (f && v && !control(f).value && v.length <= f.maxLength && PATTERNS[f.pattern].re.test(v)) control(f).value = v;
+  });
+  allFields.forEach(paintCount);
   go(draft && draft.slide === 1 ? 1 : 0);
   show("form");
   if (/^AP-/.test(linkId)) {
