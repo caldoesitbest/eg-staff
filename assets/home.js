@@ -513,7 +513,6 @@
       el("span", { class: "card-emoji" }, el("img", { src: h.src || "assets/home/hobbies/" + h.icon + ".webp", alt: "", width: "88", height: "88", loading: "lazy", decoding: "async" })),
       el("span", { class: "card-name", text: "@" + h.name }),
       el("span", { class: "card-text", text: h.text }),
-      h.perk ? el("span", { class: "hob-perk" }, [ic(h.pings ? "radio" : "door-open"), el("span", { text: h.perk })]) : null,
       foot,
       el("span", { class: "stampmark", "aria-hidden": "true", text: "Picked up" })
     ]);
@@ -525,8 +524,7 @@
       foot.replaceChildren();
       if (c.busy) { foot.append(ic("loader-circle", "spin"), Date.now() - c.busy > 12000 ? "Still sending" : "Sending"); return; }
       if (h.count === null || h.count === undefined) { foot.append(c.on() ? "Picked up" : "Up for grabs"); return; }
-      const n = Math.max(0, h.count + (hobLinked() ? (c.adj ? c.adj.d : 0) : c.mine));
-      foot.append(el("b", { text: fmt(n) }), n === 1 ? " member" : " members");
+      foot.append(el("b", { text: fmt(Math.max(0, h.count + (hobLinked() ? (c.adj ? c.adj.d : 0) : c.mine))) }), " on record");
     };
     c.paint();
     hobbyCards.push(c);
@@ -559,7 +557,7 @@
       const emoji = /^\d{15,21}$/.test(String(b.emoji || "")) ? String(b.emoji) : "";
       const c = addHobbyCard({
         key: b.key, name: String(b.name || b.key).slice(0, 40), text: String(b.text || "").slice(0, 200), c1: colour, c2: colour,
-        pings: !!b.pings, perk: b.pings ? "New VC pings" : b.opens ? "Opens a channel" : "", count: null,
+        pings: !!b.pings, count: null,
         src: emoji ? "https://cdn.discordapp.com/emojis/" + emoji + ".webp?size=128" + (b.animated ? "&animated=true" : "") : "assets/home/eg-mark.webp"
       });
       c.li.classList.add("in");                         // arrived after the page's reveal animations were set up
@@ -1004,7 +1002,8 @@
       ch.classList.toggle("flat", q.change === 0);
       $(".arrow", ch).textContent = q.change < 0 ? "▼" : q.change > 0 ? "▲" : "■";
       $("b", ch).textContent = (q.change > 0 ? "+" : q.change < 0 ? "−" : "") + fmt(Math.abs(q.change));
-      $(".pct", ch).textContent = "(" + (q.change < 0 ? "−" : q.change > 0 ? "+" : "") + Math.abs(q.pct).toFixed(1) + "%)";
+      const pct = Math.abs(q.pct);                          // since launch runs into the tens of thousands
+      $(".pct", ch).textContent = "(" + (q.change < 0 ? "−" : q.change > 0 ? "+" : "") + (pct >= 1000 ? fmt(Math.round(pct)) : pct.toFixed(1)) + "%)";
       $(".rl", ch).textContent = q.label;
     }
   }

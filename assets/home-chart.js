@@ -147,29 +147,21 @@
 
     function summarize(v) {
       if (!v.line.length) return null;
-      // A range that reaches back before launch starts at 0 members, and growth from 0 has no %.
-      // Like a stock's IPO price, measure from the members at the end of launch day instead.
-      let from = 0;
-      if (!(v.line[0].m > 0)) {
-        const k = v.line.findIndex((p) => p.m > 0);
-        if (k >= 0) {
-          const day = localStart(v.line[k].t, DAY);
-          from = k;
-          while (from + 1 < v.line.length && localStart(v.line[from + 1].t, DAY) === day && !v.line[from + 1].now) from++;
-        }
-      }
-      const ms = v.line.slice(from).map((p) => p.m);
-      const open = v.line[from].m;
+      // A range that reaches back to launch starts at 0 members, so its change is everyone here now
+      // (+292 with 292 members). Growth from 0 has no percentage, so that one counts from the
+      // server's first member, its owner: 1 to 292 members is +29,100%.
+      const ms = v.line.map((p) => p.m);
+      const open = v.line[0].m;
       const close = v.line[v.line.length - 1].m;
+      const base = Math.max(1, open);
       const volume = v.bars.reduce((a, b) => a + (b.s >= v.t0 - 1 ? b.n : Math.round(b.n * (b.e - v.t0) / (b.e - b.s))), 0);
-      const all = v.line.map((p) => p.m);
       return {
         range: state.range, label: RANGES[state.range].label,
         open: Math.round(open), close: Math.round(close),
         high: Math.round(Math.max.apply(null, ms)), low: Math.round(Math.min.apply(null, ms)),
-        change: Math.round(close - open), pct: open ? ((close - open) / open) * 100 : 0,
+        change: Math.round(close - open), pct: close > 0 ? ((close - base) / base) * 100 : 0,
         volume: volume,
-        scaleLo: Math.min.apply(null, all), scaleHi: Math.max.apply(null, all)
+        scaleLo: Math.min.apply(null, ms), scaleHi: Math.max.apply(null, ms)
       };
     }
 
