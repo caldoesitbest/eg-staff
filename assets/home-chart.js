@@ -148,12 +148,21 @@
     function summarize(v) {
       if (!v.line.length) return null;
       // A range that reaches back to launch starts at 0 members, so its change is everyone here now
-      // (+292 with 292 members). Growth from 0 has no percentage, so that one counts from the
-      // server's first member, its owner: 1 to 292 members is +29,100%.
+      // (+292 with 292 members). Growth from 0 has no percentage, so that one is measured from the
+      // members at the end of launch day instead, like a stock's IPO price (52 to 292 is +461.5%).
       const ms = v.line.map((p) => p.m);
       const open = v.line[0].m;
       const close = v.line[v.line.length - 1].m;
-      const base = Math.max(1, open);
+      let base = open;
+      if (!(open > 0)) {
+        let k = v.line.findIndex((p) => p.m > 0);
+        if (k >= 0) {
+          const day = localStart(v.line[k].t, DAY);
+          while (k + 1 < v.line.length && localStart(v.line[k + 1].t, DAY) === day && !v.line[k + 1].now) k++;
+          base = v.line[k].m;
+        }
+      }
+      base = Math.max(1, base);
       const volume = v.bars.reduce((a, b) => a + (b.s >= v.t0 - 1 ? b.n : Math.round(b.n * (b.e - v.t0) / (b.e - b.s))), 0);
       return {
         range: state.range, label: RANGES[state.range].label,

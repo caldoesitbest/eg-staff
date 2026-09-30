@@ -31,7 +31,7 @@ window.EG_HOME = {
      anchors: member counts we know for sure. joins: when people joined (from sins.db). */
   chartFallback: {
     anchors: [
-      ["2026-09-02T00:00:00Z", 0],     // launch: "since launch" counts every member from here
+      ["2026-09-02T00:00:00Z", 0],     // launch: "since launch" counts every member from here (the % counts from the end of launch day)
       ["2026-09-05T00:19:00Z", 100],   // member #100
       ["2026-09-09T12:52:00Z", 154],   // one-week serversary
       ["2026-09-22T22:33:00Z", 250],   // 250 sinners
