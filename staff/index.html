@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Staff Hub · Envious Gluttony™</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#05071f">
+<link rel="icon" type="image/png" href="/assets/home/favicon-64.png">
+<link rel="apple-touch-icon" href="/assets/home/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/fonts.css?v=5">
+<link rel="stylesheet" href="/assets/staff.css?v=1">
+</head>
+<body class="hub-page">
+<canvas class="hub-stars" id="hub-stars" aria-hidden="true"></canvas>
+<a class="skip" href="#hub-main">Skip to content</a>
+
+<header class="hub-top">
+  <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
+  <p class="hub-word"><span>Staff</span> Hub</p>
+  <div class="hub-me" id="hub-me"></div>
+</header>
+
+<div class="hub-gate" id="hub-gate" aria-live="polite">
+  <div class="gate-card"><span class="loader" aria-hidden="true"></span><p>Checking your clearance…</p></div>
+</div>
+
+<div class="hub-shell" id="hub-shell" hidden>
+  <nav class="hub-nav" id="hub-nav" aria-label="Staff Hub"></nav>
+  <main class="hub-main" id="hub-main" tabindex="-1"></main>
+</div>
+
+<footer class="hub-foot" id="hub-foot" hidden>
+  <span>Envious Gluttony™ Staff Hub</span>
+  <button type="button" class="linkish" id="replay-launch">Replay launch</button>
+</footer>
+
+<nav class="hub-tabbar" id="hub-tabbar" aria-label="Staff Hub" hidden></nav>
+
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <h2 id="drawer-title" tabindex="-1"></h2>
+    <button type="button" class="icon-btn" id="drawer-close" aria-label="Close"><i data-icon="x"></i></button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h2 id="confirm-title"></h2>
+    <div class="confirm-body" id="confirm-body"></div>
+    <div class="confirm-acts">
+      <button class="btn btn-ghost" value="no" id="confirm-no">Cancel</button>
+      <button class="btn btn-primary" value="yes" id="confirm-yes">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<div class="launch" id="launch" hidden aria-hidden="true">
+  <canvas class="launch-canvas" id="launch-canvas"></canvas>
+  <svg class="launch-ship" id="launch-ship" viewBox="-40 -80 80 170" width="120" height="255" focusable="false">
+    <defs>
+      <radialGradient id="ls-hull-glow"><stop offset="0" stop-color="#63f4ff" stop-opacity=".26"/><stop offset="1" stop-color="#63f4ff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="ls-flame-glow" cy=".35"><stop offset="0" stop-color="#ff42d0" stop-opacity=".7"/><stop offset=".55" stop-color="#ff42d0" stop-opacity=".22"/><stop offset="1" stop-color="#ff42d0" stop-opacity="0"/></radialGradient>
+      <radialGradient id="ls-glass" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#b8fbff"/><stop offset=".45" stop-color="#36dfff"/><stop offset="1" stop-color="#1b2470"/></radialGradient>
+    </defs>
+    <g transform="translate(-40 -80)">
+      <ellipse cx="40" cy="72" rx="40" ry="74" fill="url(#ls-hull-glow)"/>
+      <g class="ls-flame">
+        <ellipse cx="40" cy="146" rx="22" ry="32" fill="url(#ls-flame-glow)"/>
+        <path d="M26 114 C26 134 34 148 40 160 C46 148 54 134 54 114 Z" fill="#ff42d0"/>
+        <path d="M30 114 C30 130 36 142 40 152 C44 142 50 130 50 114 Z" fill="#63f4ff"/>
+        <path d="M34 114 C34 126 38 134 40 140 C42 134 46 126 46 114 Z" fill="#fff"/>
+      </g>
+      <g stroke="#10132e" stroke-width="2.4" stroke-linejoin="round">
+        <path d="M24 84 L8 112 L10 122 L27 108 Z" fill="#a855f7"/>
+        <path d="M56 84 L72 112 L70 122 L53 108 Z" fill="#6d28d9"/>
+        <path d="M40 6 C54 20 60 46 58 76 L55 110 H25 L22 76 C20 46 26 20 40 6 Z" fill="#f5f0e6"/>
+      </g>
+      <path d="M40 6 C54 20 60 46 58 76 L55 110 H45 C49 80 49 40 40 6 Z" fill="#b9a6ff" opacity=".55"/>
+      <path d="M35 15 C29 27 25.5 48 26.5 76" fill="none" stroke="#63f4ff" stroke-width="2" stroke-linecap="round" opacity=".85"/>
+      <g stroke="#10132e" stroke-width="2.2" stroke-linejoin="round">
+        <path d="M40 6 C46 12 50 18 52 26 H28 C30 18 34 12 40 6 Z" fill="#ff42d0"/>
+        <path d="M23.4 86 H56.6 L56.2 92 H23.8 Z" fill="#63f4ff"/>
+        <path d="M28 110 H52 L48 118 H32 Z" fill="#2a2f55"/>
+        <circle cx="40" cy="54" r="10" fill="url(#ls-glass)"/>
+      </g>
+      <ellipse cx="36.5" cy="50" rx="3.2" ry="2" fill="#fff" opacity=".9" transform="rotate(-35 36.5 50)"/>
+    </g>
+  </svg>
+  <p class="launch-count" id="launch-count"></p>
+  <div class="launch-lockup" id="launch-lockup">
+    <img src="/assets/home/eg-mark-lg.webp" alt="" width="180" height="134">
+    <p class="launch-word"><span>Staff</span> Hub</p>
+    <div class="launch-welcome" id="launch-welcome"></div>
+  </div>
+  <button type="button" class="launch-skip" id="launch-skip">Skip <kbd>Esc</kbd></button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="/assets/icons.js?v=7"></script>
+<script src="/assets/config.js?v=7"></script>
+<script src="/assets/supa.js?v=6"></script>
+<script src="/assets/nav.js?v=7"></script>
+<script src="/assets/staff-code.js?v=1"></script>
+<script src="/assets/staff-core.js?v=1"></script>
+<script src="/assets/staff-overview.js?v=1"></script>
+<script src="/assets/staff-reviews.js?v=1"></script>
+<script src="/assets/staff-roadmap.js?v=1"></script>
+<script src="/assets/staff-projects.js?v=1"></script>
+<script src="/assets/staff-results.js?v=1"></script>
+<script src="/assets/staff-launch.js?v=1"></script>
+<script>window.HUB && window.HUB.boot();</script>
+</body>
+</html>

@@ -266,7 +266,7 @@
     New: ["hourglass", "Received", "Your appeal is in the queue. Staff will start reviewing it soon."],
     Reviewing: ["search", "In review", "Staff are reading your appeal right now. Hang tight."],
     Accepted: ["sparkles", "Appeal accepted", "Staff lifted your ban. Rejoin with the invite below, and give the rules another read first."],
-    Denied: ["circle-x", "Appeal denied", "Staff reviewed your appeal and decided to keep the ban. You can send a new appeal 14 days after your last one."]
+    Denied: ["circle-x", "Appeal denied", "Staff reviewed your appeal and decided to keep the ban. Appeal decisions are final."]
   };
   const PILL = { New: "Received", Reviewing: "In review", Accepted: "Unbanned", Denied: "Denied" };
   const statusClass = (s) => "s-" + String(s || "New").toLowerCase();

@@ -22,6 +22,10 @@ window.EG_CONFIG = {
   APPEALS_OPEN: true,
   APPEAL_FORM_ID: "eg-appeal-v1",
 
+  // Staff Hub (/staff/)
+  CLANKER_RELAY_URL: "https://envyrelay.wisp.uno/",
+  BUMP_CHANNEL_URL: "https://discord.com/channels/1544618323604668491/1544627631373295636",
+
   /* Questions. Reword freely.
      - id:    unique, lowercase, no spaces. Keep name, discord_username and age.
      - short: the label shown on the admin page and in Discord.

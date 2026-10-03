@@ -102,6 +102,14 @@
       ]);
       return;
     }
+    // The Staff Hub replaces this page for everyone on the staff roster.
+    try {
+      const hub = await EG.sb.rpc("hub_me");
+      if (!hub.error && hub.data && hub.data.ok) {
+        location.replace("/staff/#" + (state.view === "appeals" ? "appeals" : "applications"));
+        return;
+      }
+    } catch (e) { /* the hub isn't set up yet: this page keeps working */ }
     if (!(await EG.isAdmin())) {
       const p = await EG.profile();
       const out = el("button", { type: "button", class: "btn btn-ghost" }, [icon("log-out"), "Sign out"]);

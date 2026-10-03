@@ -68,7 +68,8 @@
     items.push(el("div", { class: "menu-sep", role: "separator" }));
     if (state.user) {
       items.push(link("/account/", "user-round", "My account", { current: path === "/account/" }));
-      if (state.admin) items.push(link("/admin/", "shield-check", "Admin", { current: path === "/admin/" }));
+      if (state.staff) items.push(link("/staff/", "rocket", "Staff Hub", { current: path.indexOf("/staff/") === 0 }));
+      else if (state.admin) items.push(link("/admin/", "shield-check", "Admin", { current: path === "/admin/" }));
       const out = el("button", { type: "button", role: "menuitem", class: "menu-item", tabindex: "-1" }, [icon("log-out"), el("span", { text: "Sign out" })]);
       out.addEventListener("click", async () => {
         close();
@@ -120,14 +121,18 @@
     const user = EG && EG.configured ? await EG.user() : null;
     let username = null;
     let admin = false;
+    let staff = false;
     if (user) {
       try {
         const p = await EG.profile();
         username = p && p.username;
-        admin = await EG.isAdmin();
+        // On the staff roster (the bot sends it)? Then the Staff Hub, which replaces the old admin page.
+        const t = await EG.sb.rpc("my_tier");
+        staff = !t.error && typeof t.data === "string" && !!t.data;
+        if (!staff) admin = await EG.isAdmin();
       } catch (e) { /* still show the signed-in menu */ }
     }
-    render({ user: user, username: username, admin: admin });
+    render({ user: user, username: username, admin: admin, staff: staff });
   }
 
   render({ user: null });
