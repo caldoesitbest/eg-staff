@@ -13,6 +13,7 @@
   const $ = (id) => document.getElementById(id);
   const main = $("test-main");
   const TIER = { owner: "Owner", admin: "Admin", mod: "Mod", helper: "Helper" };
+  const TIER_ICON = { owner: "crown", admin: "crown", mod: "shield", helper: "wrench" };
 
   function el(tag, props, kids) {
     const n = document.createElement(tag);
@@ -103,7 +104,7 @@
         el("div", null, [el("b", { class: "id-name", text: me.name || d.full_name || "You" }),
           el("div", { class: "muted", text: "@" + (me.username || String(d.name || d.user_name || "").replace(/#0$/, "")) }),
           el("div", { class: "faint tab", text: "User ID " + me.id }),
-          el("span", { class: "tier tier-" + me.tier, text: TIER[me.tier] || "Staff" })])]),
+          el("span", { class: "tier tier-" + me.tier }, [ic(TIER_ICON[me.tier] || "shield"), TIER[me.tier] || "Staff"])])]),
       el("p", { class: "muted", text: "Code of Conduct v" + status.version + " · " + status.question_count + " questions · " + status.minutes + " minutes · " +
         status.starts_left + (status.starts_left === 1 ? " start" : " starts") + " left today" }),
       btn

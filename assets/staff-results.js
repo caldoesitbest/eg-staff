@@ -25,7 +25,7 @@
     else if (st.state === "retest") { title = "Retest needed"; text = "The Code changed to v" + st.version + ". Take the test on the new version."; }
     else { title = "Not taken yet"; text = H.plural(st.question_count, "question") + ", " + st.minutes + " minutes, one sitting. Read the Code below first."; }
     if (!st.can_start && st.why && !(st.state === "submitted" && !st.retake)) text = st.why;
-    return el("div", { class: "testcard" }, [
+    return el("div", { class: "panel testcard" }, [
       el("span", { class: "gate-icon" }, ic(iconName)),
       el("div", null, [el("h2", { text: title }), el("p", { text: text })]),
       st.can_start ? el("a", { class: "btn btn-primary", href: "/staff/test/" }, ["Take the test", ic("arrow-right")]) : null
@@ -37,10 +37,9 @@
       let st = null;
       try { st = await H.rpc("coc_status", { p_page_load: false }); } catch (e) { st = null; }
       main.replaceChildren(
-        el("div", { class: "sec-head" }, el("div", null, [el("h1", { text: "Code of Conduct" }),
-          el("p", { text: "Version " + COC.version + ", effective " + COC.effective + ". Every enforcement action cites a rule and a level from here." })])),
+        H.secHead({ title: "Code of", accent: "Conduct", sub: "Version " + COC.version + ", effective " + COC.effective + ". Every enforcement action cites a rule and a level from here." }),
         st ? testCard(st) : el("div", { class: "banner b-warn" }, [ic("triangle-alert"), el("span", { text: "The test isn't set up yet." })]),
-        el("div", { class: "block" }, codeDoc())
+        el("section", { class: "panel code-wrap" }, codeDoc())
       );
     }
   });
@@ -82,7 +81,7 @@
     const n = (v, min, max) => el("input", { class: "inp", type: "number", min: min, max: max, value: v });
     const pass = n(cfg.pass_mark, 1, 100), mins = n(cfg.minutes, 5, 60), count = n(cfg.question_count, 5, Math.min(60, questions)),
       starts = n(cfg.max_starts, 1, 10), blur = n(cfg.blur_grace_ms, 0, 5000);
-    const save = el("button", { type: "submit", class: "btn btn-sm" }, "Save settings");
+    const save = el("button", { type: "submit", class: "btn btn-sm btn-ice" }, [ic("check"), "Save settings"]);
     const f = el("form", { class: "form-grid" }, [
       el("div", { class: "form-row" }, [
         el("label", { class: "field" }, [el("span", { text: "Pass mark (%)" }), pass]),
@@ -97,7 +96,7 @@
       catch (err) { H.fail(err); }
     });
     const ver = el("input", { class: "inp", placeholder: "e.g. 1.3", style: "max-width:140px" });
-    const pub = el("form", { class: "addrow" }, [ver, el("button", { type: "submit", class: "btn btn-sm btn-danger" }, "Publish new version")]);
+    const pub = el("form", { class: "addrow" }, [ver, el("button", { type: "submit", class: "btn btn-sm btn-danger" }, [ic("megaphone"), "Publish new version"])]);
     pub.addEventListener("submit", async (e) => {
       e.preventDefault();
       const v = ver.value.trim();
@@ -108,7 +107,7 @@
       try { await H.rpc("coc_publish_version", { p_version: v }); H.toast("Published v" + v + ".", "ok"); H.show("results"); }
       catch (err) { H.fail(err); }
     });
-    return el("details", { class: "action-card" }, [el("summary", { style: "cursor:pointer;font-weight:800", text: "Test settings (owners)" }),
+    return el("details", { class: "panel settings-box" }, [el("summary", null, [ic("chevron-right"), ic("settings"), "Test settings (owners)"]),
       el("div", { class: "stack-v", style: "margin-top:12px" }, [f, el("h3", { text: "New Code version" }), pub])]);
   }
   H.register({
@@ -131,7 +130,7 @@
             el("div", { class: "res-acts" }, [status, p.retake ? el("span", { class: "pill p-violet", text: "Retake granted" }) : null]),
             el("div", { class: "meta", text: [L ? H.fmtDate(L.at) + " · " + mmss(L.secs) : "", voided ? H.plural(voided, "reset") : ""].filter(Boolean).join(" · ") }),
             el("div", { class: "res-acts" }, [
-              L ? el("button", { type: "button", class: "btn btn-sm", onclick: () => detail(L.id, p.name) }, "Details") : null,
+              L ? el("button", { type: "button", class: "btn btn-sm btn-ice", onclick: () => detail(L.id, p.name) }, [ic("eye"), "Details"]) : null,
               voided ? el("button", { type: "button", class: "btn btn-sm btn-ghost", onclick: () => H.drawer.open({ title: "Resets: " + p.name,
                 body: el("ul", { class: "history" }, p.voided.map((v) => el("li", null, [el("b", { text: H.fmtDateTime(v.at) }), " · " + (v.reason || "reset")]))) }) }, "Resets") : null,
               (L || voided) && !p.retake ? el("button", { type: "button", class: "btn btn-sm btn-ghost", onclick: async () => {
@@ -144,11 +143,10 @@
       });
       const passed = r.people.filter((p) => p.latest && p.latest.passed).length;
       main.replaceChildren(
-        el("div", { class: "sec-head" }, el("div", null, [el("h1", { text: "Test results" }),
-          el("p", { text: "Code v" + cfg.version + " · " + H.plural(cfg.question_count, "question") + " · " + cfg.minutes + " minutes · pass mark " + cfg.pass_mark + "%. Only admins and owners see scores." })])),
-        el("p", { class: "muted", text: fmt(passed) + " of " + fmt(r.people.length) + " staff have passed v" + cfg.version + "." }),
+        H.secHead({ title: "Test", accent: "results", sub: "Code v" + cfg.version + " · " + H.plural(cfg.question_count, "question") + " · " + cfg.minutes + " minutes · pass mark " + cfg.pass_mark + "%. Only admins and owners see scores." }),
+        el("div", { class: "res-sum" }, [el("span", { class: "pill p-ok" }, [ic("trophy"), fmt(passed) + " of " + fmt(r.people.length) + " passed"]), el("span", { text: "Staff who've passed v" + cfg.version + "." })]),
         H.can("owner") ? settingsBox(cfg, r.questions) : null,
-        el("div", { class: "results block" }, rows)
+        rows.length ? el("div", { class: "results" }, rows) : H.empty({ icon: "trophy", title: "No staff yet", panel: true })
       );
       window.egIcons && window.egIcons(main);
     }
@@ -183,7 +181,7 @@
     id: "activity", title: "Activity", short: "Activity", icon: "activity", min: "owner", group: "Owners",
     async render(main) {
       const list = el("ol", { class: "activity" });
-      const more = el("button", { type: "button", class: "btn btn-sm", style: "margin-top:12px" }, "Load more");
+      const more = el("button", { type: "button", class: "btn btn-sm", style: "margin-top:14px" }, [ic("arrow-down"), "Load more"]);
       let last = null;
       async function page() {
         more.disabled = true;
@@ -195,10 +193,10 @@
         more.disabled = false;
       }
       more.addEventListener("click", page);
-      main.replaceChildren(el("div", { class: "sec-head" }, el("div", null, [el("h1", { text: "Activity" }),
-        el("p", { text: "Every change made in the hub, and who made it. Only owners see this." })])), list, more);
+      const box = el("section", { class: "panel" }, list);
+      main.replaceChildren(H.secHead({ title: "Hub", accent: "activity", sub: "Every change made in the hub, and who made it. Only owners see this." }), box, more);
       await page();
-      if (!list.children.length) list.replaceWith(el("div", { class: "empty" }, [ic("activity"), el("p", { text: "Nothing yet." })]));
+      if (!list.children.length) box.replaceWith(H.empty({ icon: "activity", title: "Nothing yet", text: "Changes made in the hub show up here.", panel: true }));
     }
   });
 })();

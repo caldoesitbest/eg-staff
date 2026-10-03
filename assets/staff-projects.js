@@ -41,19 +41,18 @@
         p.joined ? el("span", { class: "pill p-ok", style: "margin-left:6px", text: "Joined" }) : null])])
     ]);
     c.addEventListener("click", () => openProject(p.id));
-    return c;
+    return H.tilt(c, 5);
   }
 
   async function loadList() { list = await H.rpc("hub_projects", { p_archived: archived }); }
   function paint(main) {
-    const seg = el("div", { class: "seg", role: "group", "aria-label": "Show" }, [["Active", false], ["Archived", true]].map(([l, v]) =>
-      el("button", { type: "button", "aria-pressed": String(archived === v), onclick: async () => { archived = v; await loadList(); paint(main); } }, l)));
+    const seg = H.seg([{ value: false, label: "Active", icon: "folder-open" }, { value: true, label: "Archived", icon: "archive" }], archived,
+      async (v) => { archived = v; await loadList(); paint(main); H.reveal(main.querySelectorAll(".pcard, .empty-panel")); }, { label: "Show" });
     main.replaceChildren(
-      el("div", { class: "sec-head" }, [el("div", null, [el("h1", { text: "Projects" }),
-        el("p", { text: "The team's to-do list. Join anything you want to help with; members add tasks and files." })]),
-        el("div", { class: "sec-acts" }, [seg, H.can("admin") ? el("button", { type: "button", class: "btn btn-primary", onclick: () => form(null) }, [ic("plus"), "New project"]) : null])]),
+      H.secHead({ title: "Team", accent: "projects", sub: "The team's to-do list. Join anything you want to help with; members add tasks and files.",
+        right: [seg, H.can("admin") ? el("button", { type: "button", class: "btn btn-primary", onclick: () => form(null) }, [ic("plus"), "New project"]) : null] }),
       list.length ? el("div", { class: "board" }, list.map(pcard))
-        : el("div", { class: "empty" }, [ic("folder"), el("p", { text: archived ? "No archived projects." : H.can("admin") ? "No projects yet. Start the first one." : "No projects yet." })])
+        : H.empty({ art: "inbox", title: archived ? "Nothing archived" : "No projects yet", text: archived ? "Archived projects land here." : H.can("admin") ? "Start the first one." : "An admin starts them; you join in.", panel: true })
     );
     window.egIcons && window.egIcons(main);
   }
@@ -77,13 +76,13 @@
       : el("button", { type: "button", class: "btn btn-sm btn-primary", disabled: p.archived || (p.member_cap && d.members.length >= p.member_cap),
         onclick: (e) => joinProject(id, e.currentTarget) }, [ic("user-plus"), p.member_cap && d.members.length >= p.member_cap ? "Full" : "Join"]);
     const nodes = [
-      el("div", { class: "pcover", style: "--pc:" + (p.color || "#8e44ff") + ";border-radius:16px;height:auto;padding:16px" }, [
-        el("div", null, [el("div", { style: "font-size:2.2rem", text: p.cover || "📁" }), el("h2", { style: "margin:6px 0 0;font-size:1.4rem", text: p.title })]),
+      el("div", { class: "proj-cover", style: "--pc:" + (p.color || "#8e44ff") }, [
+        el("div", null, [el("div", { style: "font-size:2.4rem;filter:drop-shadow(0 6px 14px rgba(0,0,0,.6))", text: p.cover || "📁" }), el("h2", { text: p.title })]),
         el("span", { class: "pill " + cls, text: p.archived ? "Archived" : label })]),
       el("div", { class: "who", style: "justify-content:space-between;flex-wrap:wrap" }, [
         el("div", { class: "who" }, [membersRow, el("span", { class: "muted", text: H.plural(d.members.length, "member") + (p.member_cap ? " of " + p.member_cap : "") })]),
-        el("div", { class: "rv-acts" }, [join,
-          can.manage ? el("button", { type: "button", class: "btn btn-sm", onclick: () => form(p) }, [ic("pencil"), "Edit"]) : null,
+        el("div", { class: "addrow" }, [join,
+          can.manage ? el("button", { type: "button", class: "btn btn-sm btn-ice", onclick: () => form(p) }, [ic("pencil"), "Edit"]) : null,
           can.manage ? el("button", { type: "button", class: "btn btn-sm btn-ghost", onclick: () => archive(p) }, [ic("archive"), p.archived ? "Restore" : "Archive"]) : null])]),
       el("dl", { class: "kv" }, [
         p.due_date ? el("dt", { text: "Due" }) : null, p.due_date ? el("dd", { text: H.fmtDate(p.due_date + "T12:00:00") }) : null,
@@ -165,7 +164,7 @@
     if (can.work) {
       const inp = el("input", { class: "inp", maxlength: 200, placeholder: "Add a task…", "aria-label": "New task" });
       const who = el("select", { class: "sel", "aria-label": "Assign to", style: "flex:0 1 160px" }, memberOptions(d, null));
-      const add = el("button", { type: "submit", class: "btn btn-sm" }, [ic("plus"), "Add"]);
+      const add = el("button", { type: "submit", class: "btn btn-sm btn-ice" }, [ic("plus"), "Add"]);
       const f = el("form", { class: "addrow", style: "margin-top:10px" }, [inp, who, add]);
       f.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -299,7 +298,7 @@
     const due = el("input", { class: "inp", type: "date", value: p.due_date || "" });
     const cap = el("input", { class: "inp", type: "number", min: 1, max: 50, value: p.member_cap || "", placeholder: "No limit" });
     const tags = el("input", { class: "inp", value: (p.tags || []).join(", "), placeholder: "event, art, bot" });
-    const save = el("button", { type: "submit", class: "btn btn-primary" }, p.id ? "Save" : "Create project");
+    const save = el("button", { type: "submit", class: "btn btn-primary" }, [ic(p.id ? "check" : "rocket"), p.id ? "Save" : "Create project"]);
     const f = el("form", { class: "form-grid" }, [
       el("label", { class: "field" }, [el("span", { text: "Title" }), title]),
       el("label", { class: "field" }, [el("span", { text: "Description" }), body]),

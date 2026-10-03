@@ -39,14 +39,14 @@
     const g = svg("linearGradient", { id: "fp-lit", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
     svg("stop", { offset: "0", "stop-color": "#73ffce" }, g);
     svg("stop", { offset: "1", "stop-color": "#63f4ff" }, g);
-    svg("path", { d: d, fill: "none", stroke: "rgba(150,170,255,.28)", "stroke-width": "2", "stroke-dasharray": "4 7", "stroke-linecap": "round" }, svgEl);
+    svg("path", { d: d, class: "dash", fill: "none", stroke: "rgba(150,170,255,.35)", "stroke-width": "2", "stroke-dasharray": "4 7", "stroke-linecap": "round" }, svgEl);
     // lit up to "now": the first in-progress waypoint, or the last shipped one
     let nowIdx = items.findIndex((x) => x.status === "progress");
     if (nowIdx < 0) nowIdx = items.map((x) => x.status).lastIndexOf("shipped");
     if (nowIdx >= 0) {
       let lit = "M" + start[0] + " " + start[1];
       for (let i = 1; i <= nowIdx + 1; i++) lit += seg(all[i - 1], all[i]);
-      svg("path", { d: lit, fill: "none", stroke: "url(#fp-lit)", "stroke-width": "3", "stroke-linecap": "round", style: "filter:drop-shadow(0 0 6px rgba(115,255,206,.6))" }, svgEl);
+      svg("path", { d: lit, fill: "none", stroke: "url(#fp-lit)", "stroke-width": "3", "stroke-linecap": "round", style: "filter:drop-shadow(0 0 8px rgba(115,255,206,.75))" }, svgEl);
     }
     pts.forEach((p, i) => {
       const s = items[i].status;
@@ -57,7 +57,8 @@
     // the rocket, at "now", nose pointing down the route
     if (nowIdx >= 0) {
       const p = pts[nowIdx];
-      const ship = svg("g", { transform: "translate(" + (p[0] + (nowIdx % 2 ? -26 : 26)) + " " + (p[1] - 2) + ") rotate(180) scale(.42)" }, svgEl);
+      const shipWrap = svg("g", { class: "ship" }, svgEl);
+      const ship = svg("g", { transform: "translate(" + (p[0] + (nowIdx % 2 ? -26 : 26)) + " " + (p[1] - 2) + ") rotate(180) scale(.42)" }, shipWrap);
       svg("ellipse", { cx: "0", cy: "34", rx: "9", ry: "16", fill: "#ff42d0", opacity: ".55" }, ship);
       svg("path", { d: "M0 -36 C10 -26 14 -8 13 12 L11 30 H-11 L-13 12 C-14 -8 -10 -26 0 -36 Z", fill: "#f5f0e6", stroke: "#10132e", "stroke-width": "3" }, ship);
       svg("path", { d: "M-12 10 L-22 30 L-11 24 Z M12 10 L22 30 L11 24 Z", fill: "#a855f7", stroke: "#10132e", "stroke-width": "2.5" }, ship);
@@ -80,15 +81,15 @@
   function open(item, i) {
     const [label, cls] = STATUS[item.status] || STATUS.planned;
     const body = [
-      el("div", { class: "who" }, [el("span", { class: "pill " + cls, text: label }), item.target_month ? el("span", { class: "muted", text: "Target: " + monthText(item.target_month) }) : null]),
+      el("div", { class: "who", style: "flex-wrap:wrap" }, [el("span", { class: "pill " + cls, text: label }), item.target_month ? el("span", { class: "muted", text: "Target: " + monthText(item.target_month) }) : null]),
       item.body ? el("p", { text: item.body }) : el("p", { class: "muted", text: "No description." }),
       item.project_id ? el("a", { class: "btn btn-sm", href: "#projects/" + item.project_id, onclick: () => H.drawer.close() }, [ic("folder"), "Open the project: " + item.project]) : null
     ];
     if (H.can("owner")) {
       const same = items.filter((x) => x.status === item.status);
       const k = same.indexOf(item);
-      body.push(el("div", { class: "rv-acts" }, [
-        el("button", { type: "button", class: "btn btn-sm", onclick: () => form(item) }, [ic("pencil"), "Edit"]),
+      body.push(el("div", { class: "addrow" }, [
+        el("button", { type: "button", class: "btn btn-sm btn-ice", onclick: () => form(item) }, [ic("pencil"), "Edit"]),
         el("button", { type: "button", class: "btn btn-sm", disabled: k <= 0, onclick: () => move(item, -1) }, [ic("arrow-up"), "Earlier"]),
         el("button", { type: "button", class: "btn btn-sm", disabled: k >= same.length - 1, onclick: () => move(item, 1) }, [ic("arrow-down"), "Later"]),
         el("button", { type: "button", class: "btn btn-sm btn-danger", onclick: () => remove(item) }, [ic("trash-2"), "Delete"])
@@ -124,7 +125,7 @@
     const month = el("input", { class: "inp", type: "month", value: item.target_month ? item.target_month.slice(0, 7) : "" });
     const proj = el("select", { class: "sel" }, [el("option", { value: "", text: "None" })]
       .concat(projects.map((p) => el("option", { value: p.id, text: p.title, selected: item.project_id === p.id }))));
-    const save = el("button", { type: "submit", class: "btn btn-primary" }, item.id ? "Save" : "Add to the road map");
+    const save = el("button", { type: "submit", class: "btn btn-primary" }, [ic(item.id ? "check" : "plus"), item.id ? "Save" : "Add to the road map"]);
     const f = el("form", { class: "form-grid" }, [
       el("label", { class: "field" }, [el("span", { text: "Title" }), title]),
       el("label", { class: "field" }, [el("span", { text: "Short description" }), bodyTa]),
@@ -156,12 +157,11 @@
     const cards = items.map(card);
     flight.append(svgEl, ...cards);
     main.replaceChildren(
-      el("div", { class: "sec-head" }, [el("div", null, [el("h1", { text: "Road map" }),
-        el("p", { text: H.can("owner") ? "Where the server's heading. Tap a waypoint to edit it." : "Where the server's heading. Owners steer." })]),
-        H.can("owner") ? el("div", { class: "sec-acts" }, el("button", { type: "button", class: "btn btn-primary", onclick: () => form(null) }, [ic("plus"), "Add a waypoint"])) : null]),
+      H.secHead({ title: "Road", accent: "map", sub: H.can("owner") ? "Where the server's heading. Tap a waypoint to edit it." : "Where the server's heading. Owners steer.",
+        right: H.can("owner") ? [el("button", { type: "button", class: "btn btn-primary", onclick: () => form(null) }, [ic("plus"), "Add a waypoint"])] : null }),
       el("div", { class: "flight-legend" }, [el("span", { class: "pill p-ok", text: "Shipped" }), el("span", { class: "pill p-review", text: "In progress" }),
         el("span", { class: "pill p-muted", text: "Planned" })]),
-      items.length ? flight : el("div", { class: "empty" }, [ic("map"), el("p", { text: H.can("owner") ? "Nothing on the road map yet. Add the first waypoint." : "Nothing on the road map yet." })])
+      items.length ? flight : H.empty({ art: "pick", title: "No waypoints yet", text: H.can("owner") ? "Add the first waypoint to plot the course." : "The owners haven't plotted the course yet.", panel: true })
     );
     window.egIcons && window.egIcons(main);
     const redraw = () => drawPath(flight, svgEl, cards);

@@ -5,13 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Staff Hub · Envious Gluttony™</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#05071f">
+<meta name="theme-color" content="#04051a">
+<link rel="preload" as="image" href="/assets/staff/art/hub-sky.webp" media="(min-width: 901px)">
 <link rel="icon" type="image/png" href="/assets/home/favicon-64.png">
 <link rel="apple-touch-icon" href="/assets/home/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/fonts.css?v=5">
-<link rel="stylesheet" href="/assets/staff.css?v=1">
+<link rel="stylesheet" href="/assets/staff.css?v=3">
 </head>
 <body class="hub-page">
+<div class="hub-sky" aria-hidden="true">
+  <div class="sky-img"></div>
+  <img class="sky-planet" src="/assets/staff/art/hub-planet.webp" alt="" width="1100" height="682" decoding="async" fetchpriority="low">
+  <img class="sky-rocks a" src="/assets/staff/art/hub-rocks-a.webp" alt="" width="760" height="520" decoding="async" fetchpriority="low">
+  <img class="sky-rocks b" src="/assets/staff/art/hub-rocks-b.webp" alt="" width="640" height="460" decoding="async" fetchpriority="low">
+</div>
 <canvas class="hub-stars" id="hub-stars" aria-hidden="true"></canvas>
 <a class="skip" href="#hub-main">Skip to content</a>
 
@@ -32,7 +39,7 @@
 
 <footer class="hub-foot" id="hub-foot" hidden>
   <span>Envious Gluttony™ Staff Hub</span>
-  <button type="button" class="linkish" id="replay-launch">Replay launch</button>
+  <span class="foot-acts"><button type="button" class="linkish" id="hub-sound" aria-pressed="true">Launch sound: on</button><button type="button" class="linkish" id="replay-launch">Replay launch</button></span>
 </footer>
 
 <nav class="hub-tabbar" id="hub-tabbar" aria-label="Staff Hub" hidden></nav>
@@ -69,12 +76,12 @@
     </defs>
     <g transform="translate(-40 -80)">
       <ellipse cx="40" cy="72" rx="40" ry="74" fill="url(#ls-hull-glow)"/>
-      <g class="ls-flame">
+      <g id="ls-flame-wrap" transform="translate(40 114) scale(1 0.001) translate(-40 -114)"><g class="ls-flame">
         <ellipse cx="40" cy="146" rx="22" ry="32" fill="url(#ls-flame-glow)"/>
         <path d="M26 114 C26 134 34 148 40 160 C46 148 54 134 54 114 Z" fill="#ff42d0"/>
         <path d="M30 114 C30 130 36 142 40 152 C44 142 50 130 50 114 Z" fill="#63f4ff"/>
         <path d="M34 114 C34 126 38 134 40 140 C42 134 46 126 46 114 Z" fill="#fff"/>
-      </g>
+      </g></g>
       <g stroke="#10132e" stroke-width="2.4" stroke-linejoin="round">
         <path d="M24 84 L8 112 L10 122 L27 108 Z" fill="#a855f7"/>
         <path d="M56 84 L72 112 L70 122 L53 108 Z" fill="#6d28d9"/>
@@ -92,27 +99,37 @@
     </g>
   </svg>
   <p class="launch-count" id="launch-count"></p>
+  <div class="launch-gate" id="launch-gate" hidden>
+    <p class="lg-kicker">Staff Hub · first launch</p>
+    <button type="button" class="lg-btn" id="launch-go" aria-label="Launch">
+      <span class="lg-ring" aria-hidden="true"></span>
+      <span class="lg-core"><i data-icon="rocket"></i><b>Launch</b></span>
+    </button>
+    <p class="lg-hint"><i data-icon="volume-2"></i>Sound on. Press to launch.</p>
+  </div>
   <div class="launch-lockup" id="launch-lockup">
     <img src="/assets/home/eg-mark-lg.webp" alt="" width="180" height="134">
     <p class="launch-word"><span>Staff</span> Hub</p>
     <div class="launch-welcome" id="launch-welcome"></div>
   </div>
+  <button type="button" class="launch-sound" id="launch-sound" aria-pressed="true"><i data-icon="volume-2"></i><span>Sound on</span></button>
   <button type="button" class="launch-skip" id="launch-skip">Skip <kbd>Esc</kbd></button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="/assets/icons.js?v=7"></script>
+<script src="/assets/icons.js?v=8"></script>
 <script src="/assets/config.js?v=7"></script>
 <script src="/assets/supa.js?v=6"></script>
 <script src="/assets/nav.js?v=7"></script>
-<script src="/assets/staff-code.js?v=1"></script>
-<script src="/assets/staff-core.js?v=1"></script>
-<script src="/assets/staff-overview.js?v=1"></script>
-<script src="/assets/staff-reviews.js?v=1"></script>
-<script src="/assets/staff-roadmap.js?v=1"></script>
-<script src="/assets/staff-projects.js?v=1"></script>
-<script src="/assets/staff-results.js?v=1"></script>
-<script src="/assets/staff-launch.js?v=1"></script>
+<script src="/assets/staff-code.js?v=3"></script>
+<script src="/assets/staff-art.js?v=3"></script>
+<script src="/assets/staff-core.js?v=3"></script>
+<script src="/assets/staff-overview.js?v=3"></script>
+<script src="/assets/staff-reviews.js?v=3"></script>
+<script src="/assets/staff-roadmap.js?v=3"></script>
+<script src="/assets/staff-projects.js?v=3"></script>
+<script src="/assets/staff-results.js?v=3"></script>
+<script src="/assets/staff-launch.js?v=5"></script>
 <script>window.HUB && window.HUB.boot();</script>
 </body>
 </html>
