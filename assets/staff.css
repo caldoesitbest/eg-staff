@@ -869,7 +869,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .launch-welcome .av { --s: 40px; }
 .launch-lockup.show { animation: lockup-in 0.5s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
 @keyframes lockup-in { from { opacity: 0; transform: translate(-50%, -44%) scale(0.9); filter: blur(6px); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; } }
-.launch-lockup.show .launch-welcome { animation: welcome-in 0.45s 0.1s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
+.launch-lockup.show .launch-welcome { animation: welcome-in 0.45s 0.1s cubic-bezier(0.2, 0.9, 0.2, 1) both, welcome-glow 2.4s 0.7s ease-in-out infinite; }
+.launch-lockup.show .launch-word span { animation: word-glow 2.4s 0.5s ease-in-out infinite; }
+@keyframes welcome-glow { 50% { box-shadow: 0 0 60px -8px rgba(99, 244, 255, 0.85), 0 0 0 1px rgba(99, 244, 255, 0.35); } }
+@keyframes word-glow { 50% { text-shadow: 0 0 34px rgba(99, 244, 255, 1), 0 0 70px rgba(255, 66, 208, 0.5); } }
+.launch.fade-out .launch-lockup.show { animation: lockup-out var(--fade, 0.6s) ease forwards; }
+@keyframes lockup-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; } to { opacity: 0; transform: translate(-50%, -50%) scale(1.07); filter: blur(6px); } }
 @keyframes welcome-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
 .launch-skip, .launch-sound { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.5); color: #fff; font-weight: 700; cursor: pointer; transition: background-color 0.2s, border-color 0.2s, transform 0.2s var(--ease); }
 .launch-skip { right: max(16px, env(safe-area-inset-right)); }
@@ -878,7 +883,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .launch-sound[aria-pressed="false"] .i { color: var(--muted); }
 .launch-skip:hover, .launch-sound:hover { background: rgba(99, 244, 255, 0.15); border-color: var(--cyan); transform: translateY(-2px); }
 .launch-skip kbd { padding: 1px 6px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.3); font-family: var(--sans); font-size: 0.75rem; }
-.launch.fade-out { animation: launch-out 0.3s ease forwards; }
+.launch.fade-out { animation: launch-out var(--fade, 0.6s) ease forwards; }
 @keyframes launch-out { to { opacity: 0; visibility: hidden; } }
 .ls-flame { transform-box: fill-box; transform-origin: 50% 0; animation: flicker 0.09s steps(2) infinite alternate; }
 @keyframes flicker { to { transform: scaleY(1.2) scaleX(0.92); } }

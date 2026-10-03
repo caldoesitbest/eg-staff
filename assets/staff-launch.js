@@ -1,9 +1,10 @@
 /* Staff Hub: the launch.
-   First visit (once per account): about three seconds. 3-2-1, ignition, liftoff, one soft bloom, then
-   "Welcome aboard" with confetti.
+   First visit (once per account): 3-2-1, ignition, liftoff, one soft bloom, then "Welcome aboard" with confetti.
    Coming back (once per browser session): no countdown, no confetti. The rocket goes up, then "Welcome back".
-   The sound is made live with Web Audio, so there are no files to load. Browsers only let a page make sound
-   after a click, so when the first launch can't play sound yet it waits on a Launch button.
+   The action takes about two seconds; the welcome then holds for a couple more before it fades.
+   The sound is made live with Web Audio, so there are no files to load: deep booms under the countdown, a
+   crackling engine roar, a riser into one big hit, and a low chord under the welcome. Browsers only let a page
+   make sound after a click, so when the first launch can't play sound yet it waits on a Launch button.
    Skip (Esc, or a tap) any time. Reduced motion: a short fade to the welcome. The bloom is one fade, never a strobe. */
 (function () {
   "use strict";
@@ -11,11 +12,12 @@
   if (!H) return;
   const $ = (id) => document.getElementById(id);
   const COLORS = ["#63f4ff", "#ff42d0", "#a855f7", "#ffc861", "#ffffff", "#73ffce"];
+  const FADE = 0.6;                       // seconds the welcome takes to fade away
 
   /* the beats, in seconds from the start */
   const TIMING = {
-    first: { counts: [0.12, 0.42, 0.72], ignite: 1.02, rise: [1.06, 1.72], warp: [1.42, 1.9], bloom: [1.74, 2.1], lock: 1.86, burst: 1.9, end: 2.78 },
-    back: { counts: [], ignite: 0.1, rise: [0.14, 0.86], warp: [0.56, 1.0], bloom: [0.82, 1.14], lock: 0.9, burst: null, end: 1.9 }
+    first: { counts: [0.12, 0.42, 0.72], ignite: 1.02, rise: [1.06, 1.72], warp: [1.42, 1.9], bloom: [1.74, 2.1], lock: 1.86, burst: 1.9, end: 4.3 },
+    back: { counts: [], ignite: 0.1, rise: [0.14, 0.86], warp: [0.56, 1.0], bloom: [0.82, 1.14], lock: 0.9, burst: null, end: 3.3 }
   };
 
   /* ================================ sound ================================ */
@@ -47,27 +49,62 @@
         setTimeout(fin, ms || 160);
       });
     }
+
+    /* raw material, made once per audio context: stereo noises, rocket crackle, turbulence, a big dark hall */
     function buffers(c) {
       let b = store.get(c);
       if (b) return b;
-      const rate = c.sampleRate, len = rate * 2;
-      const white = c.createBuffer(1, len, rate), brown = c.createBuffer(1, len, rate);
-      const w = white.getChannelData(0), br = brown.getChannelData(0);
-      let last = 0;
-      for (let i = 0; i < len; i++) {
-        const x = Math.random() * 2 - 1;
-        w[i] = x;
-        last = (last + 0.02 * x) / 1.02;
-        br[i] = last * 3.5;
+      const rate = c.sampleRate, len = Math.floor(rate * 2);
+      const white = c.createBuffer(2, len, rate), brown = c.createBuffer(2, len, rate), pink = c.createBuffer(2, len, rate);
+      const crackle = c.createBuffer(2, len, rate), wobble = c.createBuffer(1, len, rate);
+      for (let ch = 0; ch < 2; ch++) {
+        const w = white.getChannelData(ch), br = brown.getChannelData(ch), pk = pink.getChannelData(ch), cr = crackle.getChannelData(ch);
+        let last = 0, b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < len; i++) {
+          const x = Math.random() * 2 - 1;
+          w[i] = x;
+          last = (last + 0.02 * x) / 1.02;
+          br[i] = last * 3.5;
+          b0 = 0.99886 * b0 + x * 0.0555179; b1 = 0.99332 * b1 + x * 0.0750759; b2 = 0.969 * b2 + x * 0.153852;
+          b3 = 0.8665 * b3 + x * 0.3104856; b4 = 0.55 * b4 + x * 0.5329522; b5 = -0.7616 * b5 - x * 0.016898;
+          pk[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + x * 0.5362) * 0.11;
+          b6 = x * 0.115926;
+        }
+        // the crackle of a real rocket: sparse, lopsided shock pops
+        for (let i = 0; ;) {
+          i += 1 + Math.floor(-Math.log(1 - Math.random()) * rate / 320);
+          if (i >= len) break;
+          const a = (0.2 + Math.random() * 0.8) * (Math.random() < 0.12 ? 1.8 : 1), tau = 2 + Math.random() * 14;
+          for (let k = 0; k < 48 && i + k < len; k++) cr[i + k] += a * Math.exp(-k / tau);
+        }
       }
-      const irLen = Math.floor(rate * 2.4), ir = c.createBuffer(2, irLen, rate);
+      // turbulence: a slow churn with a faster flutter on top
+      const wb = wobble.getChannelData(0), slowEvery = Math.floor(rate / 9), fastEvery = Math.floor(rate / 33);
+      let cur = 0, aim = 0, fast = 0, faim = 0;
+      for (let i = 0; i < len; i++) {
+        if (i % slowEvery === 0) aim = Math.random() * 2 - 1;
+        if (i % fastEvery === 0) faim = Math.random() * 2 - 1;
+        cur += (aim - cur) * (40 / rate);
+        fast += (faim - fast) * (160 / rate);
+        wb[i] = cur * 0.75 + fast * 0.35;
+      }
+      // a big, dark hall: the tail loses its top end as it dies away
+      const irLen = Math.floor(rate * 3.4), ir = c.createBuffer(2, irLen, rate), pre = Math.floor(rate * 0.022);
       for (let ch = 0; ch < 2; ch++) {
         const d = ir.getChannelData(ch);
-        for (let i = 0; i < irLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2.6);
+        let y = 0;
+        for (let i = pre; i < irLen; i++) {
+          const k = (i - pre) / (irLen - pre);
+          y += (0.55 - 0.47 * k) * ((Math.random() * 2 - 1) - y);
+          d[i] = y * Math.pow(1 - k, 2.2) * 1.6;
+        }
+        [0.031, 0.047, 0.066, 0.089].forEach((s, n) => { const j = Math.floor(rate * (s + ch * 0.004)); if (j < irLen) d[j] += 0.5 / (n + 1); });
       }
-      const sat = new Float32Array(1024);
-      for (let i = 0; i < 1024; i++) sat[i] = Math.tanh((i / 511.5 - 1) * 2.6);
-      b = { white: white, brown: brown, ir: ir, sat: sat };
+      const curve = (k) => { const a = new Float32Array(2048); for (let i = 0; i < 2048; i++) a[i] = Math.tanh((i / 1023.5 - 1) * k) / Math.tanh(k); return a; };
+      // the safety clipper: clean up to 0.66, then rounds off smoothly to a ceiling of 0.95 (the curve covers -2..2)
+      const clip = new Float32Array(4096);
+      for (let i = 0; i < 4096; i++) { const x = (i / 4095) * 4 - 2, ax = Math.abs(x); clip[i] = ax <= 0.66 ? x : Math.sign(x) * (0.66 + 0.29 * Math.tanh((ax - 0.66) / 0.29)); }
+      b = { white: white, brown: brown, pink: pink, crackle: crackle, wobble: wobble, ir: ir, warm: curve(1.6), hot: curve(4), clip: clip };
       store.set(c, b);
       return b;
     }
@@ -75,164 +112,194 @@
     /* one launch's worth of instruments, all feeding one bus so a skip can silence everything at once */
     function kit(c, dest) {
       const B = buffers(c);
-      const LEVEL = 0.72;
+      const LEVEL = 0.4;
       const bus = c.createGain();
-      const comp = c.createDynamicsCompressor();
-      comp.threshold.value = -18; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.25;
+      // no compressor: Web Audio's adds makeup gain and flattens every hit. Levels are set by hand,
+      // and a soft clipper rounds off the odd peak instead
+      const floor = c.createBiquadFilter();                    // nothing below 30 Hz: you can't hear it and it eats headroom
+      floor.type = "highpass"; floor.frequency.value = 30; floor.Q.value = 0.7;
       const master = c.createGain();
       master.gain.value = LEVEL;
-      bus.connect(comp); comp.connect(master); master.connect(dest || c.destination);
+      const half = c.createGain();                             // the clip curve covers -2..2
+      half.gain.value = 0.5;
+      const clip = c.createWaveShaper();
+      clip.curve = B.clip; clip.oversample = "4x";
+      bus.connect(floor); floor.connect(master); master.connect(half); half.connect(clip); clip.connect(dest || c.destination);
       const rv = c.createConvolver();
       rv.buffer = B.ir;
       rv.connect(bus);
 
-      const send = (node, amt) => { const s = c.createGain(); s.gain.value = amt; node.connect(s); s.connect(rv); };
-      function amp(t, peak, a, d, wet) {
-        const g = c.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(peak, t + a);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
-        g.connect(bus);
-        if (wet) send(g, wet);
-        return g;
-      }
+      const G = (v) => { const g = c.createGain(); g.gain.value = v === undefined ? 1 : v; return g; };
+      const chain = (...n) => { for (let i = 0; i < n.length - 1; i++) n[i].connect(n[i + 1]); return n[n.length - 1]; };
+      const out = (node, wet) => { node.connect(bus); if (wet) { const s = G(wet); node.connect(s); s.connect(rv); } return node; };
       function osc(type, f, t, end) { const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.start(t); o.stop(end); return o; }
-      function src(buf, t, end, loop) { const s = c.createBufferSource(); s.buffer = buf; s.loop = !!loop; s.start(t, loop ? Math.random() * 1.5 : 0); s.stop(end); return s; }
-      function filter(type, f, q) { const b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q !== undefined) b.Q.value = q; return b; }
-
-      // countdown: a bright synth pluck on a sub thump, a click on top
-      function tick(t, f) {
-        const g = amp(t, 0.26, 0.004, 0.32, 0.22);
-        const lp = filter("lowpass", 5200, 8);
-        lp.frequency.setValueAtTime(5200, t); lp.frequency.exponentialRampToValueAtTime(650, t + 0.3);
-        lp.connect(g);
-        osc("square", f, t, t + 0.4).connect(lp);
-        const o2 = osc("sawtooth", f, t, t + 0.4); o2.detune.value = 9; o2.connect(lp);
-        const s = amp(t, 0.55, 0.003, 0.17);
-        const so = osc("sine", 180, t, t + 0.22); so.frequency.exponentialRampToValueAtTime(48, t + 0.15); so.connect(s);
-        const k = amp(t, 0.18, 0.001, 0.035);
-        const hp = filter("highpass", 2600); hp.connect(k);
-        src(B.white, t, t + 0.06).connect(hp);
-      }
-      // "go": the same voice an octave up, stacked with a fifth, held longer
-      function go(t, f) {
-        const g = amp(t, 0.2, 0.004, 0.75, 0.4);
-        const lp = filter("lowpass", 7000, 6);
-        lp.frequency.setValueAtTime(7000, t); lp.frequency.exponentialRampToValueAtTime(900, t + 0.7);
-        lp.connect(g);
-        [f, f * 1.5, f * 2].forEach((x, i) => { const o = osc(i ? "sawtooth" : "square", x, t, t + 0.85); o.detune.value = i * 6 - 6; o.connect(lp); });
-      }
-      // ignition: a saturated sub boom, a blast of filtered noise, a crack
-      function ignite(t, p) {
-        const b = amp(t, 0.9 * p, 0.006, 1.15);
-        const lp = filter("lowpass", 650); lp.connect(b);
-        const ws = c.createWaveShaper(); ws.curve = B.sat; ws.connect(lp);
-        const o = osc("sine", 135, t, t + 1.3); o.frequency.exponentialRampToValueAtTime(30, t + 0.9); o.connect(ws);
-        const n = amp(t, 0.6 * p, 0.008, 1.0, 0.3);
-        const nlp = filter("lowpass", 3400, 0.8);
-        nlp.frequency.setValueAtTime(3400, t); nlp.frequency.exponentialRampToValueAtTime(200, t + 0.95);
-        nlp.connect(n);
-        src(B.white, t, t + 1.1).connect(nlp);
-        const k = amp(t, 0.3 * p, 0.002, 0.2, 0.25);
-        const hp = filter("highpass", 1800); hp.connect(k);
-        src(B.white, t, t + 0.25).connect(hp);
-      }
-      // a low rumble building under the countdown
-      function drone(t, dur, peak) {
-        const g = c.createGain();
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + dur); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.25);
-        g.connect(bus);
-        const lp = filter("lowpass", 90, 1.5);
-        lp.frequency.setValueAtTime(90, t); lp.frequency.exponentialRampToValueAtTime(240, t + dur);
-        lp.connect(g);
-        src(B.brown, t, t + dur + 0.3, true).connect(lp);
-      }
-      // the engine: brown noise opening up as the rocket climbs, with a flutter and a crackle
-      function roar(t, dur, peak) {
-        const g = c.createGain();
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.1);
-        g.gain.setValueAtTime(peak, t + dur * 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        g.connect(bus);
-        const fl = c.createGain(); fl.gain.value = 1; fl.connect(g);
-        const lfo = osc("sine", 17, t, t + dur); const lg = c.createGain(); lg.gain.value = 0.28; lfo.connect(lg); lg.connect(fl.gain);
-        const lp = filter("lowpass", 220, 1.2);
-        lp.frequency.setValueAtTime(220, t); lp.frequency.exponentialRampToValueAtTime(1300, t + dur * 0.7);
-        lp.connect(fl);
-        src(B.brown, t, t + dur + 0.05, true).connect(lp);
-        const cg = c.createGain();
-        cg.gain.setValueAtTime(0.0001, t); cg.gain.exponentialRampToValueAtTime(peak * 0.16, t + 0.12); cg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        cg.connect(bus);
-        const bp = filter("bandpass", 2600, 0.7); bp.connect(cg);
-        src(B.white, t, t + dur + 0.05, true).connect(bp);
-      }
-      // the riser: a noise sweep and two detuned saws climbing into the bloom
-      function riser(t, dur, level) {
-        const g = c.createGain();
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.38 * level, t + dur * 0.88); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.12);
-        g.connect(bus); send(g, 0.3);
-        const bp = filter("bandpass", 380, 2.4);
-        bp.frequency.setValueAtTime(380, t); bp.frequency.exponentialRampToValueAtTime(7600, t + dur);
-        bp.connect(g);
-        src(B.white, t, t + dur + 0.15).connect(bp);
-        const pg = c.createGain();
-        pg.gain.setValueAtTime(0.0001, t); pg.gain.exponentialRampToValueAtTime(0.085 * level, t + dur * 0.92); pg.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.1);
-        pg.connect(bus); send(pg, 0.3);
-        const plp = filter("lowpass", 700, 3);
-        plp.frequency.setValueAtTime(700, t); plp.frequency.exponentialRampToValueAtTime(6500, t + dur);
-        plp.connect(pg);
-        [0, 14].forEach((d) => { const o = osc("sawtooth", 115, t, t + dur + 0.15); o.detune.value = d; o.frequency.exponentialRampToValueAtTime(940, t + dur); o.connect(plp); });
-      }
-      // the bloom: a sub drop, a soft thump and a shimmer
-      function impact(t, p) {
-        const s = amp(t, 0.8 * p, 0.005, 1.5);
-        const o = osc("sine", 92, t, t + 1.6); o.frequency.exponentialRampToValueAtTime(27, t + 1.4); o.connect(s);
-        const n = amp(t, 0.4 * p, 0.005, 0.6, 0.55);
-        const lp = filter("lowpass", 1600);
-        lp.frequency.setValueAtTime(1600, t); lp.frequency.exponentialRampToValueAtTime(110, t + 0.6);
-        lp.connect(n);
-        src(B.white, t, t + 0.7).connect(lp);
-        const sh = amp(t, 0.09 * p, 0.02, 1.3, 0.8);
-        const hp = filter("highpass", 6500); hp.connect(sh);
-        src(B.white, t, t + 1.4).connect(hp);
-      }
-      // the welcome: a wide major-ninth chord that opens up, with a bass note under it
-      function pad(t, dur, level) {
-        [261.63, 329.63, 392.0, 493.88, 587.33].forEach((f) => {
-          const g = c.createGain();
-          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(level, t + 0.03);
-          g.gain.exponentialRampToValueAtTime(level * 0.5, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-          g.connect(bus); send(g, 0.55);
-          const lp = filter("lowpass", 900, 1.6);
-          lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(5200, t + 0.14); lp.frequency.exponentialRampToValueAtTime(1500, t + dur);
-          lp.connect(g);
-          [-10, 10].forEach((d) => { const o = osc("sawtooth", f, t, t + dur + 0.05); o.detune.value = d; o.connect(lp); });
-        });
-        const b = amp(t, level * 4, 0.02, dur * 0.9);
-        osc("sine", 65.41, t, t + dur).connect(b);
-      }
-      // a bell: FM, bright and quick
-      function bell(t, f, level) {
-        const g = amp(t, level, 0.002, 0.85, 0.55);
-        const car = osc("sine", f, t, t + 0.95);
-        const mod = osc("sine", f * 3.51, t, t + 0.95);
-        const mg = c.createGain(); mg.gain.setValueAtTime(f * 1.3, t); mg.gain.exponentialRampToValueAtTime(1, t + 0.3);
-        mod.connect(mg); mg.connect(car.frequency); car.connect(g);
-      }
-      function bells(t, n, level) {
-        const S = [1046.5, 1174.66, 1318.51, 1567.98, 1760, 2093];
-        for (let i = 0; i < n; i++) bell(t + i * 0.055 + Math.random() * 0.02, S[(Math.random() * S.length) | 0], level);
-      }
-      // "welcome back": two notes up
-      function chime(t, level) { bell(t, 783.99, level); bell(t + 0.12, 1046.5, level); bell(t + 0.12, 1567.98, level * 0.4); }
-      // confetti: little pitch-up pops
-      function pops(t, n) {
-        for (let i = 0; i < n; i++) {
-          const tt = t + Math.random() * 0.4;
-          const g = amp(tt, 0.13, 0.002, 0.07);
-          const o = osc("sine", 420 + Math.random() * 300, tt, tt + 0.1);
-          o.frequency.exponentialRampToValueAtTime(1500 + Math.random() * 900, tt + 0.045);
-          o.connect(g);
+      function src(buf, t, end, rate) { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; if (rate) s.playbackRate.value = rate; s.start(t, Math.random() * 1.5); s.stop(end); return s; }
+      function filt(type, f, q) { const b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q !== undefined) b.Q.value = q; return b; }
+      function shaper(curve) { const w = c.createWaveShaper(); w.curve = curve; w.oversample = "2x"; return w; }
+      // env(param, t, [[time, value, "exp"?], ...]): linear unless marked exp
+      function env(p, t, pts) {
+        p.setValueAtTime(pts[0][1], t + pts[0][0]);
+        for (let i = 1; i < pts.length; i++) {
+          const [dt, v, kind] = pts[i];
+          if (kind === "exp") p.exponentialRampToValueAtTime(Math.max(v, 0.0001), t + dt);
+          else p.linearRampToValueAtTime(v, t + dt);
         }
+      }
+      function churn(t, end, depth, param) { chain(src(B.wobble, t, end), G(depth), param); }
+
+      // under the countdown: a low hum, distant rumble, and a growl that powers up an octave (D1 to D2)
+      function charge(t, dur) {
+        const hum = out(G(0));
+        env(hum.gain, t, [[0, 0], [0.35, 0.08], [dur, 0.11], [dur + 0.12, 0]]);
+        osc("sine", 36.71, t, t + dur + 0.2).connect(hum);
+        const tri = osc("triangle", 73.42, t, t + dur + 0.2); tri.detune.value = 5;
+        chain(tri, filt("lowpass", 260), G(0.5), hum);
+        const rum = out(G(0));
+        env(rum.gain, t, [[0, 0], [dur, 0.2], [dur + 0.1, 0]]);
+        chain(src(B.brown, t, t + dur + 0.2), filt("lowpass", 95, 0.9), rum);
+        const growl = out(G(0.0001), 0.2);
+        env(growl.gain, t, [[0, 0.0001], [dur, 0.2, "exp"], [dur + 0.05, 0.0001, "exp"]]);
+        const lp = filt("lowpass", 110, 5);
+        lp.frequency.setValueAtTime(110, t); lp.frequency.exponentialRampToValueAtTime(780, t + dur);
+        chain(lp, shaper(B.warm), filt("lowpass", 1400), growl);
+        [-11, 0, 8].forEach((d) => {
+          const o = osc("sawtooth", 36.71, t, t + dur + 0.1);
+          o.detune.value = d; o.frequency.exponentialRampToValueAtTime(73.42, t + dur);
+          o.connect(lp);
+        });
+      }
+      // a countdown hit: a deep kick, a dark thump and a low metal ring
+      function hit(t, p) {
+        const k = out(G(0));
+        env(k.gain, t, [[0, 0], [0.004, 0.75 * p], [0.75, 0.0001, "exp"]]);
+        const ko = osc("sine", 125, t, t + 0.8);
+        ko.frequency.exponentialRampToValueAtTime(41, t + 0.24);
+        chain(ko, shaper(B.hot), k);
+        const body = out(G(0), 0.3);                             // the thud you hear on small speakers
+        env(body.gain, t, [[0, 0], [0.004, 1.0 * p], [0.3, 0.0001, "exp"]]);
+        const bo = osc("sine", 220, t, t + 0.35);
+        bo.frequency.exponentialRampToValueAtTime(98, t + 0.14);
+        chain(bo, shaper(B.hot), filt("lowpass", 1400), body);
+        const th = out(G(0), 0.4);
+        env(th.gain, t, [[0, 0], [0.006, 0.5 * p], [0.32, 0.0001, "exp"]]);
+        const tl = filt("lowpass", 1100, 0.8);
+        tl.frequency.setValueAtTime(1100, t); tl.frequency.exponentialRampToValueAtTime(160, t + 0.28);
+        chain(src(B.white, t, t + 0.35, 0.6), tl, th);
+        const ring = out(G(0), 0.55);
+        env(ring.gain, t, [[0, 0], [0.01, 0.13 * p], [0.9, 0.0001, "exp"]]);
+        [55, 131.2, 211.4].forEach((f, i) => chain(osc("sine", f, t, t + 1), G([1, 0.8, 0.5][i]), ring));
+        const ck = out(G(0), 0.3);
+        env(ck.gain, t, [[0, 0], [0.002, 1.2 * p], [0.05, 0.0001, "exp"]]);
+        chain(src(B.white, t, t + 0.08), filt("bandpass", 1900, 0.9), ck);
+        const skin = out(G(0), 0.45);                            // a taiko-like skin so it lands on laptop speakers too
+        env(skin.gain, t, [[0, 0], [0.003, 6 * p], [0.22, 0.0001, "exp"]]);
+        chain(src(B.pink, t, t + 0.25), filt("bandpass", 620, 0.8), shaper(B.warm), skin);
+      }
+      // ignition: a saturated sub boom, a roaring blast and the whoomp of the fuel catching
+      function ignite(t, p) {
+        const b = out(G(0));
+        env(b.gain, t, [[0, 0], [0.006, 0.9 * p], [1.6, 0.0001, "exp"]]);
+        const bo = osc("sine", 96, t, t + 2.4);
+        bo.frequency.exponentialRampToValueAtTime(26, t + 1.5);
+        chain(bo, shaper(B.hot), filt("lowpass", 420), b);
+        const n = out(G(0), 0.38);
+        env(n.gain, t, [[0, 0], [0.012, 0.9 * p], [1.6, 0.0001, "exp"]]);
+        const nl = filt("lowpass", 7000, 0.6);
+        nl.frequency.setValueAtTime(7000, t); nl.frequency.exponentialRampToValueAtTime(170, t + 1.7);
+        chain(src(B.white, t, t + 2.1), shaper(B.warm), nl, n);
+        const w = out(G(0.0001), 0.3);
+        env(w.gain, t, [[0, 0.0001], [0.07, 0.65 * p, "exp"], [0.7, 0.0001, "exp"]]);
+        chain(src(B.pink, t, t + 0.8), filt("bandpass", 230, 1.1), w);
+        const cr = out(G(0), 0.35);
+        env(cr.gain, t, [[0, 0], [0.004, 0.6 * p], [0.3, 0.0001, "exp"]]);
+        chain(src(B.white, t, t + 0.35), filt("bandpass", 1500, 0.7), shaper(B.warm), cr);
+      }
+      // the engine: rumble, roar and crackle that churn, then fall away as the ship climbs out of sight
+      function engine(t, dur, p, away) {
+        const end = t + dur + 0.05;
+        const o = out(G(0), 0.22);
+        env(o.gain, t, [[0, 0], [0.16, 2.5 * p], [away, 2.5 * p], [dur, 0.0001, "exp"]]);   // filtered noise runs quiet, so it gets a lift
+        const dist = filt("lowpass", 9000, 0.5);
+        dist.frequency.setValueAtTime(9000, t + away); dist.frequency.exponentialRampToValueAtTime(650, t + dur);
+        dist.connect(o);
+        const rg = G(0.7), og = G(0.95), tg = G(0.55), cg = G(0.9);
+        chain(src(B.brown, t, end), filt("lowpass", 150, 0.8), rg, dist);
+        chain(src(B.pink, t, end, 0.9), filt("bandpass", 480, 0.45), shaper(B.warm), og, dist);
+        chain(src(B.pink, t, end, 1.1), filt("bandpass", 1600, 0.6), shaper(B.warm), tg, dist);
+        chain(src(B.crackle, t, end, 0.85 + Math.random() * 0.1), filt("highpass", 500), filt("bandpass", 2100, 0.65), shaper(B.warm), cg, dist);
+        chain(src(B.white, t, end), filt("highpass", 5200), G(0.05), dist);
+        chain(osc("sine", 38, t, end), G(0.15), dist);
+        churn(t, end, 0.3, rg.gain); churn(t, end, 0.35, og.gain); churn(t, end, 0.3, tg.gain); churn(t, end, 0.55, cg.gain);
+      }
+      // the ship tearing past and away
+      function whoosh(t, dur, p) {
+        const g = out(G(0), 0.35);
+        env(g.gain, t, [[0, 0], [dur * 0.55, 0.62 * p], [dur, 0]]);
+        const bp = filt("bandpass", 170, 1.2);
+        bp.frequency.setValueAtTime(170, t); bp.frequency.exponentialRampToValueAtTime(2200, t + dur * 0.55); bp.frequency.exponentialRampToValueAtTime(300, t + dur);
+        chain(src(B.pink, t, t + dur + 0.05), bp, g);
+      }
+      // the jump: a low saw cluster climbing two octaves (D1 to D3) into the hit, with a reversed swell
+      function jump(t, dur, p) {
+        const g = out(G(0.0001), 0.25);
+        env(g.gain, t, [[0, 0.0001], [dur, 0.36 * p, "exp"], [dur + 0.025, 0.0001, "exp"]]);
+        const lp = filt("lowpass", 150, 6);
+        lp.frequency.setValueAtTime(150, t); lp.frequency.exponentialRampToValueAtTime(3000, t + dur);
+        chain(lp, shaper(B.hot), filt("lowpass", 4200), g);
+        [-10, 0, 10].forEach((d) => {
+          const o = osc("sawtooth", 36.71, t, t + dur + 0.05);
+          o.detune.value = d; o.frequency.exponentialRampToValueAtTime(146.83, t + dur);
+          o.connect(lp);
+        });
+        const s = out(G(0.0001));
+        env(s.gain, t, [[0, 0.0001], [dur, 0.38 * p, "exp"], [dur + 0.02, 0.0001, "exp"]]);
+        chain(src(B.white, t, t + dur + 0.05), filt("highpass", 380), filt("lowpass", 6500), s);
+      }
+      // the hit everyone feels: a distorted brass-like stack on D, a sub drop under it, a long dark tail
+      function braam(t, p, hold, release) {
+        const end = t + hold + release;
+        const g = out(G(0), 0.45);
+        env(g.gain, t, [[0, 0], [0.03, 0.9 * p], [0.5, 0.36 * p, "exp"], [Math.min(1.6, hold), 0.12 * p, "exp"], [hold + release, 0.0001, "exp"]]);
+        const lp = filt("lowpass", 220, 2.2);
+        lp.frequency.setValueAtTime(220, t); lp.frequency.exponentialRampToValueAtTime(3600, t + 0.1);
+        lp.frequency.exponentialRampToValueAtTime(1300, t + 0.8); lp.frequency.exponentialRampToValueAtTime(420, end);
+        chain(lp, G(1.6), shaper(B.hot), filt("lowpass", 5000), g);
+        [36.71, 73.42, 110, 146.83].forEach((f, i) => [-7, 7].forEach((d) => {
+          const o = osc(i === 1 && d > 0 ? "square" : "sawtooth", f, t, end + 0.05);
+          o.detune.setValueAtTime(d, t); o.detune.linearRampToValueAtTime(d - 35, end);
+          chain(o, G([0.6, 0.75, 0.55, 0.45][i]), lp);
+        }));
+        const sub = out(G(0));
+        env(sub.gain, t, [[0, 0], [0.01, 0.55 * p], [2.2, 0.0001, "exp"]]);
+        const so = osc("sine", 62, t, t + 2.3);
+        so.frequency.exponentialRampToValueAtTime(29, t + 2.0);
+        chain(so, shaper(B.warm), sub);
+        const k = out(G(0), 0.5);
+        env(k.gain, t, [[0, 0], [0.003, 0.5 * p], [0.28, 0.0001, "exp"]]);
+        chain(src(B.white, t, t + 0.3), filt("lowpass", 2600), k);
+        const slam = out(G(0), 0.55);
+        env(slam.gain, t, [[0, 0], [0.004, 1.8 * p], [0.45, 0.0001, "exp"]]);
+        chain(src(B.pink, t, t + 0.45), filt("bandpass", 760, 0.7), shaper(B.warm), slam);
+      }
+      // the welcome: a warm, wide D chord low down that slowly opens, over a far-off rumble
+      function pad(t, dur, p) {
+        const g = out(G(0), 0.5);
+        env(g.gain, t, [[0, 0], [0.7, 0.27 * p], [dur - 0.9, 0.27 * p], [dur, 0]]);
+        const lp = filt("lowpass", 420, 1.1);
+        lp.frequency.setValueAtTime(420, t); lp.frequency.linearRampToValueAtTime(1500, t + 1.4); lp.frequency.linearRampToValueAtTime(800, t + dur);
+        chain(osc("sine", 0.18, t, t + dur), G(140), lp.frequency);
+        lp.connect(g);
+        [73.42, 110, 146.83, 164.81, 220].forEach((f) => [-6, 6].forEach((d) => {
+          const o = osc("sawtooth", f, t, t + dur + 0.05);
+          o.detune.value = d;
+          chain(o, G(0.22), lp);
+        }));
+        const sub = out(G(0));
+        env(sub.gain, t, [[0, 0], [0.8, 0.12 * p], [dur, 0]]);
+        osc("sine", 36.71, t, t + dur + 0.05).connect(sub);
+        const r = out(G(0));
+        env(r.gain, t, [[0, 0], [0.5, 0.08 * p], [dur, 0]]);
+        chain(src(B.brown, t, t + dur + 0.05), filt("lowpass", 110), r);
       }
       function mute(m) { master.gain.cancelScheduledValues(c.currentTime); master.gain.setTargetAtTime(m ? 0 : LEVEL, c.currentTime, 0.03); }
       function stop(fade) {
@@ -241,34 +308,28 @@
         master.gain.setTargetAtTime(0, now, fade || 0.04);
         setTimeout(() => { try { master.disconnect(); } catch (e) { /* gone */ } }, ((fade || 0.04) * 6 + 0.1) * 1000);
       }
-      return { tick, go, ignite, drone, roar, riser, impact, pad, bells, chime, pops, mute, stop };
+      return { charge, hit, ignite, engine, whoosh, jump, braam, pad, mute, stop };
     }
 
     /* the score, lined up with the picture */
     function score(K, base, mode) {
-      const T = TIMING[mode];
       const at = (x) => base + x;
-      if (mode === "first") {
-        K.drone(at(0), T.ignite, 0.3);
-        [523.25, 659.25, 783.99].forEach((f, i) => K.tick(at(T.counts[i]), f));
-        K.go(at(T.ignite), 1046.5);
-        K.ignite(at(T.ignite), 1);
-        K.roar(at(T.ignite), T.rise[1] - T.ignite + 0.55, 0.7);
-        K.riser(at(T.ignite + 0.05), T.bloom[0] - T.ignite - 0.05, 1);
-        K.impact(at(T.bloom[0]), 1);
-        K.pad(at(T.bloom[0]), 2.2, 0.05);
-        K.bells(at(T.burst), 9, 0.08);
-        K.pops(at(T.burst), 7);
-      } else if (mode === "back") {
-        K.roar(at(0), T.rise[1] + 0.45, 0.5);
-        K.ignite(at(T.ignite), 0.55);
-        K.riser(at(T.rise[0]), T.bloom[0] - T.rise[0], 0.8);
-        K.impact(at(T.bloom[0]), 0.5);
-        K.pad(at(T.bloom[0]), 1.8, 0.04);
-        K.chime(at(T.lock + 0.04), 0.12);
-      } else {                                 // reduced motion: just the welcome
-        K.pad(at(0.05), 1.8, 0.04);
-        K.chime(at(0.2), 0.11);
+      if (mode === "first" || mode === "back") {
+        const T = TIMING[mode], first = mode === "first";
+        const hold = T.end - T.bloom[0];                       // how long the welcome stays up
+        if (first) {
+          K.charge(at(0), T.ignite);
+          T.counts.forEach((c, i) => K.hit(at(c), [0.45, 0.56, 0.68][i]));   // each boom bigger than the last
+        }
+        K.ignite(at(T.ignite), first ? 1 : 0.7);
+        K.engine(at(T.ignite), T.bloom[0] - T.ignite + (first ? 0.55 : 0.5), first ? 0.95 : 0.85, T.rise[1] - T.ignite - 0.2);   // full roar until it's nearly out of sight, then room for the hit
+        K.whoosh(at(T.rise[0] + (first ? 0.22 : 0.15)), T.rise[1] - T.rise[0] + (first ? 0.2 : 0.15), first ? 1 : 0.85);
+        const jumpAt = first ? T.ignite + 0.2 : T.rise[0] + 0.25;
+        K.jump(at(jumpAt), T.bloom[0] - jumpAt, first ? 1 : 0.8);
+        K.braam(at(T.bloom[0]), first ? 1 : 0.95, hold * 0.45, hold * 0.55 + FADE + 0.6);
+        K.pad(at(T.lock - 0.1), T.end - T.lock + FADE + 0.9, first ? 1 : 0.9);
+      } else {                                               // reduced motion: just the welcome
+        K.pad(at(0.05), 2.6, 0.9);
       }
     }
     return { on: on, setOn: setOn, context: context, unlock: unlock, ready: ready, kit: kit, score: score };
@@ -297,6 +358,7 @@
       root.dataset.mode = mode;
       root.classList.remove("fade-out", "gated");
       root.style.transform = "";
+      root.style.setProperty("--fade", FADE + "s");
       root.hidden = false;
       root.removeAttribute("aria-hidden");
       root.setAttribute("role", "dialog");
@@ -305,7 +367,7 @@
       document.body.style.overflow = "hidden";
       skipBtn.focus({ preventScroll: true });
 
-      let finished = false, started = false, gated = false, raf = 0, K = null;
+      let finished = false, stopped = false, started = false, gated = false, raf = 0, K = null;
       const born = performance.now();
       let t0 = 0, last = born;
 
@@ -326,7 +388,6 @@
       };
 
       function cleanup() {
-        cancelAnimationFrame(raf);
         window.removeEventListener("keydown", onKey);
         root.removeEventListener("click", onClick);
         window.removeEventListener("resize", size);
@@ -335,12 +396,17 @@
         if (finished) return;
         finished = true;
         cleanup();
-        if (K && fast) K.stop(0.04);
+        if (fast) { stopped = true; cancelAnimationFrame(raf); }  // a natural end keeps drawing through the fade
+        if (K && fast) K.stop(0.05);
         // let the last chord ring out, then let the sound card sleep
         const c = SFX.context();
-        if (c) setTimeout(() => { if (root.hidden && c.state === "running" && c.suspend) c.suspend().catch(() => {}); }, fast ? 600 : 3200);
+        if (c) setTimeout(() => { if (root.hidden && c.state === "running" && c.suspend) c.suspend().catch(() => {}); }, fast ? 600 : 3600);
+        const fade = fast ? 0.22 : FADE;
+        root.style.setProperty("--fade", fade + "s");
         root.classList.add("fade-out");
         setTimeout(() => {
+          stopped = true;
+          cancelAnimationFrame(raf);
           root.hidden = true;
           root.setAttribute("aria-hidden", "true");
           root.classList.remove("fade-out", "gated");
@@ -350,20 +416,22 @@
           const main = $("hub-main");
           if (main) main.focus({ preventScroll: true });
           resolve();
-        }, fast ? 220 : 320);
+        }, fade * 1000 + 20);
       }
       function begin() {
         if (started || finished) return;
         started = true;
-        t0 = performance.now() + 30;
         const c = SFX.on() ? SFX.context() : null;              // sound off: don't wake the audio at all
+        let base = 0;
         if (c && c.state === "running") {
           try {
-            K = SFX.kit(c);
+            K = SFX.kit(c);                                     // made before the clock starts, so the picture and sound line up
             K.mute(!SFX.on());
-            SFX.score(K, c.currentTime + 0.03, H.reduce ? "calm" : mode);
+            base = c.currentTime + 0.03;
+            SFX.score(K, base, H.reduce ? "calm" : mode);
           } catch (e) { K = null; }
         }
+        t0 = performance.now() + 30;
       }
       function launchFromGate() {
         if (!gated) return;
@@ -398,7 +466,7 @@
         g2.fillStyle = "#000"; g2.fillRect(0, 0, W, Hh);
         lock.style.transition = "opacity .5s ease";
         requestAnimationFrame(() => { lock.style.opacity = "1"; lock.style.transform = "translate(-50%, -50%)"; });
-        setTimeout(() => finish(false), 1900);
+        setTimeout(() => finish(false), 2600);
         return;
       }
 
@@ -419,12 +487,12 @@
         for (let i = 0; i < 120; i++) {
           const ang = -Math.PI / 2 + (rnd() - 0.5) * Math.PI * 1.6, sp = 260 + rnd() * 620;
           parts.push({ kind: i % 5 ? "confetti" : "spark", x: cx, y: cy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, w: 6 + rnd() * 7, h: 3 + rnd() * 4,
-            rot: rnd() * 6.28, vr: (rnd() - 0.5) * 14, r: 1.6 + rnd() * 2.4, life: 1.1 + rnd() * 0.8, age: 0, col: COLORS[i % COLORS.length] });
+            rot: rnd() * 6.28, vr: (rnd() - 0.5) * 14, r: 1.6 + rnd() * 2.4, life: 1.6 + rnd() * 1.0, age: 0, col: COLORS[i % COLORS.length] });
         }
       }
 
       function frame(now) {
-        if (finished) return;
+        if (stopped) return;
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         const t = started ? (now - t0) / 1000 : -1;          // -1 while waiting on the Launch button
@@ -446,24 +514,28 @@
           if (mode === "first" && t < TL.ignite) shake = 0.6 + (t / TL.ignite) * 2.6;
           const since = t - TL.ignite;
           if (since >= 0 && since < 0.7) shake = Math.max(shake, (mode === "first" ? 10 : 5) * (1 - since / 0.7));
+          const boom = t - TL.bloom[0];
+          if (boom >= 0 && boom < 0.45) shake = Math.max(shake, (mode === "first" ? 7 : 4) * (1 - boom / 0.45));
         }
         if (shake > 0.2) root.style.transform = "translate(" + ((rnd() - 0.5) * shake).toFixed(1) + "px," + ((rnd() - 0.5) * shake).toFixed(1) + "px) scale(1.02)";
         else if (root.style.transform) root.style.transform = "";
 
-        // stars, stretching into the warp
+        // stars: stretch into the warp, then settle to a cruise while the welcome holds
         const warp = t < TL.warp[0] ? 0 : Math.min(1, (t - TL.warp[0]) / (TL.warp[1] - TL.warp[0]));
+        const cruise = t > TL.warp[1] ? Math.min(1, (t - TL.warp[1]) / 1.4) : 0;
+        const speed = warp * (1 - 0.72 * cruise);
         g2.fillStyle = warp > 0 ? "rgba(0,0,0,0.35)" : "#000";
         g2.fillRect(0, 0, W, Hh);
         const fadeIn = Math.min(1, life / 0.3);
         for (const s of stars) {
-          if (warp > 0) s.z -= dt * (0.25 + warp * 2.8);
+          if (warp > 0) s.z -= dt * (0.25 + speed * 2.8);
           if (s.z <= 0.02) { s.x = (rnd() - 0.5) * 2; s.y = (rnd() - 0.5) * 2; s.z = 1; }
           const k = 0.55 / s.z;
           const x = cx + s.x * W * 0.5 * k, y = cy + s.y * Hh * 0.5 * k;
           g2.globalAlpha = s.a * fadeIn * Math.min(1, (1.05 - s.z) * 2);
           if (warp > 0) {
-            const k2 = 0.55 / Math.min(1, s.z + 0.04 + warp * 0.12);
-            g2.strokeStyle = "#cffcff"; g2.lineWidth = 1 + warp;
+            const k2 = 0.55 / Math.min(1, s.z + 0.04 + speed * 0.12);
+            g2.strokeStyle = "#cffcff"; g2.lineWidth = 1 + speed;
             g2.beginPath(); g2.moveTo(cx + s.x * W * 0.5 * k2, cy + s.y * Hh * 0.5 * k2); g2.lineTo(x, y); g2.stroke();
           } else {
             g2.fillStyle = "#fff";
@@ -588,14 +660,14 @@
           g2.globalAlpha = 1;
         }
 
-        // the welcome lands (with confetti the first time)
+        // the welcome lands (with confetti the first time), holds, then fades
         if (t >= TL.lock && !shown.lock) {
           shown.lock = true;
           lock.style.opacity = "";
           lock.classList.add("show");
         }
         if (TL.burst !== null && t >= TL.burst && !shown.burst) { shown.burst = true; confetti(cx, cy - 30); }
-        if (t >= TL.end) { finish(false); return; }
+        if (t >= TL.end && !finished) finish(false);
         raf = requestAnimationFrame(frame);
       }
       raf = requestAnimationFrame(frame);
@@ -616,5 +688,5 @@
     foot.addEventListener("click", () => { const v = !SFX.on(); SFX.setOn(v); if (v) SFX.unlock(); syncFooter(); });
   }
 
-  H.launch = { play: play, sfx: SFX, timing: TIMING };
+  H.launch = { play: play, sfx: SFX, timing: TIMING, fade: FADE };
 })();
