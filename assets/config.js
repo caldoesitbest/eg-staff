@@ -9,6 +9,11 @@ window.EG_CONFIG = {
   // The Discord link in the menu and the "Back to the server" button.
   DISCORD_INVITE: "https://discord.gg/enviousgluttony",
 
+  // The "Tattle Tell" button next to the rules: where members go to report someone.
+  // Paste your report channel's link (in Discord, right-click the channel -> Copy Link).
+  // Left empty, it opens the server invite.
+  TATTLE_URL: "",
+
   // Sign-in buttons. Turn one off with false.
   DISCORD_LOGIN: true,
   GOOGLE_LOGIN: false,   // off for now; flip to true once Google is set up in Supabase

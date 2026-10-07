@@ -159,6 +159,8 @@
 
   /* ---------- invite links + applications switch ---------- */
   if (C.DISCORD_INVITE) $$("[data-invite]").forEach((a) => (a.href = C.DISCORD_INVITE));
+  const tattle = $("#tattle-btn");
+  if (tattle && (C.TATTLE_URL || C.DISCORD_INVITE)) tattle.href = C.TATTLE_URL || C.DISCORD_INVITE;
   if (C.APPLICATIONS_OPEN === false) {
     const b = $("#apply-btn");
     if (b) { b.setAttribute("aria-disabled", "true"); b.removeAttribute("href"); b.querySelector("span").textContent = "Applications closed"; }

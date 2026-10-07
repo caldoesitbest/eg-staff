@@ -1526,7 +1526,35 @@ button { font: inherit; color: inherit; }
 .rule h3 { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
 .rule h3 .i { width: 18px; height: 18px; color: var(--violet-2); }
 .rule p { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
-.rules-more { margin-top: 36px; }
+.rules-more { margin-top: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; }
+
+/* Tattle Tell: a neon ring that chases itself round the button, a slow breathing glow, a siren that flashes red and blue */
+.btn-tattle {
+  isolation: isolate; overflow: hidden; color: #ffe6f7; border: 0;
+  background: rgba(255, 66, 208, 0.32);                                  /* the ring's resting colour */
+  box-shadow: 0 0 22px -6px rgba(255, 66, 208, 0.75), 0 0 54px -18px rgba(255, 93, 125, 0.85);
+  text-shadow: 0 0 12px rgba(255, 120, 220, 0.55);
+  animation: tattle-breathe 2.6s ease-in-out infinite;
+}
+.btn-tattle::before {                                                    /* the bright arc that runs round the edge */
+  content: ""; position: absolute; z-index: -2; left: 50%; top: 50%; width: 260%; aspect-ratio: 1; translate: -50% -50%;
+  background: conic-gradient(from 0deg, transparent 0 58%, #ff42d0 72%, #ff8a5c 82%, #ffe08a 87%, transparent 94%);
+  animation: tattle-spin 2.8s linear infinite;
+}
+.btn-tattle::after {                                                     /* the inside, leaving a thin lit edge */
+  content: ""; position: absolute; z-index: -1; inset: 1.5px; border-radius: 12.5px;
+  background: radial-gradient(120% 140% at 50% 0%, rgba(255, 66, 208, 0.22), transparent 60%), linear-gradient(180deg, #2a0a2c, #170722);
+  transition: background-color 0.3s ease;
+}
+.btn-tattle .i { color: #ff5d7d; filter: drop-shadow(0 0 6px currentColor); animation: tattle-siren 1.1s steps(1) infinite; }
+.btn-tattle:hover { transform: translateY(-2px); box-shadow: 0 0 30px -4px rgba(255, 66, 208, 0.95), 0 0 80px -14px rgba(255, 93, 125, 1); }
+.btn-tattle:hover::before { animation-duration: 1.1s; }
+.btn-tattle:hover .i { animation-duration: 0.45s; }
+.btn-tattle:focus-visible { outline: 2px solid #ff9ae6; outline-offset: 3px; }
+@keyframes tattle-spin { to { rotate: 360deg; } }
+@keyframes tattle-breathe { 50% { box-shadow: 0 0 34px -4px rgba(255, 66, 208, 0.95), 0 0 72px -14px rgba(255, 93, 125, 0.95); } }
+@keyframes tattle-siren { 0% { color: #ff5d7d; } 50% { color: #63f4ff; } }
+@media (prefers-reduced-motion: reduce) { .btn-tattle, .btn-tattle::before, .btn-tattle .i { animation: none; } }
 @media (min-width: 960px) {
   .rules-grid { grid-template-columns: 5fr 7fr; gap: 48px; align-items: start; }
   .rule-list { grid-template-columns: 1fr 1fr; column-gap: 36px; }
