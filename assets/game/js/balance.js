@@ -80,7 +80,7 @@ export const BALANCE = {
     splitter: { hp: 56, r: 18, speed: 88, contact: 1, score: 20, stars: 1.5, mass: 1.8, threat: 3, splits: 3 },
     mini:     { hp: 10, r: 9, speed: 155, contact: 1, score: 5, stars: 0.4, mass: 0.6, threat: 0 },
     bulwark:  { hp: 115, r: 22, speed: 64, contact: 1, score: 45, stars: 4, mass: 4, threat: 5,
-                turn: 1.5, shieldArc: 1.95 },
+                turn: 1.3, shieldArc: 1.95, vent: { every: [5, 7], time: 1.4 } },   // shield vents (goes dark) every 5-7s
     boomer:   { hp: 26, r: 15, speed: 170, contact: 0, score: 20, stars: 1.5, mass: 1, threat: 2.5,
                 trigger: 100, fuse: 0.75, blast: 118, blastDmg: 2, blastEnemyDmg: 60 },
     sniper:   { hp: 30, r: 14, speed: 85, contact: 1, score: 35, stars: 3, mass: 1, threat: 4,
@@ -122,7 +122,7 @@ export const BALANCE = {
     gap: { min: 1.5, max: 2.2, perWave: 0.06, floorMin: 0.4, floorMax: 0.75 },
     lanes: { two: 9, three: 20 },                       // from these waves, 2 / 3 groups land at once (from different edges)
     group: { max: 2, perWaves: 4, cap: 5 },             // biggest spawn group grows by 1 every N waves
-    hpPerWave: 0.06,                                    // robot health +6% per wave (Marks + traits do the heavy lifting)
+    hpPerWave: 0.06, hpCurve: 0.0012,                   // robot health: 1 + 6%·(wave-1) + 0.12%·(wave-1)²  (≈1.6× at 10, 2.6× at 20, 3.8× at 30)
     shotSpeedPerWave: 0.01, shotSpeedCap: 0.3,          // robot shots get a little faster (not the sniper's)
     speedPerWave: 0.01, speedCap: 0.25,
     spawnWarn: 0.8,                                     // seconds a spawn marker shows before the robot lands
@@ -132,13 +132,15 @@ export const BALANCE = {
   // The Sin Ladder: the same seven rungs, colours and order as the Ladder on the homepage.
   // One sin boss every 5 waves. Beating Envy (wave 35) wins the run; "Keep climbing" laps the
   // ladder again with every boss tougher and faster.
-  ladder: { rungs: 7, lapHp: 0.6, lapPace: 0.85 },      // per extra lap: boss health +60%, attack cooldowns ×0.85
+  ladder: { rungs: 7, lapHp: 0.6, lapPace: 0.85, rungHp: 0.03 },   // per extra lap: boss health +60%, cooldowns ×0.85; per wave up the ladder: +4.5%
 
+  // fightSecs: a boss always has at least this many seconds of your build's firepower in health
+  // (so a snowballed build still gets a real fight; weak builds just use the normal hp).
   bosses: {
     order: ["sloth", "glutton", "greed", "lust", "wrath", "pride", "envy"],
     sloth: {
       name: "Sloth", title: "The Idle King", tagline: "It isn't lazy. It's waiting.", emoji: "sloth", c1: "#b8bfe0", c2: "#8e97c7",
-      hp: 950, r: 56, speed: 34, contact: 2, score: 1200,
+      hp: 950, fightSecs: 16, r: 56, speed: 34, contact: 2, score: 1200,
       drowse: { radius: 250, slow: 0.62 },                                  // you move slower inside its aura
       yawn: { every: [3.8, 4.8], windup: 0.9, count: 18, speed: 150, rings: 2 },
       nap: { every: [11, 13], time: 4, takes: 2, wakeWindup: 0.9, wakeRadius: 200, wakeDmg: 1 },
@@ -147,7 +149,7 @@ export const BALANCE = {
     },
     glutton: {
       name: "Gluttony", title: "The Gluttony Engine", tagline: "It eats its own. Starve it.", emoji: "gluttony", c1: "#ff4f8b", c2: "#c2307a",
-      hp: 2000, r: 58, speed: 52, contact: 2, score: 1800,
+      hp: 2000, fightSecs: 20, r: 58, speed: 52, contact: 2, score: 1800,
       mealHeal: 0.035, mealGrow: 0.05, maxGrow: 1.6,
       inhaleEvery: [6, 8], inhaleTime: 2.4, inhaleRange: 540, pull: 300, playerPull: 85,
       slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2,
@@ -156,15 +158,15 @@ export const BALANCE = {
     },
     greed: {
       name: "Greed", title: "The Golden Vault", tagline: "Every star you leave, it keeps.", emoji: "greed", c1: "#ffd45c", c2: "#e8a820",
-      hp: 2800, r: 50, speed: 70, contact: 2, score: 2400,
-      hoard: { range: 380, pull: 380, heal: 0.003, shieldMax: 6, perPip: 0.08, knockEvery: 0.02, decay: 5 },  // each coin: -8% damage taken; one falls off per 2% of its health you deal, or every 5s
+      hp: 2800, fightSecs: 22, r: 50, speed: 70, contact: 2, score: 2400,
+      hoard: { range: 380, pull: 380, heal: 0.003, shieldMax: 5, perPip: 0.08, knockEvery: 0.02, decay: 5 },  // each coin: -8% damage taken; one falls off per 2% of its health you deal, or every 5s
       coins: { every: [2.2, 3.0], count: 7, arc: 1.0, speed: 320, back: 1.1 },   // boomerang coins come back to it
       spin: { every: [7, 9], windup: 0.8, speed: 820, bounces: 3, trailEvery: 0.07 },
       minionEvery: 2.4, minionMax: 10,
     },
     lust: {
       name: "Lust", title: "The Heartbreaker", tagline: "Don't let it pull you in.", emoji: "lust", c1: "#d77fb0", c2: "#a64a7b",
-      hp: 3400, r: 40, speed: 140, contact: 2, score: 2800,
+      hp: 3400, fightSecs: 22, r: 40, speed: 140, contact: 2, score: 2800,
       allure: { every: [6.5, 8], windup: 0.8, time: 2.2, pull: 260, range: 760 },
       kiss: { every: [2.2, 3.0], count: 3, speed: 200, turn: 1.5, life: 4 },
       heart: { every: [4.5, 5.5], count: 28, speed: 165 },
@@ -173,7 +175,7 @@ export const BALANCE = {
     },
     wrath: {
       name: "Wrath", title: "The Overclock", tagline: "Three phases. Zero chill.", emoji: "wrath", c1: "#ff9448", c2: "#e05ad6",
-      hp: 4200, r: 46, speed: 90, contact: 2, score: 3200,
+      hp: 4200, fightSecs: 26, r: 46, speed: 90, contact: 2, score: 3200,
       phases: [0.66, 0.33], shieldedTakes: 0.25,
       spiral: { rate: 9, speed: 210, arms: 2, turn: 1.6 },
       burst: { count: 22, speed: 230, every: [2.4, 3.2] },
@@ -183,7 +185,7 @@ export const BALANCE = {
     },
     pride: {
       name: "Pride", title: "The Throne", tagline: "Break its crown before you break it.", emoji: "pride", c1: "#a98bff", c2: "#8a6cf0",
-      hp: 5000, r: 48, speed: 60, contact: 2, score: 3800,
+      hp: 5000, fightSecs: 30, r: 48, speed: 60, contact: 2, score: 3800,
       gems: { count: 5, radius: 118, spin: 0.9, hp: 170, guarded: 0.2, humbled: 2, humbleTime: 7, regrow: 1.4 },
       decree: { every: [6, 7.5], warn: 1.0, sweep: 1.8, arc: 1.8, length: 950, width: 20, dmg: 2 },
       kneel: { every: [3.4, 4.2], count: 30, speed: 210, gap: 3 },
@@ -191,7 +193,7 @@ export const BALANCE = {
     },
     envy: {
       name: "Envy", title: "The Mirror", tagline: "It can't be earned. Only taken.", emoji: "envy", c1: "#6d7bff", c2: "#4a2ff0",
-      hp: 7000, r: 32, speed: 150, contact: 2, score: 6000, maxRange: 460,
+      hp: 7000, fightSecs: 45, r: 32, speed: 150, contact: 2, score: 6000, maxRange: 460,
       fireMul: 0.34, shotSpeed: 330, shotDmg: 1, boostSpeed: 900, boostTime: 0.22, orbitMax: 3,
       steal: { at: 0.66, every: [3.0, 3.8] },          // below 66%: it uses the moves of every sin you beat
       frenzy: { at: 0.3, rate: 1.4 },

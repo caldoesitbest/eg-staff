@@ -108,6 +108,16 @@ export function computeStats() {
   return s;
 }
 
+/** Rough damage per second your build can put on one big target (used to size boss fights). */
+export function estimateDps() {
+  const s = G.stats;
+  const hit = s.damage * (1 + s.crit * (s.critMul - 1));
+  let dps = hit * s.rate * Math.min(s.projectiles, 3.5) * 0.8;     // not every shot of a wide fan lands
+  if (s.wrathBoom) dps *= 1.15;
+  dps += s.orbitals * BALANCE.upgrades.orbit.dmg * 2;
+  return dps;
+}
+
 export function resetUpgrades() {
   G.up = {};
   computeStats();

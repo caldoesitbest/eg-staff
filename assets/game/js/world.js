@@ -316,7 +316,8 @@ function processBlasts() {
         const rr = q.r + e.r * e.scale;
         if (dx * dx + dy * dy > rr * rr) continue;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        damageEnemy(e, q.enemyDmg, false, dx / d, dy / d, 160);
+        // bosses shrug off most splash (chain explosions next to a boss used to melt it)
+        damageEnemy(e, e.boss ? q.enemyDmg * 0.3 : q.enemyDmg, false, dx / d, dy / d, 160);
       }
     }
     if (q.hurtsPlayer && G.player && !G.player.dead) {

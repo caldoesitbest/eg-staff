@@ -33,6 +33,7 @@ export const envy = {
   pal: P_ENVY, accent: COL,
   init(e) {
     bossInit(e, A.w / 2, A.h * 0.3);
+    if (e.scaledToYou) fx.text(A.w / 2, A.h * 0.3 - 80, "IT COPIED YOUR POWER", SIN.envy, 22, 2);
     e.boostT = 0; e.boostDX = 0; e.boostDY = 0; e.pendingBoost = -1; e.fireCd = 1.2;
     e.stealCd = 2; e.stealI = 0; e.flashCol = COL; e.flashT = 0; e.pullT = 0; e.spiralT = 0; e.spin = 0; e.c2 = 0;
     if (!hooked) {

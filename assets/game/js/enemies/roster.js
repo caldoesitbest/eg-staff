@@ -270,10 +270,16 @@ export const ROSTER = {
   //    Mk II turns faster. Mk III shield-bashes when you're right in front (it glows first).
   bulwark: {
     pal: P_BLUE, accent: C.blue,
-    init(e) { e.cd = rand(2, 4); },
+    init(e) { e.cd = rand(2, 4); e.t2 = randRange(D.bulwark.vent.every); e.c = 0; },
     update(e, dt, P) {
       const d = D.bulwark;
       if (P.dead) return wander(e, dt);
+      // the shield vents now and then: a short, readable window to shoot it from the front
+      if (e.c > 0) { e.c -= dt; if (Math.random() < 0.5) fx.p(0, e.x + Math.cos(e.ang) * 22, e.y + Math.sin(e.ang) * 22, rand(-40, 40), rand(-40, 40), 0.4, 1.2, P_WHITE, 3); }
+      else {
+        e.t2 -= dt;
+        if (e.t2 <= 0) { e.c = d.vent.time; e.t2 = randRange(d.vent.every); audio.play("clank", e.x, e.y, 0.5); }
+      }
       const want = angleToPlayer(e);
       if (e.state === 1) {                        // bash windup
         brake(e, 8, dt); e.t -= dt; face(e, want, d.turn * 0.5, dt);
@@ -295,12 +301,29 @@ export const ROSTER = {
       }
     },
     blocks(e, bx, by) {
+      if (e.c > 0) return false;                  // venting
       const a = Math.atan2(by - e.y, bx - e.x);
       return Math.abs(angDiff(e.ang, a)) < D.bulwark.shieldArc / 2;
     },
     drawUnder(g, e, x, y) {
       if (e.state !== 1) return;
       dashedLine(g, x, y, e.ang, 170, C.amber, 0.8, 3, [8, 6]);
+    },
+    drawOver(g, e, x, y) {
+      if (e.c <= 0) return;
+      // cover the glowing shield with a dark, flickering one while it vents
+      const c = Math.cos(e.ang), s = Math.sin(e.ang);
+      g.save();
+      g.translate(x - c * 4, y - s * 4);
+      g.rotate(e.ang);
+      g.strokeStyle = "#232c5e";
+      g.lineWidth = 9;
+      g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
+      g.strokeStyle = "rgba(255,200,97," + (0.15 + Math.random() * 0.25) + ")";
+      g.lineWidth = 2;
+      g.setLineDash([4, 6]);
+      g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
+      g.restore();
     },
     shakeAmt(e) { return e.state === 1 ? 1.8 : 0; },
   },

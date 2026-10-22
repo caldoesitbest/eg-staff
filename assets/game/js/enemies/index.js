@@ -10,6 +10,7 @@ import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage } from "../world.js";
+import { estimateDps } from "../upgrades.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -50,8 +51,10 @@ export function spawnEnemy(type, x, y, opts) {
   const def = boss ? BALANCE.bosses[type] : BALANCE.enemies[type];
   const n = Math.max(1, G.wave);
   const elite = !boss && type !== "gem" && !!(opts && opts.elite);
-  const lapMul = 1 + (G.lap || 0) * BALANCE.ladder.lapHp;          // endless laps: bosses (and Pride's gems) get tougher
-  const hpMul = boss || type === "gem" ? lapMul : 1 + (n - 1) * W.hpPerWave;
+  // Bosses (and Pride's gems): tougher higher up the ladder, and again on every endless lap.
+  const lapWave = ((n - 1) % 35) + 1;
+  const lapMul = (1 + (G.lap || 0) * BALANCE.ladder.lapHp) * (1 + Math.max(0, lapWave - 5) * BALANCE.ladder.rungHp);
+  const hpMul = boss || type === "gem" ? lapMul : 1 + (n - 1) * W.hpPerWave + (n - 1) * (n - 1) * W.hpCurve;
   const spMul = boss ? 1 : 1 + Math.min(W.speedCap, (n - 1) * W.speedPerWave);
 
   e.dead = false;
@@ -62,6 +65,10 @@ export function spawnEnemy(type, x, y, opts) {
   e.vx = e.vy = e.kx = e.ky = 0;
   e.r = def.r; e.scale = 1;
   e.maxHp = e.hp = def.hp * hpMul * (elite ? E.hp : 1);
+  if (boss && def.fightSecs && G.stats) {
+    const floor = estimateDps() * def.fightSecs;
+    if (floor > e.maxHp) { e.maxHp = e.hp = floor; e.scaledToYou = true; } else e.scaledToYou = false;
+  }
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
   e.contact = def.contact === undefined ? 1 : def.contact;
