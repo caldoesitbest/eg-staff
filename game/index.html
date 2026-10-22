@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Game · Envious Gluttony™</title>
-<meta name="description" content="Envious Glider: Sinners vs. Machines. Hold the line against waves of robots on the Envious Gluttony planet. Free in your browser on phone and PC.">
+<meta name="description" content="Envious Glider: Sinners vs. Machines. Climb the Sin Ladder from Sloth to Envy against waves of robots. Free in your browser on phone and PC, with a daily challenge and leaderboard.">
 <link rel="canonical" href="https://enviousgluttony.com/game/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://enviousgluttony.com/game/">
 <meta property="og:site_name" content="Envious Gluttony™">
 <meta property="og:title" content="Envious Glider: Sinners vs. Machines">
-<meta property="og:description" content="Robots are invading the planet. Boost, blast and sin your way through the waves. How far can you get?">
+<meta property="og:description" content="Seven sins. One climb. Blast your way up the Sin Ladder from Sloth to Envy, then see how far endless goes.">
 <meta property="og:image" content="https://enviousgluttony.com/assets/home/og-home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -25,10 +25,18 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=5">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=1">
+<link rel="stylesheet" href="../assets/game/game.css?v=3">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
+  <div class="intro" id="intro" aria-label="Envious Gluttony presents">
+    <div class="intro-inner">
+      <p class="intro-by">Brought to you by</p>
+      <img class="intro-logo" src="/assets/home/eg-logo.webp" alt="Envious Gluttony" width="560" height="460">
+      <p class="intro-studio"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
+    </div>
+    <p class="intro-skip">Click or press any key to skip</p>
+  </div>
   <canvas class="game-canvas" id="game-canvas" aria-label="Envious Glider play area" role="img"></canvas>
   <div class="touch-layer" id="touch-layer"></div>
 
@@ -48,7 +56,8 @@
   <div class="hud" id="hud" hidden>
     <div class="hud-left">
       <div class="hearts" id="hearts" role="img" aria-label="Health"></div>
-      <div class="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-dim" id="hud-left"></span></div>
+      <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
+      <div class="daily-chip" id="daily-chip" hidden>Daily</div>
       <div class="envy-chips" id="envy-chips"></div>
     </div>
     <div class="boss-bar" id="boss-bar" hidden>
@@ -76,6 +85,7 @@
     <header class="menu-top">
       <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
       <div class="menu-tools">
+        <button class="account-chip" id="account-chip" type="button" hidden></button>
         <button class="icon-btn" id="menu-fullscreen" type="button" aria-label="Fullscreen" hidden><i data-icon="maximize"></i></button>
         <button class="icon-btn" id="menu-mute" type="button" aria-label="Mute sound"><i data-icon="volume-2"></i></button>
       </div>
@@ -85,9 +95,14 @@
       <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
       <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
       <div class="menu-actions">
-        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Play</button>
-        <button class="btn btn-ghost" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
-        <button class="btn btn-ghost" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
+        <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
+      </div>
+      <div class="menu-actions menu-actions-2">
+        <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
+        <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
+        <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
       <dl class="bests" id="bests"></dl>
@@ -96,6 +111,11 @@
         <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
       </div>
     </div>
+    <aside class="ladder-panel" aria-labelledby="ladder-title">
+      <p class="kicker"><span>The Sin Ladder</span></p>
+      <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
+      <ol class="mini-ladder" id="mini-ladder"></ol>
+    </aside>
     <footer class="menu-foot"><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
@@ -110,6 +130,7 @@
         <button class="btn btn-ghost" id="pause-settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
         <button class="btn btn-ghost" id="pause-fullscreen" type="button" hidden><i data-icon="maximize"></i>Fullscreen</button>
         <button class="btn btn-ghost" id="quit-btn" type="button"><i data-icon="door-open"></i>Quit to menu</button>
+        <button class="btn btn-ghost" id="pause-exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <div class="build" id="pause-build"></div>
     </div>
@@ -139,11 +160,45 @@
       <div class="over-best" id="over-best" hidden></div>
       <dl class="over-stats" id="over-stats"></dl>
       <div class="build" id="over-build"></div>
+      <div class="over-online" id="over-online" hidden></div>
       <div class="over-actions">
         <button class="btn btn-primary btn-xl" id="retry-btn" type="button"><i data-icon="refresh-cw"></i>One more run</button>
         <button class="btn btn-ghost" id="over-menu-btn" type="button"><i data-icon="house"></i>Menu</button>
       </div>
       <p class="up-hint" id="over-hint"></p>
+    </div>
+  </section>
+
+  <!-- leaderboard -->
+  <section class="screen screen-board" id="screen-board" hidden aria-labelledby="board-title">
+    <div class="panel panel-wide glow-card board">
+      <h2 class="panel-title" id="board-title">Leaderboard</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab" id="tab-all" type="button" role="tab" aria-selected="true">All-time</button>
+        <button class="tab" id="tab-daily" type="button" role="tab" aria-selected="false">Today's Daily</button>
+      </div>
+      <div class="board-status" id="board-status"></div>
+      <ol class="board-list" id="board-list"></ol>
+      <div class="board-foot">
+        <button class="btn btn-primary btn-sm" id="board-signin" type="button" hidden><i data-icon="discord"></i>Sign in with Discord</button>
+        <span class="set-note" id="board-who"></span>
+        <button class="btn btn-ghost" id="board-done" type="button">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- victory -->
+  <section class="screen screen-win" id="screen-win" hidden aria-labelledby="win-title">
+    <div class="panel panel-wide glow-card win">
+      <p class="kicker">The Sin Ladder · cleared</p>
+      <h2 class="win-title" id="win-title">Envy can't be earned. You took it.</h2>
+      <ol class="mini-ladder mini-ladder-win" id="win-ladder"></ol>
+      <dl class="over-stats" id="win-stats"></dl>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="win-endless" type="button"><i data-icon="infinity"></i>Keep climbing (endless)</button>
+        <button class="btn btn-ghost" id="win-finish" type="button"><i data-icon="flag"></i>Finish the run</button>
+      </div>
+      <p class="set-note">Endless laps the ladder again: robots evolve and every sin comes back harder.</p>
     </div>
   </section>
 
@@ -159,6 +214,7 @@
       <label class="set-row set-check"><input type="checkbox" id="set-autoaim"><span>Auto-aim <small>(touch &amp; gamepad: aims and fires at the nearest robot while you're not aiming)</small></span></label>
       <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
       <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
       <label class="set-row"><span>Quality</span>
         <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select>
       </label>
@@ -174,7 +230,9 @@
       <div class="how-grid">
         <div class="how-controls" id="how-controls"></div>
         <ul class="how-tips">
+          <li>Climb the <b>Sin Ladder</b>: a sin boss every 5 waves, from <b>@Sloth</b> to <b>@Envy</b> on wave 35. Beat Envy to win, then keep climbing in endless.</li>
           <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
+          <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Volatile (bursts when it dies), <em>green +</em> Regenerating.</li>
           <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser.</li>
           <li>Grab <b>stars</b>. Between waves, spend them to reroll cards or patch up.</li>
           <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
@@ -198,25 +256,34 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=1",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=1",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=1",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=1",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=1",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=1",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=1",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=1",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=1",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=1",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=2",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=1",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=1",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=1",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=1",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=1",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=1",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=1",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=1"
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=3",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=3",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=3",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=3",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=3",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=3",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=3",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=3",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=3",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=3",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=3",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=3",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=3",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=3",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=3",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=3",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=3",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=3",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=3",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=3",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=3",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=3",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=3",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=3",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=3",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=3",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=3",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=3"
   }
 }
 </script>
@@ -225,6 +292,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=8" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=1"></script>
+<script type="module" src="../assets/game/js/main.js?v=3"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@ import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES } from "./bosses.js";
-import { damageEnemy, killEnemy, queueBlast } from "../world.js";
+import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage } from "../world.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -49,8 +49,9 @@ export function spawnEnemy(type, x, y, opts) {
   const boss = !!BOSSES[type];
   const def = boss ? BALANCE.bosses[type] : BALANCE.enemies[type];
   const n = Math.max(1, G.wave);
-  const elite = !boss && !!(opts && opts.elite);
-  const hpMul = boss ? 1 + (n - BALANCE.waves.bossEvery) * BALANCE.bosses.hpPerWave : 1 + (n - 1) * W.hpPerWave;
+  const elite = !boss && type !== "gem" && !!(opts && opts.elite);
+  const lapMul = 1 + (G.lap || 0) * BALANCE.ladder.lapHp;          // endless laps: bosses (and Pride's gems) get tougher
+  const hpMul = boss || type === "gem" ? lapMul : 1 + (n - 1) * W.hpPerWave;
   const spMul = boss ? 1 : 1 + Math.min(W.speedCap, (n - 1) * W.speedPerWave);
 
   e.dead = false;
@@ -72,9 +73,25 @@ export function spawnEnemy(type, x, y, opts) {
   e.flash = 0; e.spawnT = (opts && opts.spawnT !== undefined) ? opts.spawnT : 0.35;
   e.ally = 0; e.slowMul = 1; e.dmgMul = 1; e.orbCd = 0; e.invuln = false; e.warnPlayed = false;
   e.ramStamp = 0; e.target = null;
+  e.mark = boss ? (G.lap || 0) : G.mark;
+  e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
+  if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   return e;
 }
+
+const TRAIT_KEYS = ["shielded", "hasted", "volatile", "regen"];
+function rollTraits(e, wave) {
+  const T = E.traits;
+  const want = wave >= E.twoTraitsFrom ? 2 : 1;
+  for (let k = 0; k < 8 && countBits(e.traits) < want; k++) {
+    const key = TRAIT_KEYS[Math.floor(Math.random() * TRAIT_KEYS.length)];
+    e.traits |= TRAIT[key];
+  }
+  if (e.traits & TRAIT.shielded) e.shield = e.shieldMax = e.maxHp * T.shielded.share;
+  if (e.traits & TRAIT.hasted) { e.haste = T.hasted.attack; e.speed *= T.hasted.speed; }
+}
+function countBits(v) { let n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
 
 /** Robots that still count toward finishing the wave. */
 export function hostileCount() {
@@ -150,6 +167,8 @@ export function updateEnemies(dt) {
     e.px = e.x; e.py = e.y; e.pang = e.ang;
     if (e.flash > 0) e.flash -= dt;
     if (e.orbCd > 0) e.orbCd -= dt;
+    if (e.numCd > 0) { e.numCd -= dt; if (e.numCd <= 0 && e.numAcc > 0) flushDamage(e); }
+    if ((e.traits & TRAIT.regen) && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * E.traits.regen.perSec * dt);
 
     let m = freeze;
     if (P && !P.dead && e.ally <= 0) {
@@ -169,7 +188,7 @@ export function updateEnemies(dt) {
       updateAlly(e, edt, dt);
       if (e.dead) continue;
     } else if (P) {
-      e.kind.update(e, edt, P);
+      e.kind.update(e, edt * e.haste, P);
       if (e.dead) continue;
     }
 

@@ -63,6 +63,12 @@ export const bot = {
       const d = Math.sqrt(d2) || 1;
       if (d < 140) { ax -= ((b.x - P.x) / d) * (140 - d) * 1.6; ay -= ((b.y - P.y) / d) * (140 - d) * 1.6; }
     }
+    // flank shields: circle around a Bulwark toward its back
+    if (best && best.type === "bulwark") {
+      const dx = P.x - best.x, dy = P.y - best.y, d = Math.hypot(dx, dy) || 1;
+      ax += (-dy / d) * 500; ay += (dx / d) * 500;
+      if (d > 260) { ax -= (dx / d) * 300; ay -= (dy / d) * 300; }
+    }
     ax += (1000 - P.x) * 0.25;
     ay += (650 - P.y) * 0.25;
     input.mode = "kbm";

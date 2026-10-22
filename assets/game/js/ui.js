@@ -9,6 +9,7 @@ import { CARD_BY_ID, ENVY_POWERS } from "./upgrades.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
+import { online, todayUTC } from "./online.js";
 
 const $ = (id) => document.getElementById(id);
 const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
@@ -24,6 +25,16 @@ function el(tag, cls, text) {
 }
 
 const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1 };
+let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
+let boardKind = "all";
+
+// The Sin Ladder, lowest to highest (same names, emoji and colours as the homepage Ladder).
+export function ladderRungs() {
+  return BALANCE.bosses.order.map((id, i) => {
+    const b = BALANCE.bosses[id];
+    return { id, i, name: b.name, emoji: b.emoji, c1: b.c1, c2: b.c2, wave: (i + 1) * BALANCE.waves.bossEvery };
+  });
+}
 let screen = null;
 let armedAt = 0;            // clicks on cards / game-over buttons are ignored until this time
 const armed = () => performance.now() >= armedAt;
@@ -63,6 +74,17 @@ export const ui = {
     click("patch-btn", () => handlers.onPatch());
     click("settings-done", () => this.closeSettings());
     click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
+    click("daily-btn", () => handlers.onDaily());
+    click("board-btn", () => this.openBoard("all", "menu"));
+    click("board-done", () => this.show(this.boardBack || "menu"));
+    click("board-signin", () => online.signIn());
+    click("tab-all", () => this.openBoard("all"));
+    click("tab-daily", () => this.openBoard("daily"));
+    click("account-chip", () => { if (online.user) this.openBoard(boardKind, "menu"); else online.signIn(); });
+    click("exit-btn", () => handlers.onExit());
+    click("pause-exit-btn", () => handlers.onExit());
+    click("win-endless", () => { if (armed()) handlers.onEndless(); });
+    click("win-finish", () => { if (armed()) handlers.onFinish(); });
     click("menu-mute", () => { const s = store.data.settings; s.muted = !s.muted; handlers.onSettings(); this.syncSettings(); this.syncMute(); });
     click("rotate-close", () => { store.data.rotateHintDismissed = true; store.save(); this.els["rotate-hint"].hidden = true; });
     const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled;
@@ -90,6 +112,7 @@ export const ui = {
     bind("set-haptics", "change", (n) => { s().haptics = n.checked; });
     bind("set-fps", "change", (n) => { s().showFps = n.checked; });
     bind("set-quality", "change", (n) => { s().quality = n.value; });
+    bind("set-post", "change", (n) => { s().postScores = n.checked; });
 
     this.renderSuits();
     this.syncSettings();
@@ -98,7 +121,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "over", "settings", "how"];
+    const names = ["menu", "pause", "upgrade", "over", "settings", "how", "board", "win"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -107,7 +130,7 @@ export const ui = {
       else if (!on) node.hidden = true;
     }
     screen = name;
-    if (name === "upgrade" || name === "over") armedAt = performance.now() + (name === "over" ? 700 : 450);
+    if (name === "upgrade" || name === "over" || name === "win") armedAt = performance.now() + (name === "upgrade" ? 450 : 800);
     if (name === "how") this.renderHow();
     if (name === "menu") this.refreshMenu();
     const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : ".btn-primary, .btn, button");
@@ -115,13 +138,14 @@ export const ui = {
     this.updateRotateHint();
   },
   get screen() { return screen; },
+  get boardKindNow() { return boardKind; },
   get armed() { return armed(); },
 
   setState(state) {
     const g = this.els.game;
-    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-dying", "state-over");
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-dying", "state-over", "state-win");
     g.classList.add("state-" + state);
-    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade");
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "win");
     this.updateRotateHint();
   },
 
@@ -159,6 +183,7 @@ export const ui = {
     set("set-haptics", "checked", s.haptics);
     set("set-fps", "checked", s.showFps);
     set("set-quality", "value", s.quality);
+    set("set-post", "checked", s.postScores);
     const note = $("set-note");
     if (note) note.textContent = store.writable ? "Settings save on this device." : "Your browser is blocking storage, so settings and bests won't be saved after you leave.";
   },
@@ -187,6 +212,113 @@ export const ui = {
     }
     this.renderSuits();
     this.renderControlsHint();
+    this.renderLadder($("mini-ladder"), b.rung || 0, (b.wins || 0) > 0);
+    const daily = store.data.daily;
+    const today = todayUTC();
+    $("daily-label").textContent = daily.date === today && daily.score > 0 ? "Daily · best " + formatScore(daily.score) : "Daily Challenge";
+    this.renderAccount();
+  },
+
+  /** The homepage's Ladder in miniature: pillars rising from Sloth to Envy. */
+  renderLadder(box, beaten, won) {
+    if (!box) return;
+    box.replaceChildren();
+    for (const r of ladderRungs()) {
+      const li = el("li", "rung" + (r.i < beaten ? " beaten" : "") + (r.id === "envy" ? " envy" : ""));
+      li.style.setProperty("--c1", r.c1);
+      li.style.setProperty("--c2", r.c2);
+      li.style.setProperty("--h", (34 + r.i * 9) + "px");
+      const emb = el("span", "rung-emb");
+      const img = el("img"); img.src = "/assets/home/emoji/" + r.emoji + ".webp"; img.alt = ""; img.width = 34; img.height = 34;
+      emb.append(img);
+      const pillar = el("span", "rung-pillar");
+      const lab = r.id === "envy" ? (won ? "Earned" : "Cannot be earned") : (r.i < beaten ? "Beaten" : "Wave " + r.wave);
+      pillar.append(el("b", "", lab));
+      li.append(emb, el("span", "rung-name", "@" + r.name), pillar);
+      li.title = r.name + " · boss of wave " + r.wave + (r.i < beaten ? " (beaten)" : "");
+      box.append(li);
+    }
+  },
+
+  renderAccount() {
+    const chip = $("account-chip");
+    if (!chip) return;
+    chip.hidden = !online.available;
+    chip.replaceChildren();
+    if (online.user) {
+      chip.append(icon("user-round"), el("span", "", "@" + online.name));
+      chip.title = "Signed in. Open the leaderboard";
+    } else {
+      chip.append(icon("discord"), el("span", "", "Sign in"));
+      chip.title = "Sign in with Discord to post your runs";
+    }
+  },
+
+  // ---------------- leaderboard ----------------
+  async openBoard(kind, back) {
+    if (back) this.boardBack = back;
+    boardKind = kind;
+    $("tab-all").setAttribute("aria-selected", kind === "all" ? "true" : "false");
+    $("tab-daily").setAttribute("aria-selected", kind === "daily" ? "true" : "false");
+    if (screen !== "board") this.show("board");
+    const status = $("board-status"), list = $("board-list");
+    list.replaceChildren();
+    $("board-signin").hidden = !online.available || !!online.user;
+    $("board-who").textContent = online.user ? "Signed in as @" + online.name + (store.data.settings.postScores ? "" : " · posting is off in Settings") : "";
+    if (!online.available) { status.textContent = "The leaderboard needs an internet connection."; return; }
+    status.textContent = "Loading…";
+    const res = await online.board(kind === "daily" ? todayUTC() : null);
+    if (boardKind !== kind) return;
+    if (res.error === "missing") { status.textContent = "The leaderboard is being set up. Check back soon."; return; }
+    if (res.error) { status.textContent = res.error === "offline" ? "The leaderboard needs an internet connection." : res.error; return; }
+    if (!res.rows.length) { status.textContent = kind === "daily" ? "Nobody has posted today's Daily yet. Be first." : "No runs posted yet. Be first."; return; }
+    status.textContent = kind === "daily" ? "Today's Daily Challenge (" + todayUTC() + " UTC): same waves and cards for everyone." : "Best run per player.";
+    for (const r of res.rows) {
+      const li = el("li", "board-row" + (r.is_me ? " me" : ""));
+      li.append(el("span", "board-rank", "#" + r.rank));
+      li.append(el("span", "board-name", "@" + r.username));
+      li.append(el("span", "board-wave", (r.won ? "👑 " : "") + "W" + r.wave));
+      li.append(el("span", "board-score", formatScore(r.score)));
+      list.append(li);
+    }
+  },
+
+  /** Game-over line about posting the run. */
+  setOnline(state, detail) {
+    const box = $("over-online");
+    if (!box) return;
+    box.replaceChildren();
+    box.hidden = !state;
+    if (!state) return;
+    if (state === "posting") box.append(el("span", "", "Posting your run…"));
+    else if (state === "posted") {
+      box.append(el("span", "", "Posted to the leaderboard" + (detail && detail.rank ? " · #" + detail.rank + (detail.daily ? " today" : " all-time") : "")));
+      const b = el("button", "btn btn-ghost btn-sm", "View");
+      b.type = "button"; b.addEventListener("click", () => this.openBoard(detail && detail.daily ? "daily" : "all", "over"));
+      box.append(b);
+    } else if (state === "signin") {
+      box.append(el("span", "", "Sign in with Discord to put this run on the leaderboard."));
+      const b = el("button", "btn btn-primary btn-sm", "Sign in");
+      b.type = "button"; b.addEventListener("click", () => online.signIn());
+      box.append(b);
+    } else if (state === "error") box.append(el("span", "", "Couldn't post: " + (detail || "try again later.")));
+  },
+
+  // ---------------- victory ----------------
+  showWin(sum) {
+    this.renderLadder($("win-ladder"), 7, true);
+    const dl = $("win-stats");
+    dl.replaceChildren();
+    const add = (label, value) => { const d = el("div"); d.append(el("dt", "", label), el("dd", "", value)); dl.append(d); };
+    add("Score", formatScore(sum.score));
+    add("Time", sum.time);
+    add("Kills", String(sum.kills));
+    add("Hits taken", String(sum.hits));
+    this.show("win");
+  },
+
+  setDesktop(on) {
+    for (const id of ["exit-btn", "pause-exit-btn"]) { const n = $(id); if (n) n.hidden = !on; }
   },
 
   renderSuits() {
@@ -289,7 +421,15 @@ export const ui = {
     const sc = Math.floor(G.score);
     if (sc !== last.score) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
     if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
-    if (G.wave !== last.wave) { last.wave = G.wave; E["hud-wave"].textContent = "Wave " + G.wave; }
+    if (G.wave !== last.wave) {
+      last.wave = G.wave;
+      E["hud-wave"].textContent = "Wave " + G.wave;
+      const r = ladderRungs()[waves.rungOf(Math.max(1, G.wave))];
+      const rung = $("hud-rung");
+      rung.textContent = r.name + (G.lap ? " · lap " + (G.lap + 1) : "");
+      $("wave-chip").style.setProperty("--rung", r.c1);
+      $("daily-chip").hidden = !G.daily;
+    }
     const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? waves.remaining() + " left" : "Clear");
     if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
     const m = comboMult();
@@ -300,15 +440,18 @@ export const ui = {
       E["hud-combo"].classList.toggle("on", G.combo > 0);
       if (up && G.combo > 1) { E["hud-combo"].classList.remove("bump"); void E["hud-combo"].offsetWidth; E["hud-combo"].classList.add("bump"); }
     }
-    E["combo-fill"].style.transform = "scaleX(" + (G.combo > 0 ? Math.max(0, G.comboTimer / BALANCE.combo.window).toFixed(3) : 0) + ")";
+    hudSlowT -= dt;
+    const slowTick = hudSlowT <= 0;
+    if (slowTick) hudSlowT = 1 / 20;
+    if (slowTick) E["combo-fill"].style.transform = "scaleX(" + (G.combo > 0 ? Math.max(0, G.comboTimer / BALANCE.combo.window).toFixed(2) : 0) + ")";
 
     // boss bar
     const b = G.boss;
     if (b && !b.dead && b.state !== -1) {
       if (E["boss-bar"].hidden) {
         E["boss-bar"].hidden = false;
-        E["boss-name"].textContent = b.def.name;
-        E["boss-bar"].style.setProperty("--boss-col", b.kind.accent);
+        E["boss-name"].textContent = "@" + b.def.name + " · " + b.def.title;
+        E["boss-bar"].style.setProperty("--boss-col", b.def.c1 || b.kind.accent);
         bossGhost = 1;
       }
       const f = Math.max(0, b.hp / b.maxHp);
@@ -327,7 +470,7 @@ export const ui = {
       E["envy-chips"].replaceChildren(...P.envy.map((p) => { const c = el("span", "envy-chip", ENVY_POWERS[p.type].name); c.append(el("i")); return c; }));
     }
     const chips = E["envy-chips"].children;
-    for (let i = 0; i < chips.length && i < P.envy.length; i++) {
+    for (let i = 0; slowTick && i < chips.length && i < P.envy.length; i++) {
       chips[i].lastChild.style.width = Math.max(0, (P.envy[i].t / P.envy[i].max) * 100).toFixed(1) + "%";
     }
 
@@ -371,13 +514,14 @@ export const ui = {
   },
 
   // ---------------- banners ----------------
-  banner(kicker, title, sub, kind, long) {
+  banner(kicker, title, sub, kind, long, col) {
     const E = this.els;
     E["banner-kicker"].textContent = kicker || "";
     E["banner-title"].textContent = title || "";
     E["banner-sub"].innerHTML = sub || "";
     const b = E.banner;
     b.className = "banner" + (kind ? " " + kind : "") + (long ? " long" : "");
+    if (col) b.style.setProperty("--banner-col", col); else b.style.removeProperty("--banner-col");
     void b.offsetWidth;
     b.classList.add("show");
     clearTimeout(bannerTimer);
@@ -469,7 +613,7 @@ export const ui = {
   },
 
   showGameOver(sum) {
-    $("over-kicker").textContent = "Run over · wave " + sum.wave;
+    $("over-kicker").textContent = sum.kicker || "Run over · wave " + sum.wave;
     $("over-title").textContent = sum.title;
     const best = $("over-best");
     best.hidden = !sum.anyBest;

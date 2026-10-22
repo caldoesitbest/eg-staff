@@ -229,7 +229,7 @@ export function onKill(e) {
 
 export function onHit(e) {
   const s = G.stats;
-  if (s.lustChance && !e.boss && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
+  if (s.lustChance && !e.boss && e.type !== "gem" && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
     e.ally = s.lustTime;
     e.allyMax = s.lustTime;
     e.state = 0; e.t = 0;

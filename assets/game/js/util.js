@@ -18,6 +18,18 @@ export function rng() {
 }
 export function seedRng(s) { seeded = s !== null && s !== undefined; seedState = s | 0; }
 
+/** Runs fn with rng() seeded (Daily Challenge: the same waves and cards for everyone that day). */
+export function withSeed(seed, fn) {
+  const was = seeded, st = seedState;
+  seeded = true; seedState = seed | 0;
+  try { return fn(); } finally { seeded = was; seedState = st; }
+}
+export function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h | 0;
+}
+
 export const rand = (a, b) => a + rng() * (b - a);
 export const randInt = (a, b) => Math.floor(a + rng() * (b - a + 1));
 export const chance = (p) => rng() < p;

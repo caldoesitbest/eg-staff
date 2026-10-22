@@ -38,9 +38,30 @@ export function haptic(ms) {
 // ---------------------------------------------------------------------------
 // Enemies: damage + death
 // ---------------------------------------------------------------------------
+export const TRAIT = { shielded: 1, hasted: 2, volatile: 4, regen: 8 };
+
+/** Damage numbers merge per robot (one number every 0.12s, or straight away for a crit). */
+function showDamage(e, dmg, crit) {
+  e.numAcc += dmg;
+  if (crit || e.numCd <= 0 || e.hp <= 0) {
+    if (e.numAcc >= 1) fx.number(e.x, e.y - e.r * e.scale * 0.6, e.numAcc, crit);
+    e.numAcc = 0;
+    e.numCd = 0.12;
+  }
+}
+
 export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
   if (e.dead || e.invuln) return false;
   dmg *= e.dmgMul;
+  if (e.shield > 0) {
+    // Shielded trait: the cyan shield soaks damage first
+    const take = Math.min(e.shield, dmg);
+    e.shield -= take;
+    dmg -= take;
+    e.flash = 0.05;
+    if (e.shield <= 0) { fx.ring(e.x, e.y, e.r, e.r * 2.4, 0.3, C.cyan, 3); audio.play("shieldHit", e.x, e.y, 0.6); }
+    if (dmg <= 0) return false;
+  }
   e.hp -= dmg;
   e.flash = 0.08;
   if (knock && !e.boss) {
@@ -48,10 +69,16 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
     e.kx += dirX * k;
     e.ky += dirY * k;
   }
-  if (dmg >= 1 && (G.quality > 0 || crit)) fx.number(e.x, e.y - e.r * e.scale * 0.6, dmg, crit);
+  showDamage(e, dmg, crit);
   if (e.hp <= 0) { killEnemy(e); return true; }
   if (e.ally <= 0) onHit(e);
   return false;
+}
+
+/** Flushes a merged damage number once its window closes (called from the enemy loop). */
+export function flushDamage(e) {
+  if (e.numAcc >= 1) fx.number(e.x, e.y - e.r * e.scale * 0.6, e.numAcc, false);
+  e.numAcc = 0;
 }
 
 export function killEnemy(e, silent) {
@@ -84,6 +111,15 @@ export function killEnemy(e, silent) {
       if (chance(low ? D.heartChanceLow : D.heartChance)) dropPickup(2, e.x, e.y, D.heartHeal);
     }
     if (!ally) onKill(e);
+  }
+  if ((e.traits & TRAIT.volatile) && !silent && !ally) {
+    const V = BALANCE.elite.traits.volatile;
+    const off = rand(0, TAU);
+    for (let i = 0; i < V.count; i++) {
+      const a = off + (i / V.count) * TAU;
+      fireEnemyBullet(e.x, e.y, Math.cos(a) * V.speed, Math.sin(a) * V.speed, 1, "amber", 6);
+    }
+    fx.ring(e.x, e.y, 6, 70, 0.3, C.amber, 3);
   }
   if (kind.onDeath) kind.onDeath(e, silent);
   G.emit("kill", e);
@@ -211,6 +247,7 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1) {
   b.explode = hasEnvy("boomer") ? ENVY_POWERS.boomer.radius : 0;
   b.split = hasSplitEnvy();
   b.knock = BALANCE.player.gun.knock;
+  b.tgt = null; b.tgtId = 0; b.tgtT = 0;
   return b;
 }
 
@@ -231,6 +268,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   b.bolt = !!bolt;
   b.life = 6;
   b.grazed = false;
+  b.age = 0; b.turn = 0; b.back = 0; b.owner = null;
   return b;
 }
 
@@ -423,13 +461,21 @@ function updatePlayerBullets(dt) {
     if (b.life <= 0) { b.dead = true; continue; }
 
     if (b.homing > 0) {
-      const n = G.hash.query(b.x, b.y, 280);
-      let best = null, bd = 280 * 280;
-      for (let j = 0; j < n; j++) {
-        const e = items[res[j]];
-        if (e.dead || e.ally > 0) continue;
-        const d2 = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
-        if (d2 < bd) { bd = d2; best = e; }
+      // Seeker rounds pick a target every 0.1s (not every tick) and steer toward it in between.
+      b.tgtT -= dt;
+      let best = b.tgt && !b.tgt.dead && b.tgt.id === b.tgtId && b.tgt.ally <= 0 ? b.tgt : null;
+      if (!best || b.tgtT <= 0) {
+        b.tgtT = 0.1;
+        const n = G.hash.query(b.x, b.y, 280);
+        let bd = 280 * 280;
+        best = null;
+        for (let j = 0; j < n; j++) {
+          const e = items[res[j]];
+          if (e.dead || e.ally > 0) continue;
+          const d2 = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
+          if (d2 < bd) { bd = d2; best = e; }
+        }
+        b.tgt = best; b.tgtId = best ? best.id : 0;
       }
       if (best) {
         const sp = Math.hypot(b.vx, b.vy);
@@ -518,6 +564,16 @@ function updatePlayerBullets(dt) {
   pb.sweep();
 }
 
+function steerShot(b, tx, ty, step) {
+  const sp = Math.hypot(b.vx, b.vy) || 1;
+  const cur = Math.atan2(b.vy, b.vx), want = Math.atan2(ty - b.y, tx - b.x);
+  let d = want - cur;
+  while (d > Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
+  const na = cur + (d > step ? step : d < -step ? -step : d);
+  b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
+}
+
 function updateEnemyBullets(dt) {
   const eb = G.eb;
   const P = G.player;
@@ -536,6 +592,17 @@ function updateEnemyBullets(dt) {
     if (b.life <= 0) { b.dead = true; continue; }
     let m = k;
     if (slowR2 > 0 && P && (b.x - P.x) ** 2 + (b.y - P.y) ** 2 < slowR2) m *= s.slowMul;
+    b.age += dt;
+    if (b.turn > 0 && P && !P.dead && b.age < 3) {
+      // Lust's kisses: curve gently toward you (slow enough to outrun or boost through)
+      steerShot(b, P.x, P.y, b.turn * dt);
+    } else if (b.back > 0 && b.age > b.back) {
+      // Greed's coins: fly out, then come home
+      const o = b.owner;
+      const hx = o && !o.dead ? o.x : b.homeX, hy = o && !o.dead ? o.y : b.homeY;
+      steerShot(b, hx, hy, 5 * dt);
+      if ((b.x - hx) ** 2 + (b.y - hy) ** 2 < 900) { b.dead = true; continue; }
+    }
     b.x += b.vx * m; b.y += b.vy * m;
     if (b.x < -30 || b.x > A.w + 30 || b.y < -30 || b.y > A.h + 30) { b.dead = true; continue; }
 
@@ -732,6 +799,7 @@ export function stepWorld(dt) {
   }
   const P = G.player;
   updatePlayer(dt);
+  G.playerSlow = 1;            // bosses lower it again this tick if you're in an aura
   if (P && !P.dead) tickEnvy(dt);
   waves.update(dt);
   updateEnemies(dt);           // also rebuilds the spatial hash

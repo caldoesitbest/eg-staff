@@ -21,8 +21,9 @@ export const SUITS = [
 
 function defaults() {
   return {
-    best: { score: 0, wave: 0, combo: 0, kills: 0 },
+    best: { score: 0, wave: 0, combo: 0, kills: 0, rung: 0, wins: 0, fastestWin: 0 },   // rung: sin bosses beaten (0-7)
     totals: { runs: 0, kills: 0 },
+    daily: { date: "", score: 0, wave: 0, tries: 0 },
     settings: {
       sfx: 0.8,
       music: 0.5,
@@ -34,6 +35,7 @@ function defaults() {
       quality: "auto",
       haptics: true,
       suit: "classic",
+      postScores: true,     // post runs to the online leaderboard when signed in
     },
     seenHowTo: false,
     rotateHintDismissed: false,
@@ -49,8 +51,17 @@ export const store = {
   get writable() { return writable; },
 
   load() {
+    let raw = null;
+    try { raw = window.localStorage.getItem(KEY); } catch (e) { writable = false; }
     try {
-      const raw = window.localStorage.getItem(KEY);
+      // Desktop app: the launcher also keeps a copy on disk; use whichever has seen more runs.
+      const disk = typeof window.__EG_DESKTOP_SAVE === "string" ? window.__EG_DESKTOP_SAVE : null;
+      if (disk) {
+        try {
+          const a = raw ? JSON.parse(raw) : null, b = JSON.parse(disk);
+          if (!a || ((b.totals && b.totals.runs) || 0) > ((a.totals && a.totals.runs) || 0)) raw = disk;
+        } catch (e) { /* keep localStorage */ }
+      }
       if (raw) {
         const saved = JSON.parse(raw);
         const d = defaults();
@@ -60,10 +71,10 @@ export const store = {
           best: { ...d.best, ...(saved.best || {}) },
           totals: { ...d.totals, ...(saved.totals || {}) },
           settings: { ...d.settings, ...(saved.settings || {}) },
+          daily: { ...d.daily, ...(saved.daily || {}) },
         };
       }
     } catch (e) {
-      writable = false;
       data = defaults();
     }
     return data;
@@ -72,7 +83,10 @@ export const store = {
   save(now) {
     clearTimeout(saveTimer);
     const write = () => {
-      try { window.localStorage.setItem(KEY, JSON.stringify(data)); writable = true; } catch (e) { writable = false; }
+      const json = JSON.stringify(data);
+      try { window.localStorage.setItem(KEY, json); writable = true; } catch (e) { writable = false; }
+      // Desktop app: mirror the save to a file next to the game (survives cache clears and crashes)
+      try { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ type: "save", data: json }); } catch (e) { /* not the desktop app */ }
     };
     if (now) write(); else saveTimer = setTimeout(write, 250);
   },

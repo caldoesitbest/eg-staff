@@ -7,6 +7,7 @@ let unlocked = false;
 const vol = { sfx: 0.8, music: 0.5, muted: false };
 const last = Object.create(null);     // per-sound throttle
 let listenerX = 0, listenerY = 0;
+let budgetT = 0, budgetN = 0;
 
 function now() { return ctx.currentTime; }
 
@@ -115,7 +116,7 @@ const SOUNDS = {
     const t = now();
     tone(d, "sawtooth", jitter(420, 0.08), 180, t, 0.16, 0.08, 0.01);
   }],
-  hit: [0.03, (d) => {
+  hit: [0.055, (d) => {
     const t = now();
     noise(d, t, 0.05, 0.22, "bandpass", jitter(2600, 0.2), 1200, 2);
     tone(d, "square", jitter(300, 0.1), 160, t, 0.04, 0.05);
@@ -130,12 +131,12 @@ const SOUNDS = {
     tone(d, "triangle", jitter(1900, 0.1), 1500, t, 0.09, 0.09);
     tone(d, "sine", jitter(2900, 0.1), 2400, t, 0.12, 0.05);
   }],
-  die: [0.025, (d) => {
+  die: [0.045, (d) => {
     const t = now();
     noise(d, t, 0.22, 0.5, "lowpass", 3200, 200, 0.8);
     tone(d, "square", jitter(220, 0.15), 50, t, 0.18, 0.18);
   }],
-  explode: [0.06, (d) => {
+  explode: [0.085, (d) => {
     const t = now();
     noise(d, t, 0.6, 0.9, "lowpass", 1800, 90, 0.7);
     tone(d, "sine", 120, 35, t, 0.5, 0.6);
@@ -160,7 +161,7 @@ const SOUNDS = {
     [784, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.05, 0.22, 0.12));
     noise(d, t, 0.4, 0.15, "highpass", 4000, 9000);
   }],
-  star: [0.035, (d, opts) => {
+  star: [0.05, (d, opts) => {
     const t = now();
     const step = Math.min(12, (opts && opts.pitch) || 0);
     const f = 880 * Math.pow(2, step / 12);
@@ -372,6 +373,9 @@ export const audio = {
     if (!s) return;
     const t = ctx.currentTime;
     if (last[name] !== undefined && t - last[name] < s[0]) return;
+    // global voice budget: at most ~28 new sounds a second, so huge fights don't choke Web Audio
+    if (t - budgetT > 1) { budgetT = t; budgetN = 0; }
+    if (++budgetN > 28 && name !== "hurt" && name !== "bossDown" && name !== "perfect") return;
     last[name] = t;
     try { s[1](out(x, y, gain), opts); } catch (e) { /* never let audio break the game */ }
   },

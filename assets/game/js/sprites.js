@@ -12,9 +12,15 @@ export const C = {
 };
 
 // Particle palette (index → colour). Glow dots are pre-rendered per entry.
-export const PAL = [C.cyan, C.violet2, C.magenta, C.mint, C.amber, C.danger, C.white, C.orange, C.red, C.green, C.violet, C.heart, C.blue];
+// The seven sins, in the homepage Ladder's colours.
+export const SIN = {
+  sloth: "#b8bfe0", glutton: "#ff4f8b", greed: "#ffd45c", lust: "#d77fb0", wrath: "#ff9448", pride: "#a98bff", envy: "#6d7bff",
+};
+export const PAL = [C.cyan, C.violet2, C.magenta, C.mint, C.amber, C.danger, C.white, C.orange, C.red, C.green, C.violet, C.heart, C.blue,
+  SIN.sloth, SIN.glutton, SIN.greed, SIN.lust, SIN.wrath, SIN.pride, SIN.envy];
 export const P_CYAN = 0, P_VIOLET = 1, P_MAGENTA = 2, P_MINT = 3, P_AMBER = 4, P_DANGER = 5, P_WHITE = 6,
-  P_ORANGE = 7, P_RED = 8, P_GREEN = 9, P_DVIOLET = 10, P_HEART = 11, P_BLUE = 12;
+  P_ORANGE = 7, P_RED = 8, P_GREEN = 9, P_DVIOLET = 10, P_HEART = 11, P_BLUE = 12,
+  P_SLOTH = 13, P_GLUT = 14, P_GREED = 15, P_LUST = 16, P_WRATH = 17, P_PRIDE = 18, P_ENVY = 19;
 
 function canvas(w, h) {
   const c = document.createElement("canvas");
@@ -174,6 +180,16 @@ export const ROBOT_ART = {
     g.strokeStyle = "rgba(255,59,92,0.4)"; g.lineWidth = 1; g.beginPath(); g.moveTo(-11, 0); g.lineTo(10, 0); g.stroke();
     eye(g, P, 4, 0, 3, a);
   } },
+  gem: { size: 44, accent: "#a98bff", draw(g, P, a) {
+    shapeFromPoints(g, [0, -15, 12, -4, 8, 13, -8, 13, -12, -4]);
+    glow(g, P, a, 12);
+    const grd = g.createLinearGradient(-12, -15, 12, 13);
+    grd.addColorStop(0, "#efe6ff"); grd.addColorStop(0.45, a); grd.addColorStop(1, "#3a1f8a");
+    g.fillStyle = grd; g.fill(); noGlow(g);
+    g.strokeStyle = "#ffffff"; g.lineWidth = 1.4; g.stroke();
+    g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(-12, -4); g.lineTo(12, -4); g.moveTo(0, -15); g.lineTo(-4, -4); g.lineTo(0, 13); g.lineTo(4, -4); g.closePath(); g.stroke();
+  } },
   patch: { size: 50, accent: C.green, draw(g, P, a) {
     g.strokeStyle = "#8b8fb5"; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-8, -10); g.lineTo(-14, -18); g.stroke();
     eye(g, P, -14, -18, 2, a);
@@ -282,6 +298,7 @@ export const sprites = {
       };
     }
     this.buildPlayer(P, suit);
+    this.buildDigits(P);
     this.star = make(26, P, (g) => {
       glow(g, P, C.cyan, 10); g.fillStyle = C.cyan; starPath(g, 8, 3.6); g.fill(); noGlow(g);
       g.fillStyle = "#e8fdff"; starPath(g, 4, 1.8); g.fill();
@@ -310,7 +327,22 @@ export const sprites = {
       noGlow(g);
       g.fillStyle = "#fff"; circle(g, 0, 0, 3.6); g.fill();
     });
-    this.orbs = { pink: orb("#ff4f9a"), amber: orb(C.amber), violet: orb(C.violet2), mint: orb(C.mint), red: orb(C.red), magenta: orb(C.magenta), green: orb(C.green) };
+    this.orbs = { pink: orb("#ff4f9a"), amber: orb(C.amber), violet: orb(C.violet2), mint: orb(C.mint), red: orb(C.red), magenta: orb(C.magenta), green: orb(C.green),
+      sloth: orb(SIN.sloth), glutton: orb(SIN.glutton), wrath: orb(SIN.wrath), pride: orb(SIN.pride), envy: orb(SIN.envy) };
+    // Greed's coins and Lust's hearts are their own shapes, still with the bright core every robot shot has.
+    this.orbs.coin = make(30, P, (g) => {
+      glow(g, P, SIN.greed, 12);
+      g.fillStyle = "#e8a820"; circle(g, 0, 0, 8); g.fill();
+      noGlow(g);
+      g.fillStyle = SIN.greed; circle(g, 0, 0, 6.2); g.fill();
+      g.fillStyle = "#fff6d6"; g.font = "700 9px Rajdhani, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("$", 0, 0.5);
+    });
+    this.orbs.heart = make(32, P, (g) => {
+      glow(g, P, SIN.lust, 12);
+      g.fillStyle = SIN.lust; heartPath(g, 9); g.fill();
+      noGlow(g);
+      g.fillStyle = "#fff"; heartPath(g, 4.5); g.fill();
+    });
     this.orbital = make(30, P, (g) => {
       glow(g, P, C.cyan, 12);
       g.fillStyle = "#0b2a3a"; circle(g, 0, 0, 7.5); g.fill();
@@ -322,10 +354,32 @@ export const sprites = {
     this.dots = PAL.map((col) => glowDot(col, dpx));
   },
 
+  /** Damage-number digits, pre-rendered with their outline (drawing text every frame was costly). */
+  buildDigits(P) {
+    const make1 = (ch, size, col) => {
+      const px = Math.max(8, Math.ceil(size * P * 1.4));
+      const c = canvas(px * 0.75, px);
+      const g = c.getContext("2d");
+      g.font = "700 " + Math.round(size * P) + "px Rajdhani, 'Plus Jakarta Sans', sans-serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.lineJoin = "round";
+      g.lineWidth = Math.max(2, 3 * P);
+      g.strokeStyle = "rgba(3,5,24,0.9)";
+      g.strokeText(ch, c.width / 2, c.height / 2);
+      g.fillStyle = col;
+      g.fillText(ch, c.width / 2, c.height / 2);
+      const w = g.measureText(ch).width / P + 1.5;
+      return { c, w, h: c.height / P, cw: c.width / P };
+    };
+    const set = (size, col) => "0123456789!".split("").map((ch) => make1(ch, size, col));
+    this.digits = { normal: set(13, "#ffffff"), crit: set(19, "#ffc861") };
+  },
+
   buildPlayer(P, suit) {
     this.player = make(64, P, (g) => drawAstronaut(g, P, suit));
     this.playerFlash = tinted(this.player, "#ffffff", 0.85);
-    this.mirror = tinted(this.player, C.mint, 0.55);
+    this.envy = tinted(this.player, SIN.envy, 0.6);
   },
 
   /** Rock sprites are made per asteroid (few of them, varied shapes). */

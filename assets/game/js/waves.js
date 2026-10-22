@@ -61,17 +61,32 @@ export const waves = {
 
   isBossWave(n) { return n % W.bossEvery === 0; },
 
+  /** Which rung (0..6) a wave belongs to, and how many full laps of the ladder came before it. */
+  rungOf(n) { return Math.floor(((n - 1) % 35) / W.bossEvery); },
+  lapOf(n) { return Math.floor((n - 1) / 35); },
+  markOf(n) {
+    const M = BALANCE.marks;
+    let m = 0;
+    for (const at of M.at) if (n >= at) m++;
+    const last = M.at[M.at.length - 1];
+    if (n >= last) m += Math.floor((n - last) / M.every);
+    return m;
+  },
+
   start(n) {
     G.wave = n;
     G.waveHits = 0;
+    G.lap = this.lapOf(n);
+    const mark = this.markOf(n);
+    this.newMark = mark > G.mark && n > 1;
+    G.mark = mark;
     this.queue.length = 0;
     this.active = true;
     this.done = false;
     this.boss = this.isBossWave(n);
     this.gapT = 1.0;
     if (this.boss) {
-      const order = BALANCE.bosses.order;
-      this.bossType = order[(n / W.bossEvery - 1) % order.length];
+      this.bossType = BALANCE.bosses.order[this.rungOf(n)];
       this.bossT = 1.6;
       this.maxAlive = 40;
       return;
@@ -87,7 +102,7 @@ export const waves = {
     } else {
       mix = {};
       for (const t in W.unlock) if (W.unlock[t] <= n) mix[t] = W.weight[t];
-      budget = W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve);
+      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve));
       maxGroup = Math.min(W.group.cap, W.group.max + Math.floor(n / W.group.perWaves));
       this.maxAlive = Math.min(W.maxAlive.cap, Math.round(W.maxAlive.base + n * W.maxAlive.perWave));
       const g = W.gap;

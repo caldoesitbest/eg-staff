@@ -15,7 +15,11 @@ import { ENVY_POWERS, hasEnvy } from "./upgrades.js";
 const A = BALANCE.arena;
 let canvas = null, g = null;
 let W = 1, H = 1, dpr = 1;
-const bg = { tiles: [], nebula: null, planet: null, vignette: null, tileDpr: 0, tileSize: 512 };
+const bg = { tiles: [], nebula: null, planet: null, vignette: null, tileDpr: 0, tileSize: 512, sky: null, skyKey: "" };
+
+// Most pixels the canvas may have, per quality level. A 4K or high-DPI screen at full resolution
+// is 8M+ pixels per frame, which is where the late-game lag came from; this keeps it sharp but sane.
+const PIXEL_BUDGET = [900000, 1500000, 2400000];
 let suit = null;
 
 function mk(w, h) {
@@ -169,7 +173,8 @@ export const renderer = {
     try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch (e) { /* ignore */ }
     const capBase = coarse ? 1.5 : 2;
     const cap = G.quality === 0 ? 1 : G.quality === 1 ? Math.min(capBase, 1.5) : capBase;
-    dpr = Math.min(window.devicePixelRatio || 1, cap);
+    const budget = Math.sqrt(PIXEL_BUDGET[G.quality] / (W * H));
+    dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap, budget));
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     const long = Math.max(W, H), short = Math.min(W, H);
@@ -193,6 +198,33 @@ export const renderer = {
       ];
       bg.planet = buildPlanet(Math.round(420 * dpr));
     }
+    bg.skyKey = "";
+  },
+
+  /** Nebula + planet + the farthest stars, composited once into one screen-sized layer
+      (it used to be three full-screen draws every frame). Rebuilt on resize / menu ↔ play. */
+  buildSky(cw, ch, menu, quality) {
+    const key = cw + "x" + ch + (menu ? "m" : "p") + quality;
+    if (bg.skyKey === key) return;
+    bg.skyKey = key;
+    const mw = Math.round(cw * 1.06), mh = Math.round(ch * 1.06);
+    const c = bg.sky && bg.sky.width === mw && bg.sky.height === mh ? bg.sky : mk(mw, mh);
+    const x = c.getContext("2d");
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.globalAlpha = 1;
+    x.fillStyle = "#030518";
+    x.fillRect(0, 0, mw, mh);
+    if (quality > 0) {
+      const nw = Math.max(mw, mh * 1.6) * 1.1, nh = nw * 0.625;
+      x.drawImage(bg.nebula, (mw - nw) / 2, (mh - nh) / 2, nw, nh);
+      const T = bg.tiles[0].width;
+      for (let ty = 0; ty < mh; ty += T) for (let tx = 0; tx < mw; tx += T) x.drawImage(bg.tiles[0], tx, ty);
+    }
+    const ps = Math.min(mw, mh) * (menu ? 0.95 : 0.62);
+    x.globalAlpha = menu ? 0.9 : 0.55;
+    x.drawImage(bg.planet, mw * (menu ? 0.8 : 0.86) - ps / 2, mh * (menu ? 0.2 : 0.14) - ps / 2, ps, ps);
+    x.globalAlpha = 1;
+    bg.sky = c;
   },
 
   /** Follows the (interpolated) player with a little look-ahead toward the aim. */
@@ -244,24 +276,17 @@ export const renderer = {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalAlpha = 1;
     g.globalCompositeOperation = "source-over";
-    g.fillStyle = "#030518";
-    g.fillRect(0, 0, cw, ch);
-    if (quality > 0) {
-      const nw = Math.max(cw, ch * 1.6) * 1.15, nh = nw * 0.625;
-      g.drawImage(bg.nebula, (cw - nw) / 2 - (camX - A.w / 2) * 0.03 * cam.z * dpr, (ch - nh) / 2 - (camY - A.h / 2) * 0.03 * cam.z * dpr, nw, nh);
-    }
-    if (bg.planet) {
-      const menu = G.state === "menu";
-      const ps = Math.min(cw, ch) * (menu ? 0.95 : 0.62);
-      const ox = cw * (menu ? 0.8 : 0.86) - ps / 2 - (camX - A.w / 2) * 0.05 * cam.z * dpr;
-      const oy = ch * (menu ? 0.2 : 0.14) - ps / 2 - (camY - A.h / 2) * 0.05 * cam.z * dpr;
-      g.globalAlpha = menu ? 0.9 : 0.55;
-      g.drawImage(bg.planet, ox, oy, ps, ps);
-      g.globalAlpha = 1;
+    this.buildSky(cw, ch, G.state === "menu", quality);
+    {
+      // the cached sky drifts a touch with the camera (parallax), inside its 6% margin
+      const sky = bg.sky;
+      const mx = (sky.width - cw) / 2, my = (sky.height - ch) / 2;
+      const px = clamp(-(camX - A.w / 2) / (A.w / 2), -1, 1) * mx, py = clamp(-(camY - A.h / 2) / (A.h / 2), -1, 1) * my;
+      g.drawImage(sky, -mx + px, -my + py);
     }
     const T = bg.tiles.length ? bg.tiles[0].width : 1;
     const factors = [0.1, 0.22, 0.42];
-    for (let L = quality > 0 ? 0 : 2; L < bg.tiles.length; L++) {
+    for (let L = quality > 0 ? 1 : 2; L < bg.tiles.length; L++) {
       const f = factors[L];
       let ox = -((camX * f * cam.z * dpr) % T); if (ox > 0) ox -= T;
       let oy = -((camY * f * cam.z * dpr) % T); if (oy > 0) oy -= T;
@@ -430,7 +455,7 @@ export const renderer = {
         g.globalAlpha = 1;
         g.globalCompositeOperation = "source-over";
       }
-      if (e.kind.drawOver || e.elite || e.ally > 0 || (e.hp < e.maxHp && e.maxHp >= 80)) {
+      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80)) {
         g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
         if (e.kind.drawOver) e.kind.drawOver(g, e, x, y);
         const R = e.r * e.scale;
@@ -442,6 +467,30 @@ export const renderer = {
           g.lineDashOffset = G.time * 20;
           g.beginPath(); g.arc(x, y, R + 6, 0, TAU); g.stroke();
           g.setLineDash([]);
+          const t = e.traits;
+          if (t & 2) {        // hasted: speed streaks behind it
+            const c = Math.cos(e.ang), sn = Math.sin(e.ang);
+            g.strokeStyle = "#ffffff"; g.globalAlpha = 0.6; g.lineWidth = 2;
+            g.beginPath();
+            for (let k = -1; k <= 1; k += 2) {
+              const ox = x - c * (R + 6) - sn * k * 6, oy = y - sn * (R + 6) + c * k * 6;
+              g.moveTo(ox, oy); g.lineTo(ox - c * 12, oy - sn * 12);
+            }
+            g.stroke();
+          }
+          if (t & 4) {        // volatile: a pulsing orange halo
+            g.strokeStyle = C.orange; g.globalAlpha = 0.5 + Math.sin(G.time * 10) * 0.3; g.lineWidth = 2;
+            g.beginPath(); g.arc(x, y, R + 11, 0, TAU); g.stroke();
+          }
+          if (t & 8) {        // regenerating: a green plus
+            g.fillStyle = C.green; g.globalAlpha = 0.9;
+            g.fillRect(x + R + 2, y - R - 9, 8, 2.5); g.fillRect(x + R + 4.75, y - R - 11.75, 2.5, 8);
+          }
+          g.globalAlpha = 1;
+        }
+        if (e.shield > 0 && e.shieldMax > 0) {
+          g.strokeStyle = C.cyan; g.globalAlpha = 0.9; g.lineWidth = 3;
+          g.beginPath(); g.arc(x, y, R + 3, -Math.PI / 2, -Math.PI / 2 + TAU * (e.shield / e.shieldMax)); g.stroke();
           g.globalAlpha = 1;
         }
         if (e.ally > 0) {

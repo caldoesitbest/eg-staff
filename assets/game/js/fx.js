@@ -11,12 +11,12 @@ function makeParticle() {
   return { x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 1, col: 0, colStr: "", kind: 0, rot: 0, vr: 0, drag: 0, dead: false };
 }
 function makeRing() { return { x: 0, y: 0, r0: 0, r1: 0, life: 0, max: 1, col: "#fff", w: 2, dead: false }; }
-function makeNumber() { return { x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, text: "", col: "#fff", size: 14, dead: false }; }
+function makeNumber() { return { x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, text: "", col: "#fff", size: 14, dead: false, val: 0, isNum: false, crit: false }; }
 
 export const fx = {
   parts: new Pool(makeParticle, BALANCE.fx.particles.high),
   rings: new Pool(makeRing, 80),
-  nums: new Pool(makeNumber, 90),
+  nums: new Pool(makeNumber, 60),
   trauma: 0,
   shakeX: 0, shakeY: 0,
   shakeOn: true,
@@ -36,6 +36,13 @@ export const fx = {
     this.trauma = 0; this.flash.a = 0;
   },
 
+  /** How many of a burst to actually spawn: fewer when the pool is filling up. */
+  budget(n) {
+    const fill = this.parts.count / this.parts.limit;
+    const k = fill > 0.85 ? 0.25 : fill > 0.6 ? 0.55 : 1;
+    return Math.ceil(n * this.density * k);
+  },
+
   // ---------- spawning ----------
   p(kind, x, y, vx, vy, life, size, col, drag) {
     const q = this.parts.get();
@@ -47,7 +54,7 @@ export const fx = {
   },
 
   burst(x, y, n, col, speed, life, size) {
-    n = Math.ceil(n * this.density);
+    n = this.budget(n);
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), s = rand(speed * 0.3, speed);
       this.p(DOT, x, y, Math.cos(a) * s, Math.sin(a) * s, rand(life * 0.5, life), rand(size * 0.6, size), col, 3);
@@ -55,7 +62,7 @@ export const fx = {
   },
 
   sparks(x, y, angle, spread, n, col, speed = 420, life = 0.28) {
-    n = Math.ceil(n * this.density);
+    n = this.budget(n);
     for (let i = 0; i < n; i++) {
       const a = angle + rand(-spread, spread), s = rand(speed * 0.4, speed);
       this.p(SPARK, x, y, Math.cos(a) * s, Math.sin(a) * s, rand(life * 0.5, life), rand(0.6, 1.1), col, 5);
@@ -63,7 +70,7 @@ export const fx = {
   },
 
   debris(x, y, n, colStr, speed = 260) {
-    n = Math.ceil(n * this.density);
+    n = this.budget(n);
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), s = rand(speed * 0.3, speed);
       const q = this.p(SHARD, x, y, Math.cos(a) * s, Math.sin(a) * s, rand(0.5, 1.1), rand(2, 4.5), 0, 2.2);
@@ -72,7 +79,7 @@ export const fx = {
   },
 
   smoke(x, y, n, size = 18) {
-    n = Math.ceil(n * this.density);
+    n = this.budget(n);
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), s = rand(10, 70);
       this.p(SMOKE, x + rand(-6, 6), y + rand(-6, 6), Math.cos(a) * s, Math.sin(a) * s, rand(0.5, 1.0), rand(size * 0.6, size), 10, 2);
@@ -90,8 +97,9 @@ export const fx = {
     if (!q) return;
     q.x = x + rand(-6, 6); q.y = y - 8; q.vx = rand(-20, 20); q.vy = crit ? -110 : -80;
     q.life = q.max = crit ? 0.8 : 0.6;
-    q.text = crit ? Math.round(value) + "!" : String(Math.round(value));
-    q.col = col || (crit ? "#ffc861" : "#ffffff");
+    q.val = Math.max(0, Math.round(value));
+    q.isNum = true;
+    q.crit = !!crit;
     q.size = crit ? 19 : 13;
     q.dead = false;
   },
@@ -99,7 +107,7 @@ export const fx = {
   text(x, y, str, col, size = 16, life = 1) {
     const q = this.nums.get();
     if (!q) return;
-    q.x = x; q.y = y; q.vx = 0; q.vy = -45; q.life = q.max = life; q.text = str; q.col = col; q.size = size; q.dead = false;
+    q.x = x; q.y = y; q.vx = 0; q.vy = -45; q.life = q.max = life; q.text = str; q.col = col; q.size = size; q.dead = false; q.isNum = false;
   },
 
   /** A full robot explosion: flash, ring, sparks, debris, smoke. size ~ robot radius. */
@@ -232,15 +240,32 @@ export const fx = {
 
   drawNumbers(g) {
     const ns = this.nums;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.lineJoin = "round";
+    const D = sprites.digits;
+    let fontSet = "";
     for (let i = 0; i < ns.count; i++) {
       const q = ns.items[i];
       const t = q.life / q.max;
       const pop = t > 0.8 ? 1 + (t - 0.8) * 2.5 : 1;
       g.globalAlpha = Math.min(1, t * 2.2);
-      g.font = "700 " + Math.round(q.size * pop) + "px Rajdhani, 'Plus Jakarta Sans', sans-serif";
+      if (q.isNum && D) {
+        // digits from the pre-rendered sheet, right to left, no strings made
+        const set = q.crit ? D.crit : D.normal;
+        let v = q.val, n = 0, width = 0;
+        do { width += set[v % 10].w * pop; v = Math.floor(v / 10); n++; } while (v > 0 && n < 7);
+        if (q.crit) width += set[10].w * pop;
+        let x = q.x + width / 2;
+        if (q.crit) { const d = set[10]; x -= d.w * pop; g.drawImage(d.c, x - (d.cw * pop - d.w * pop) / 2, q.y - d.h * pop / 2, d.cw * pop, d.h * pop); }
+        v = q.val; n = 0;
+        do {
+          const d = set[v % 10];
+          x -= d.w * pop;
+          g.drawImage(d.c, x - (d.cw * pop - d.w * pop) / 2, q.y - d.h * pop / 2, d.cw * pop, d.h * pop);
+          v = Math.floor(v / 10); n++;
+        } while (v > 0 && n < 7);
+        continue;
+      }
+      const font = "700 " + Math.round(q.size * pop) + "px Rajdhani, 'Plus Jakarta Sans', sans-serif";
+      if (font !== fontSet) { g.font = font; fontSet = font; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round"; }
       g.lineWidth = 3;
       g.strokeStyle = "rgba(3,5,24,0.85)";
       g.strokeText(q.text, q.x, q.y);

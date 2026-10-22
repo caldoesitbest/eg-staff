@@ -134,7 +134,7 @@ export function updatePlayer(dt) {
 
   // ----- movement -----
   const envySpeed = hasEnvy("drone") ? 1 + ENVY_POWERS.drone.speed : 1;
-  const speed = s.moveSpeed * envySpeed;
+  const speed = s.moveSpeed * envySpeed * (G.playerSlow || 1);
   const mx = input.move.x, my = input.move.y;
   if (P.boostT > 0) {
     P.boostT -= dt;

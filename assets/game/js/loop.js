@@ -4,7 +4,9 @@
 export const STEP = 1 / 60;
 const MAX_STEPS = 5;
 
-export function startLoop({ before, update, render }) {
+export function startLoop({ before, update, render, timer }) {
+  // timer: debug only (?headless=1): tick with setTimeout so tests run even when the page is not painting
+  const next = timer ? (fn) => setTimeout(() => fn(performance.now()), 16) : (fn) => requestAnimationFrame(fn);
   let last = performance.now();
   let acc = 0;
   let running = true;
@@ -12,7 +14,7 @@ export function startLoop({ before, update, render }) {
 
   function frame(now) {
     if (!running) return;
-    requestAnimationFrame(frame);
+    next(frame);
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;           // tab was asleep: don't fast-forward
@@ -43,7 +45,7 @@ export function startLoop({ before, update, render }) {
       stats.windowStart = now;
     }
   }
-  requestAnimationFrame(frame);
+  next(frame);
 
   return {
     stats,
