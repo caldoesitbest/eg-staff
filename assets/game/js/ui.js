@@ -1,0 +1,564 @@
+/* DOM overlays: HUD, banners, menus, upgrade cards, game over, settings, touch sticks.
+   The HUD only touches the DOM when a value actually changes. */
+
+import { G } from "./state.js";
+import { BALANCE } from "./balance.js";
+import { input } from "./input.js";
+import { store, SUITS } from "./storage.js";
+import { CARD_BY_ID, ENVY_POWERS } from "./upgrades.js";
+import { comboMult } from "./world.js";
+import { waves } from "./waves.js";
+import { formatScore } from "./util.js";
+
+const $ = (id) => document.getElementById(id);
+const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
+
+function icon(name, cls) {
+  return window.egIcon ? window.egIcon(name, cls) : document.createElement("span");
+}
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1 };
+let screen = null;
+let armedAt = 0;            // clicks on cards / game-over buttons are ignored until this time
+const armed = () => performance.now() >= armedAt;
+let bannerTimer = 0, toastTimer = 0;
+let handlers = {};
+let bossGhost = 1;
+
+export const ui = {
+  els: {},
+
+  init(h) {
+    handlers = h;
+    const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
+      "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
+      "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "cards", "rotate-hint"];
+    for (const id of ids) this.els[id] = $(id);
+
+    // half-heart clip, shared by every heart icon
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    defs.setAttribute("width", "0"); defs.setAttribute("height", "0"); defs.setAttribute("aria-hidden", "true");
+    defs.style.position = "absolute";
+    defs.innerHTML = '<defs><clipPath id="eg-half"><rect x="0" y="0" width="12" height="24"/></clipPath></defs>';
+    document.body.appendChild(defs);
+
+    const click = (id, fn) => { const n = $(id); if (n) n.addEventListener("click", (e) => { handlers.onClick && handlers.onClick(); fn(e); }); };
+    click("play-btn", () => handlers.onPlay());
+    click("how-btn", () => this.show("how"));
+    click("settings-btn", () => this.openSettings("menu"));
+    click("pause-btn", () => handlers.onPause());
+    click("resume-btn", () => handlers.onResume());
+    click("restart-btn", () => handlers.onRestart());
+    click("pause-settings-btn", () => this.openSettings("pause"));
+    click("quit-btn", () => handlers.onQuit());
+    click("retry-btn", () => { if (armed()) handlers.onRestart(); });
+    click("over-menu-btn", () => { if (armed()) handlers.onQuit(); });
+    click("reroll-btn", () => handlers.onReroll());
+    click("patch-btn", () => handlers.onPatch());
+    click("settings-done", () => this.closeSettings());
+    click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
+    click("menu-mute", () => { const s = store.data.settings; s.muted = !s.muted; handlers.onSettings(); this.syncSettings(); this.syncMute(); });
+    click("rotate-close", () => { store.data.rotateHintDismissed = true; store.save(); this.els["rotate-hint"].hidden = true; });
+    const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+    for (const id of ["menu-fullscreen", "pause-fullscreen"]) {
+      const b = $(id);
+      if (!b) continue;
+      b.hidden = !fsOk;
+      b.addEventListener("click", () => handlers.onFullscreen());
+    }
+
+    // hover blips on buttons
+    document.querySelectorAll(".game .btn, .game .icon-btn").forEach((b) => {
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+    });
+
+    // settings controls
+    const s = () => store.data.settings;
+    const bind = (id, ev, fn) => { const n = $(id); if (n) n.addEventListener(ev, () => { fn(n); handlers.onSettings(); this.syncMute(); }); };
+    bind("set-sfx", "input", (n) => { s().sfx = n.value / 100; });
+    bind("set-music", "input", (n) => { s().music = n.value / 100; });
+    bind("set-muted", "change", (n) => { s().muted = n.checked; });
+    bind("set-shake", "change", (n) => { s().shake = n.checked; });
+    bind("set-reduced", "change", (n) => { s().reducedMotion = n.checked; });
+    bind("set-autoaim", "change", (n) => { s().autoAim = n.checked; });
+    bind("set-haptics", "change", (n) => { s().haptics = n.checked; });
+    bind("set-fps", "change", (n) => { s().showFps = n.checked; });
+    bind("set-quality", "change", (n) => { s().quality = n.value; });
+
+    this.renderSuits();
+    this.syncSettings();
+    this.syncMute();
+  },
+
+  // ---------------- screens ----------------
+  show(name) {
+    const names = ["menu", "pause", "upgrade", "over", "settings", "how"];
+    for (const n of names) {
+      const node = $("screen-" + n);
+      if (!node) continue;
+      const on = n === name;
+      if (on && node.hidden) { node.hidden = false; node.classList.remove("in"); void node.offsetWidth; node.classList.add("in"); }
+      else if (!on) node.hidden = true;
+    }
+    screen = name;
+    if (name === "upgrade" || name === "over") armedAt = performance.now() + (name === "over" ? 700 : 450);
+    if (name === "how") this.renderHow();
+    if (name === "menu") this.refreshMenu();
+    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : ".btn-primary, .btn, button");
+    if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
+    this.updateRotateHint();
+  },
+  get screen() { return screen; },
+  get armed() { return armed(); },
+
+  setState(state) {
+    const g = this.els.game;
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-dying", "state-over");
+    g.classList.add("state-" + state);
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade");
+    this.updateRotateHint();
+  },
+
+  setMode(mode) {
+    const g = this.els.game;
+    g.classList.remove("mode-kbm", "mode-touch", "mode-gamepad");
+    g.classList.add("mode-" + mode);
+    this.renderControlsHint();
+    if (screen === "how") this.renderHow();
+    if (screen === "upgrade") this.renderUpgradeHint();
+    if (screen === "over") this.renderOverHint();
+    this.updateRotateHint();
+  },
+
+  setReduced(on) { this.els.game.classList.toggle("reduced", !!on); },
+
+  openSettings(back) {
+    this.settingsBack = back;
+    this.syncSettings();
+    this.show("settings");
+  },
+  closeSettings() {
+    store.save();
+    this.show(this.settingsBack || "menu");
+  },
+  syncSettings() {
+    const s = store.data.settings;
+    const set = (id, prop, v) => { const n = $(id); if (n) n[prop] = v; };
+    set("set-sfx", "value", Math.round(s.sfx * 100));
+    set("set-music", "value", Math.round(s.music * 100));
+    set("set-muted", "checked", s.muted);
+    set("set-shake", "checked", s.shake);
+    set("set-reduced", "checked", s.reducedMotion);
+    set("set-autoaim", "checked", s.autoAim);
+    set("set-haptics", "checked", s.haptics);
+    set("set-fps", "checked", s.showFps);
+    set("set-quality", "value", s.quality);
+    const note = $("set-note");
+    if (note) note.textContent = store.writable ? "Settings save on this device." : "Your browser is blocking storage, so settings and bests won't be saved after you leave.";
+  },
+  syncMute() {
+    const b = $("menu-mute");
+    if (!b) return;
+    const muted = store.data.settings.muted;
+    b.replaceChildren(icon(muted ? "volume-x" : "volume-2"));
+    b.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
+    b.setAttribute("aria-pressed", muted ? "true" : "false");
+  },
+
+  // ---------------- menu ----------------
+  refreshMenu() {
+    const b = store.data.best;
+    const dl = $("bests");
+    dl.replaceChildren();
+    const add = (label, value) => { const d = el("div"); d.append(el("dt", "", label), el("dd", "", value)); dl.append(d); };
+    if (b.wave > 0) {
+      add("Best score", formatScore(b.score));
+      add("Best wave", String(b.wave));
+      add("Best combo", String(b.combo));
+    } else {
+      add("Best score", "—");
+      add("Best wave", "—");
+    }
+    this.renderSuits();
+    this.renderControlsHint();
+  },
+
+  renderSuits() {
+    const list = $("suit-list");
+    if (!list) return;
+    list.replaceChildren();
+    const cur = store.data.settings.suit;
+    for (const s of SUITS) {
+      const unlocked = store.suitUnlocked(s);
+      const b = el("button", "suit");
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", s.id === cur ? "true" : "false");
+      b.setAttribute("aria-label", s.name + (unlocked ? "" : " (reach wave " + s.wave + ")"));
+      b.title = unlocked ? s.name : "Reach wave " + s.wave + " to unlock";
+      b.style.setProperty("--suit", s.suit);
+      b.style.setProperty("--trim", s.trim);
+      if (!unlocked) { b.disabled = true; b.append(el("span", "lock", "W" + s.wave)); }
+      b.addEventListener("click", () => { handlers.onSuit(s.id); this.renderSuits(); });
+      list.append(b);
+    }
+  },
+
+  renderControlsHint() {
+    const n = $("menu-controls");
+    if (!n) return;
+    n.innerHTML = this.controlsLine(input.mode);
+  },
+
+  controlsLine(mode) {
+    if (mode === "touch") return "Left thumb moves · right thumb aims &amp; fires · tap <b>⚡ Boost</b> to dash";
+    if (mode === "gamepad") return "<kbd>L</kbd> move · <kbd>R</kbd> aim &amp; fire · <kbd>A</kbd>/<kbd>LB</kbd> boost · <kbd>Start</kbd> pause";
+    return "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · mouse aims · hold click to fire · <kbd>Space</kbd> or right-click to boost · <kbd>Esc</kbd> pause";
+  },
+
+  renderHow() {
+    const box = $("how-controls");
+    if (!box) return;
+    const mode = input.mode;
+    const rows = {
+      kbm: [["Move", "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows"], ["Aim", "Mouse"], ["Fire", "Hold left click"], ["Boost", "<kbd>Space</kbd>, <kbd>Shift</kbd> or right-click"], ["Pause", "<kbd>Esc</kbd> or <kbd>P</kbd>"], ["Pick a card", "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>"]],
+      touch: [["Move", "Drag anywhere on the left half"], ["Aim + fire", "Drag on the right half (auto-fires)"], ["Boost", "Tap the ⚡ button"], ["Auto-aim", "On by default: just move, it shoots for you"], ["Pause", "⏸ top right"]],
+      gamepad: [["Move", "Left stick"], ["Aim + fire", "Right stick (or hold RT)"], ["Boost", "<kbd>A</kbd>, <kbd>LB</kbd> or <kbd>RB</kbd>"], ["Pause", "<kbd>Start</kbd>"]],
+    };
+    const title = { kbm: "Keyboard + mouse", touch: "Touch", gamepad: "Gamepad" };
+    box.replaceChildren();
+    const h = el("h3", "", title[mode]);
+    box.append(h);
+    for (const [k, v] of rows[mode]) {
+      const r = el("div", "how-row");
+      const a = el("span", "", k);
+      const b = el("span");
+      b.innerHTML = v;
+      r.append(a, b);
+      box.append(r);
+    }
+    const other = el("p", "set-note", "Also works with " + Object.keys(title).filter((m) => m !== mode).map((m) => title[m].toLowerCase()).join(" and ") + ". Hints switch to whatever you touch.");
+    box.append(other);
+  },
+
+  // ---------------- HUD ----------------
+  resetHud() {
+    for (const k in last) last[k] = typeof last[k] === "string" ? "" : -1;
+    bossGhost = 1;
+    this.els["boss-bar"].hidden = true;
+  },
+
+  renderHearts(P) {
+    const box = this.els.hearts;
+    box.replaceChildren();
+    const full = Math.ceil(P.maxHp / 2);
+    for (let i = 0; i < full; i++) {
+      const v = Math.max(0, Math.min(2, P.hp - i * 2));
+      box.append(heartSvg(v, false));
+    }
+    const sh = Math.ceil(P.maxShield / 2);
+    for (let i = 0; i < sh; i++) {
+      const v = Math.max(0, Math.min(2, P.shield - i * 2));
+      box.append(heartSvg(v, true));
+    }
+    box.setAttribute("aria-label", "Health " + P.hp / 2 + " of " + P.maxHp / 2 + " hearts");
+    box.classList.toggle("low", P.hp <= 2);
+  },
+
+  flashHearts() {
+    const box = this.els.hearts;
+    box.classList.remove("hurt");
+    void box.offsetWidth;
+    box.classList.add("hurt");
+  },
+
+  updateHud(dt) {
+    const P = G.player;
+    if (!P) return;
+    const E = this.els;
+    if (P.hp !== last.hp || P.maxHp !== last.maxHp || P.shield !== last.shield || P.maxShield !== last.maxShield) {
+      last.hp = P.hp; last.maxHp = P.maxHp; last.shield = P.shield; last.maxShield = P.maxShield;
+      this.renderHearts(P);
+    }
+    const sc = Math.floor(G.score);
+    if (sc !== last.score) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
+    if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
+    if (G.wave !== last.wave) { last.wave = G.wave; E["hud-wave"].textContent = "Wave " + G.wave; }
+    const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? waves.remaining() + " left" : "Clear");
+    if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
+    const m = comboMult();
+    if (G.combo !== last.combo) {
+      const up = G.combo > last.combo;
+      last.combo = G.combo;
+      E["combo-x"].textContent = "×" + m.toFixed(1);
+      E["hud-combo"].classList.toggle("on", G.combo > 0);
+      if (up && G.combo > 1) { E["hud-combo"].classList.remove("bump"); void E["hud-combo"].offsetWidth; E["hud-combo"].classList.add("bump"); }
+    }
+    E["combo-fill"].style.transform = "scaleX(" + (G.combo > 0 ? Math.max(0, G.comboTimer / BALANCE.combo.window).toFixed(3) : 0) + ")";
+
+    // boss bar
+    const b = G.boss;
+    if (b && !b.dead && b.state !== -1) {
+      if (E["boss-bar"].hidden) {
+        E["boss-bar"].hidden = false;
+        E["boss-name"].textContent = b.def.name;
+        E["boss-bar"].style.setProperty("--boss-col", b.kind.accent);
+        bossGhost = 1;
+      }
+      const f = Math.max(0, b.hp / b.maxHp);
+      if (bossGhost > f) bossGhost = Math.max(f, bossGhost - dt * 0.35); else bossGhost = f;
+      E["boss-fill"].style.transform = "scaleX(" + f.toFixed(4) + ")";
+      E["boss-ghost"].style.transform = "scaleX(" + bossGhost.toFixed(4) + ")";
+    } else if (!E["boss-bar"].hidden && !G.bossFx) {
+      E["boss-bar"].hidden = true;
+    }
+
+    // envy powers
+    let key = "";
+    for (const p of P.envy) key += p.type + ",";
+    if (key !== last.envy) {
+      last.envy = key;
+      E["envy-chips"].replaceChildren(...P.envy.map((p) => { const c = el("span", "envy-chip", ENVY_POWERS[p.type].name); c.append(el("i")); return c; }));
+    }
+    const chips = E["envy-chips"].children;
+    for (let i = 0; i < chips.length && i < P.envy.length; i++) {
+      chips[i].lastChild.style.width = Math.max(0, (P.envy[i].t / P.envy[i].max) * 100).toFixed(1) + "%";
+    }
+
+    // touch: boost button cooldown + sticks
+    if (input.mode === "touch") {
+      const cd = P.boostCdT > 0 ? Math.min(1, P.boostCdT / G.stats.boostCd) : 0;
+      const q = Math.round(cd * 50) / 50;
+      if (q !== last.cd) {
+        if (q === 0 && last.cd > 0) { E["boost-btn"].classList.remove("ready"); void E["boost-btn"].offsetWidth; E["boost-btn"].classList.add("ready"); }
+        last.cd = q;
+        E["boost-btn"].style.setProperty("--cd", q);
+        E["boost-btn"].classList.toggle("cooling", q > 0);
+      }
+      this.updateSticks();
+    }
+  },
+
+  updateSticks() {
+    const E = this.els;
+    const put = (node, s) => {
+      node.classList.toggle("on", s.active);
+      if (!s.active) return;
+      node.style.transform = "translate(" + s.ox + "px," + s.oy + "px)";
+      const dx = s.cx - s.ox, dy = s.cy - s.oy;
+      const d = Math.hypot(dx, dy), max = 56;
+      const k = d > max ? max / d : 1;
+      node.firstElementChild.style.transform = "translate(" + dx * k + "px," + dy * k + "px)";
+    };
+    put(E["stick-move"], input.sticks.move);
+    put(E["stick-aim"], input.sticks.aim);
+    const early = G.wave <= 2;
+    E["ghost-move"].classList.toggle("off", input.sticks.move.active || !early);
+    E["ghost-aim"].classList.toggle("off", input.sticks.aim.active || !early || store.data.settings.autoAim && G.wave > 1);
+  },
+
+  setFps(text) {
+    const n = this.els.fps;
+    if (text === null) { n.hidden = true; return; }
+    n.hidden = false;
+    n.textContent = text;
+  },
+
+  // ---------------- banners ----------------
+  banner(kicker, title, sub, kind, long) {
+    const E = this.els;
+    E["banner-kicker"].textContent = kicker || "";
+    E["banner-title"].textContent = title || "";
+    E["banner-sub"].innerHTML = sub || "";
+    const b = E.banner;
+    b.className = "banner" + (kind ? " " + kind : "") + (long ? " long" : "");
+    void b.offsetWidth;
+    b.classList.add("show");
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => b.classList.remove("show"), long ? 3300 : 2300);
+  },
+  clearBanner() { clearTimeout(bannerTimer); this.els.banner.className = "banner"; },
+
+  toast(text, ms = 1800) {
+    const t = this.els.toast;
+    t.textContent = text;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  },
+
+  // ---------------- upgrade pick ----------------
+  showUpgrade(ids, info) {
+    $("up-kicker").textContent = info.kicker;
+    $("up-title").textContent = info.title;
+    $("up-bonus").innerHTML = info.bonus || "";
+    this.renderCards(ids);
+    this.renderEconomy();
+    this.renderUpgradeHint();
+    this.show("upgrade");
+  },
+
+  renderCards(ids) {
+    const box = this.els.cards;
+    box.replaceChildren();
+    ids.forEach((id, i) => {
+      const c = CARD_BY_ID[id];
+      const lvl = G.up[id] || 0;
+      const b = el("button", "card");
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      b.dataset.id = id;
+      b.style.setProperty("--card-col", c.color);
+      b.append(el("span", "card-key", String(i + 1)));
+      b.append(el("span", "card-tag" + (c.kind === "gear" ? " gear" : ""), c.kind === "sin" ? "Sin" : "Gear"));
+      const art = el("span", "card-art");
+      if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; img.width = 76; img.height = 76; art.append(img); }
+      else art.append(icon(c.icon));
+      b.append(art);
+      b.append(el("span", "card-name", c.name));
+      const pips = el("span", "card-pips");
+      pips.setAttribute("aria-label", "Level " + (lvl + 1) + " of " + c.max);
+      for (let k = 0; k < c.max; k++) pips.append(el("i", k < lvl ? "on" : k === lvl ? "next" : ""));
+      b.append(pips);
+      const desc = el("p", "card-desc", c.levels[lvl]);
+      if (c.tag && lvl === 0) desc.append(el("small", "", c.tag));
+      if (lvl > 0) desc.append(el("small", "", "Level " + (lvl + 1) + (lvl + 1 === c.max ? " · max" : "")));
+      b.append(desc);
+      b.setAttribute("aria-label", c.name + ", level " + (lvl + 1) + ": " + c.levels[lvl]);
+      b.addEventListener("click", () => { if (armed()) handlers.onPick(id); });
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+      box.append(b);
+    });
+  },
+
+  renderEconomy() {
+    const E = BALANCE.economy;
+    const rr = E.reroll + E.rerollStep * G.rerolls;
+    const pc = E.patch + E.patchStep * G.patches;
+    const P = G.player;
+    const rb = $("reroll-btn"), pb = $("patch-btn");
+    $("reroll-label").textContent = "Reroll · ★" + rr;
+    $("patch-label").textContent = "Patch up +½💜 · ★" + pc;
+    rb.disabled = G.stars < rr;
+    pb.disabled = G.stars < pc || !P || P.hp >= P.maxHp;
+    $("up-stars").textContent = "You have ★" + G.stars;
+  },
+
+  renderUpgradeHint() {
+    const n = $("up-hint");
+    if (!n) return;
+    n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
+  },
+
+  focusCard(i) {
+    const c = this.els.cards.children[i];
+    if (c) c.focus();
+  },
+
+  // ---------------- pause + game over ----------------
+  showPause(build) {
+    $("pause-sub").textContent = "Wave " + G.wave + " · " + formatScore(G.score) + " pts";
+    renderBuild($("pause-build"), build);
+    this.show("pause");
+  },
+
+  showGameOver(sum) {
+    $("over-kicker").textContent = "Run over · wave " + sum.wave;
+    $("over-title").textContent = sum.title;
+    const best = $("over-best");
+    best.hidden = !sum.anyBest;
+    best.textContent = "New best!";
+    const dl = $("over-stats");
+    dl.replaceChildren();
+    const add = (label, value, isNew) => {
+      const d = el("div");
+      const dd = el("dd", isNew ? "new" : "", value);
+      if (isNew) dd.append(el("small", "", "New best"));
+      d.append(el("dt", "", label), dd);
+      dl.append(d);
+    };
+    add("Score", formatScore(sum.score), sum.newScore);
+    add("Wave", String(sum.wave), sum.newWave);
+    add("Kills", String(sum.kills));
+    add("Best combo", String(sum.combo), sum.newCombo);
+    add("Stars", String(sum.stars));
+    add("Time", sum.time);
+    if (sum.perfects) add("Perfect boosts", String(sum.perfects));
+    if (sum.bosses) add("Bosses", String(sum.bosses));
+    const buildBox = $("over-build");
+    renderBuild(buildBox, sum.build, sum.buildTitle);
+    if (sum.unlock) buildBox.append(el("p", "set-note", "Unlocked the " + sum.unlock + " suit!"));
+    this.renderOverHint();
+    this.show("over");
+  },
+
+  renderOverHint() {
+    const n = $("over-hint");
+    if (n) n.innerHTML = input.mode === "kbm" ? "<kbd>R</kbd> or <kbd>Enter</kbd> to go again" : input.mode === "gamepad" ? "<kbd>A</kbd> to go again" : "";
+  },
+
+  // ---------------- gamepad menu navigation ----------------
+  navigate(dir) {
+    const root = screen && $("screen-" + screen);
+    if (!root) return;
+    const list = Array.from(root.querySelectorAll("button:not([disabled]), input, select")).filter((n) => n.offsetParent !== null);
+    if (!list.length) return;
+    let i = list.indexOf(document.activeElement);
+    if (i < 0) { list[0].focus(); return; }
+    if (document.activeElement.type === "range" && (dir === "left" || dir === "right")) {
+      const r = document.activeElement;
+      r.value = Number(r.value) + (dir === "right" ? 5 : -5);
+      r.dispatchEvent(new Event("input"));
+      return;
+    }
+    i = dir === "up" || dir === "left" ? (i - 1 + list.length) % list.length : (i + 1) % list.length;
+    list[i].focus();
+  },
+  confirm() {
+    const a = document.activeElement;
+    if (!a || a === document.body) return;
+    if (a.type === "checkbox") { a.checked = !a.checked; a.dispatchEvent(new Event("change")); return; }
+    if (a.click) a.click();
+  },
+
+  // ---------------- portrait hint ----------------
+  updateRotateHint() {
+    const n = this.els["rotate-hint"];
+    if (!n) return;
+    const portrait = window.innerHeight > window.innerWidth;
+    n.hidden = !(portrait && input.mode === "touch" && !store.data.rotateHintDismissed && screen === "menu" && G.state === "menu");
+  },
+};
+
+function heartSvg(v, shield) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("class", "heart" + (shield ? " shield" : ""));
+  s.setAttribute("aria-hidden", "true");
+  let html = '<path class="h-bg" d="' + HEART + '"/>';
+  if (v === 2) html += '<path class="h-fill" d="' + HEART + '"/>';
+  else if (v === 1) html += '<path class="h-fill" clip-path="url(#eg-half)" d="' + HEART + '"/>';
+  s.innerHTML = html;
+  return s;
+}
+
+function renderBuild(box, build, title) {
+  box.replaceChildren();
+  if (title) { const t = el("p", "set-note", title); t.style.width = "100%"; box.append(t); }
+  if (!build || !build.length) { if (!title) box.append(el("span", "set-note", "No upgrades yet.")); return; }
+  for (const c of build) {
+    const chip = el("span", "build-chip");
+    chip.style.setProperty("--chip-col", c.color);
+    if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; chip.append(img); }
+    else chip.append(icon(c.icon));
+    chip.append(document.createTextNode(c.name + " "));
+    chip.append(el("b", "", c.level >= c.max ? "MAX" : "L" + c.level));
+    box.append(chip);
+  }
+}

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Game · Envious Gluttony™</title>
+<meta name="description" content="Envious Glider: Sinners vs. Machines. Hold the line against waves of robots on the Envious Gluttony planet. Free in your browser on phone and PC.">
+<link rel="canonical" href="https://enviousgluttony.com/game/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://enviousgluttony.com/game/">
+<meta property="og:site_name" content="Envious Gluttony™">
+<meta property="og:title" content="Envious Glider: Sinners vs. Machines">
+<meta property="og:description" content="Robots are invading the planet. Boost, blast and sin your way through the waves. How far can you get?">
+<meta property="og:image" content="https://enviousgluttony.com/assets/home/og-home.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#030518">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" href="../assets/home/favicon-64.png">
+<link rel="apple-touch-icon" href="../assets/home/apple-touch-icon.png">
+<link rel="preload" href="../assets/fonts/sedgwick-ave-display.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../assets/fonts.css?v=5">
+<link rel="stylesheet" href="../assets/style.css?v=7">
+<link rel="stylesheet" href="../assets/game/game.css?v=1">
+</head>
+<body class="eg-game">
+<div class="game mode-kbm" id="game">
+  <canvas class="game-canvas" id="game-canvas" aria-label="Envious Glider play area" role="img"></canvas>
+  <div class="touch-layer" id="touch-layer"></div>
+
+  <!-- touch controls -->
+  <div class="sticks" id="sticks" aria-hidden="true">
+    <div class="stick" id="stick-move"><div class="stick-knob"></div></div>
+    <div class="stick stick-aim" id="stick-aim"><div class="stick-knob"></div></div>
+    <div class="stick-ghost stick-ghost-move" id="ghost-move"><span>Move</span></div>
+    <div class="stick-ghost stick-ghost-aim" id="ghost-aim"><span>Aim + fire</span></div>
+  </div>
+  <button class="boost-btn" id="boost-btn" type="button" aria-label="Boost" tabindex="-1">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+    <span>Boost</span>
+  </button>
+
+  <!-- HUD -->
+  <div class="hud" id="hud" hidden>
+    <div class="hud-left">
+      <div class="hearts" id="hearts" role="img" aria-label="Health"></div>
+      <div class="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-dim" id="hud-left"></span></div>
+      <div class="envy-chips" id="envy-chips"></div>
+    </div>
+    <div class="boss-bar" id="boss-bar" hidden>
+      <div class="boss-name" id="boss-name"></div>
+      <div class="boss-track"><div class="boss-ghost" id="boss-ghost"></div><div class="boss-fill" id="boss-fill"></div></div>
+    </div>
+    <div class="hud-right">
+      <div class="score" id="hud-score">0</div>
+      <div class="combo" id="hud-combo"><span class="combo-x" id="combo-x">×1.0</span><div class="combo-track"><div class="combo-fill" id="combo-fill"></div></div></div>
+      <div class="stars-chip" title="Stars (spend them between waves)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.1 6.6.6-5 4.4 1.5 6.5L12 16.7 6.3 20.1l1.5-6.5-5-4.4 6.6-.6Z"/></svg><span id="hud-stars">0</span></div>
+    </div>
+    <button class="icon-btn pause-btn" id="pause-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+  </div>
+  <div class="fps" id="fps" hidden></div>
+
+  <div class="banner" id="banner" aria-live="polite">
+    <div class="banner-kicker" id="banner-kicker"></div>
+    <div class="banner-title" id="banner-title"></div>
+    <div class="banner-sub" id="banner-sub"></div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <!-- start menu -->
+  <section class="screen screen-menu" id="screen-menu" aria-labelledby="menu-title">
+    <header class="menu-top">
+      <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
+      <div class="menu-tools">
+        <button class="icon-btn" id="menu-fullscreen" type="button" aria-label="Fullscreen" hidden><i data-icon="maximize"></i></button>
+        <button class="icon-btn" id="menu-mute" type="button" aria-label="Mute sound"><i data-icon="volume-2"></i></button>
+      </div>
+    </header>
+    <div class="menu-main">
+      <p class="kicker"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
+      <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
+      <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
+      <div class="menu-actions">
+        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Play</button>
+        <button class="btn btn-ghost" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
+        <button class="btn btn-ghost" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+      </div>
+      <p class="controls-hint" id="menu-controls"></p>
+      <dl class="bests" id="bests"></dl>
+      <div class="suits">
+        <span class="suits-label">Suit</span>
+        <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
+      </div>
+    </div>
+    <footer class="menu-foot"><span>Same planet.</span> <span>Different breed.</span></footer>
+  </section>
+
+  <!-- pause -->
+  <section class="screen screen-pause" id="screen-pause" hidden aria-labelledby="pause-title">
+    <div class="panel glow-card">
+      <h2 class="panel-title" id="pause-title">Paused</h2>
+      <p class="panel-sub" id="pause-sub"></p>
+      <div class="stack">
+        <button class="btn btn-primary" id="resume-btn" type="button"><i data-icon="zap"></i>Resume</button>
+        <button class="btn btn-ghost" id="restart-btn" type="button"><i data-icon="refresh-cw"></i>Restart run</button>
+        <button class="btn btn-ghost" id="pause-settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-ghost" id="pause-fullscreen" type="button" hidden><i data-icon="maximize"></i>Fullscreen</button>
+        <button class="btn btn-ghost" id="quit-btn" type="button"><i data-icon="door-open"></i>Quit to menu</button>
+      </div>
+      <div class="build" id="pause-build"></div>
+    </div>
+  </section>
+
+  <!-- upgrade pick -->
+  <section class="screen screen-upgrade" id="screen-upgrade" hidden aria-labelledby="up-title">
+    <div class="up-wrap">
+      <p class="kicker" id="up-kicker"></p>
+      <h2 class="up-title" id="up-title">Pick your sin</h2>
+      <p class="up-bonus" id="up-bonus"></p>
+      <div class="cards" id="cards" role="list"></div>
+      <div class="up-econ">
+        <button class="btn btn-ghost btn-sm" id="reroll-btn" type="button"><i data-icon="refresh-cw"></i><span id="reroll-label">Reroll</span></button>
+        <button class="btn btn-ghost btn-sm" id="patch-btn" type="button"><i data-icon="heart"></i><span id="patch-label">Patch up</span></button>
+        <span class="up-stars" id="up-stars"></span>
+      </div>
+      <p class="up-hint" id="up-hint"></p>
+    </div>
+  </section>
+
+  <!-- game over -->
+  <section class="screen screen-over" id="screen-over" hidden aria-labelledby="over-title">
+    <div class="panel panel-wide glow-card">
+      <p class="kicker" id="over-kicker">Run over</p>
+      <h2 class="over-title" id="over-title">The machines win this round</h2>
+      <div class="over-best" id="over-best" hidden></div>
+      <dl class="over-stats" id="over-stats"></dl>
+      <div class="build" id="over-build"></div>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="retry-btn" type="button"><i data-icon="refresh-cw"></i>One more run</button>
+        <button class="btn btn-ghost" id="over-menu-btn" type="button"><i data-icon="house"></i>Menu</button>
+      </div>
+      <p class="up-hint" id="over-hint"></p>
+    </div>
+  </section>
+
+  <!-- settings -->
+  <section class="screen screen-settings" id="screen-settings" hidden aria-labelledby="settings-title">
+    <form class="panel glow-card settings" id="settings-form" onsubmit="return false">
+      <h2 class="panel-title" id="settings-title">Settings</h2>
+      <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
+      <label class="set-row"><span>Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-muted"><span>Mute everything</span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-shake"><span>Screen shake</span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-autoaim"><span>Auto-aim <small>(touch &amp; gamepad: aims and fires at the nearest robot while you're not aiming)</small></span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
+      <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
+      <label class="set-row"><span>Quality</span>
+        <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select>
+      </label>
+      <p class="set-note" id="set-note"></p>
+      <button class="btn btn-primary" id="settings-done" type="button">Done</button>
+    </form>
+  </section>
+
+  <!-- how to play -->
+  <section class="screen screen-how" id="screen-how" hidden aria-labelledby="how-title">
+    <div class="panel panel-wide glow-card">
+      <h2 class="panel-title" id="how-title">How to play</h2>
+      <div class="how-grid">
+        <div class="how-controls" id="how-controls"></div>
+        <ul class="how-tips">
+          <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
+          <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser.</li>
+          <li>Grab <b>stars</b>. Between waves, spend them to reroll cards or patch up.</li>
+          <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
+          <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" id="how-done" type="button">Got it</button>
+    </div>
+  </section>
+
+  <div class="rotate-hint" id="rotate-hint" hidden>
+    <i data-icon="refresh-cw"></i><span>Turn your phone sideways for the best view</span>
+    <button class="icon-btn" id="rotate-close" type="button" aria-label="Dismiss"><i data-icon="x"></i></button>
+  </div>
+
+  <noscript><div class="noscript">This game needs JavaScript turned on.</div></noscript>
+</div>
+
+<!-- Every game module is versioned here: bump ?v= on all of them (find/replace) when you release,
+     so nobody gets a new main.js with old cached modules. -->
+<script type="importmap">
+{
+  "imports": {
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=1",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=1",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=1",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=1",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=1",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=1",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=1",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=1",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=1",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=1",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=1",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=1",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=1",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=1",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=1",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=1",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=1",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=1",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=1"
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" defer></script>
+<script src="../assets/icons.js?v=7"></script>
+<script src="../assets/config.js?v=7" defer></script>
+<script src="../assets/supa.js?v=6" defer></script>
+<script src="../assets/nav.js?v=8" defer></script>
+<script type="module" src="../assets/game/js/main.js?v=1"></script>
+</body>
+</html>
