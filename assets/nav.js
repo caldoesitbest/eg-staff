@@ -53,6 +53,7 @@
     }
     items.push(link("/", "house", "Home", { current: path === "/" }));
     items.push(link("/apply/", "clipboard-list", "Staff Recruitment", { current: path === "/apply/" }));
+    items.push(link("/game/", "zap", "Play the game", { current: path === "/game/" }));
     if (sections.length) {
       const group = el("div", { class: "menu-page", role: "group", "aria-label": "On this page" }, [
         el("div", { class: "menu-sep", role: "separator" }),
