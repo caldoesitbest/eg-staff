@@ -149,7 +149,7 @@ export const renderer = {
 
   init(c, suitDef) {
     canvas = c;
-    g = c.getContext("2d", { alpha: false, desynchronized: true }) || c.getContext("2d");
+    g = c.getContext("2d", { alpha: false }) || c.getContext("2d");
     suit = suitDef;
     bg.nebula = buildNebula();
     bg.vignette = buildVignette();
