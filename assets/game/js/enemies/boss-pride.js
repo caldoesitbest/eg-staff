@@ -11,7 +11,7 @@ import { audio } from "../audio.js";
 import { seek, brake, angleToPlayer, spawnEnemy } from "./index.js";
 import { fireEnemyBullet, hurtPlayer, killEnemy } from "../world.js";
 import { playerHurtRadius } from "../player.js";
-import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, pace } from "./boss-common.js";
+import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, pace } from "./boss-common.js";
 
 const COL = SIN.pride;
 const HOLD = 0, DECREE_WARN = 1, DECREE = 2;
@@ -46,7 +46,7 @@ export const pride = {
   pal: P_PRIDE, accent: COL,
   init(e) {
     bossInit(e, A.w / 2, A.h * 0.42);
-    e.gemsGrown = false; e.humbleT = 0; e.regrowT = 0; e.kneelCd = 3; e.decreeCd = 5; e.beamA = 0; e.beamDir = 1; e.beamHit = false;
+    e.gemsGrown = false; e.humbleT = 0; e.regrowT = 0; e.kneelCd = 3; e.decreeCd = 5; e.beamA = 0; e.beamDir = 1; e.beamHit = 0;
   },
   update(e, dt, P) {
     const d = BB.pride;
@@ -104,22 +104,24 @@ export const pride = {
       case DECREE_WARN:
         brake(e, 8, dt);
         e.t -= dt;
-        if (e.t <= 0) { e.state = DECREE; e.t = d.decree.sweep; e.beamHit = false; audio.play("snipe", e.x, e.y); fx.shake(0.2); }
+        if (e.t <= 0) { e.state = DECREE; e.t = d.decree.sweep; e.beamHit = 0; audio.play("snipe", e.x, e.y); fx.shake(0.2); }
         break;
       case DECREE: {
         brake(e, 8, dt);
         e.t -= dt;
         e.beamA += e.beamDir * (d.decree.arc / d.decree.sweep) * dt;
         // beam vs. you: distance from your centre to the beam segment
-        if (!P.dead && !e.beamHit) {
+        eachPlayer((Q) => {
+          const bit = 1 << Q.slot;
+          if (e.beamHit & bit) return;           // one hit per player per sweep
           const c = Math.cos(e.beamA), s = Math.sin(e.beamA);
-          const px = P.x - e.x, py = P.y - e.y;
+          const px = Q.x - e.x, py = Q.y - e.y;
           const along = px * c + py * s;
           if (along > 0 && along < d.decree.length) {
             const side = Math.abs(-px * s + py * c);
-            if (side < d.decree.width / 2 + playerHurtRadius()) { if (hurtPlayer(d.decree.dmg, e.x, e.y)) e.beamHit = true; }
+            if (side < d.decree.width / 2 + playerHurtRadius()) { if (hurtPlayer(d.decree.dmg, e.x, e.y)) e.beamHit |= bit; }
           }
-        }
+        });
         if (Math.random() < 0.7) {
           const r = rand(60, d.decree.length);
           fx.p(1, e.x + Math.cos(e.beamA) * r, e.y + Math.sin(e.beamA) * r, rand(-60, 60), rand(-60, 60), 0.3, 1, P_PRIDE, 4);

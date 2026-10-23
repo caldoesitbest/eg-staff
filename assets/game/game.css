@@ -1086,3 +1086,50 @@ body.eg-game::before { display: none; }
 #news-btn { position: relative; }
 #news-btn.fresh::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--g-magenta); box-shadow: 0 0 8px var(--g-magenta); }
 .menu-foot .menu-ver { margin-right: auto; align-self: end; font: 700 0.72rem var(--g-num); letter-spacing: 0.16em; text-transform: uppercase; color: #4b5375; text-shadow: none; transform: rotate(2deg); }
+
+/* ---------- co-op: lobby, teammates ---------- */
+.btn-coop { border-color: rgba(115, 255, 206, 0.45); }
+.btn-coop .i { color: var(--g-mint); }
+.btn-coop small { margin-left: 2px; font: 700 0.72rem var(--g-num); color: var(--g-mint); letter-spacing: 0.06em; }
+.lobby { text-align: left; }
+.lobby .panel-title, .lobby .kicker { text-align: center; justify-content: center; }
+.lobby .set-row input[type="text"], .lobby-join input {
+  min-height: 42px;
+  padding: 6px 12px;
+  border: 1px solid rgba(150, 170, 255, 0.3);
+  border-radius: 10px;
+  background: #060a1d;
+  color: #f4f6ff;
+  font: 600 1rem "Plus Jakarta Sans", system-ui, sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.lobby-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.lobby-choice { display: grid; gap: 8px; align-content: start; padding: 14px; border: 1px solid rgba(150, 170, 255, 0.16); border-radius: 14px; background: rgba(10, 14, 38, 0.6); }
+.lobby-choice h3 { margin: 0; font: 700 0.8rem var(--g-num); letter-spacing: 0.2em; text-transform: uppercase; color: var(--g-cyan); }
+.lobby-join { display: flex; gap: 8px; }
+.lobby-join input { width: 8.5em; font: 700 1.3rem var(--g-num); letter-spacing: 0.3em; text-transform: uppercase; text-align: center; }
+.lobby-room { display: grid; gap: 12px; justify-items: center; }
+.lobby-codebox { display: flex; align-items: center; gap: 12px; }
+.lobby-code-label { font: 700 0.72rem var(--g-num); letter-spacing: 0.2em; text-transform: uppercase; color: #6f7aa3; }
+.lobby-code { font: 700 2.4rem var(--g-num); letter-spacing: 0.35em; color: var(--g-mint); text-shadow: 0 0 16px rgba(115, 255, 206, 0.5); user-select: all; -webkit-user-select: all; }
+.lobby-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.lobby-slot { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--slot); border-radius: 12px; background: rgba(10, 14, 38, 0.7); font-weight: 600; }
+.lobby-slot.empty { border-style: dashed; border-color: rgba(150, 170, 255, 0.2); color: #4b5375; font-weight: 500; }
+.lobby-dot { width: 12px; height: 12px; flex: none; border-radius: 50%; background: var(--slot); box-shadow: 0 0 10px var(--slot); }
+.lobby-slot.empty .lobby-dot { background: transparent; border: 1px dashed rgba(150, 170, 255, 0.35); box-shadow: none; }
+.lobby-pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-tag { padding: 1px 8px; border-radius: 999px; background: rgba(99, 244, 255, 0.14); color: var(--g-cyan); font: 700 0.68rem var(--g-num); letter-spacing: 0.12em; text-transform: uppercase; }
+.lobby-status { min-height: 1.3em; margin: 0; text-align: center; color: #c9d2f0; font-size: 0.9rem; }
+.lobby-status.ok { color: var(--g-mint); }
+.lobby-status.bad { color: var(--g-danger); }
+#lobby-go[disabled] { opacity: 0.55; cursor: default; }
+@media (max-width: 640px) { .lobby-choices, .lobby-list { grid-template-columns: 1fr; } }
+
+.team { display: grid; gap: 3px; }
+.team[hidden] { display: none; }
+.mate { display: flex; align-items: center; gap: 8px; padding: 2px 10px 2px 8px; border-left: 3px solid var(--slot); border-radius: 6px; background: rgba(3, 5, 24, 0.55); font: 700 0.8rem var(--g-num); letter-spacing: 0.04em; }
+.mate-name { color: var(--slot); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mate-hp { color: var(--g-heart); letter-spacing: 0.05em; }
+.mate.down .mate-hp { color: var(--g-danger); animation: heart-beat 0.8s ease-in-out infinite; }
+.mate.gone { opacity: 0.45; }

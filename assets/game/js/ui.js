@@ -11,6 +11,7 @@ import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
 import { online, todayUTC } from "./online.js";
+import { SLOT_COL } from "./coop.js";
 
 const $ = (id) => document.getElementById(id);
 const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
@@ -25,7 +26,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1 };
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "" };
 let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
 let boardKind = "all";
 
@@ -52,7 +53,7 @@ export const ui = {
     const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
       "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
       "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "charge-btn", "cards", "rotate-hint",
-      "gun-chip", "gun-main", "gun-alt"];
+      "gun-chip", "gun-main", "gun-alt", "team"];
     for (const id of ids) this.els[id] = $(id);
 
     // half-heart clip, shared by every heart icon
@@ -78,6 +79,20 @@ export const ui = {
     click("shop-patch", () => handlers.onPatch());
     click("shop-go", () => { if (armed()) handlers.onShopGo(); });
     click("news-btn", () => this.show("news"));
+    click("coop-btn", () => handlers.onCoop());
+    click("lobby-host", () => { const n = this.lobbyName(); if (n) handlers.onLobbyHost(n); });
+    click("lobby-join", () => { const n = this.lobbyName(); const c = ($("lobby-code-in").value || "").trim(); if (!n) return; if (c.length < 5) { this.lobbyStatus("Type the 5-letter code your host gave you.", "bad"); return; } handlers.onLobbyJoin(c, n); });
+    click("lobby-go", () => handlers.onLobbyStart());
+    click("lobby-leave", () => handlers.onLobbyLeave());
+    click("lobby-copy", () => {
+      const code = $("lobby-code-show").textContent;
+      try { navigator.clipboard.writeText(code).then(() => this.lobbyStatus("Code copied. Send it to your friends.", "ok")); } catch (e) { /* no clipboard */ }
+    });
+    const codeIn = $("lobby-code-in");
+    if (codeIn) {
+      codeIn.addEventListener("input", () => { codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5); });
+      codeIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("lobby-join").click(); } });
+    }
     click("news-done", () => { store.data.seenNews = NEWS_VERSION; store.save(); this.show("menu"); });
     const gunChip = $("gun-chip");
     if (gunChip) gunChip.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); handlers.onSwap && handlers.onSwap(); });
@@ -151,7 +166,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -367,6 +382,10 @@ export const ui = {
     add("Time", sum.time);
     add("Kills", String(sum.kills));
     add("Hits taken", String(sum.hits));
+    const client = G.net.role === "client";
+    $("win-endless").hidden = client;
+    $("win-finish").hidden = client;
+    $("win-note").textContent = client ? "Your host decides: keep climbing in endless, or finish the run." : "Endless laps the ladder again: robots evolve and every sin comes back harder.";
     this.show("win");
   },
 
@@ -483,7 +502,8 @@ export const ui = {
       $("wave-chip").style.setProperty("--rung", r.c1);
       $("daily-chip").hidden = !G.daily;
     }
-    const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? waves.remaining() + " left" : "Clear");
+    const remaining = G.net.role === "client" ? G.netLeft : waves.remaining();
+    const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? remaining + " left" : "Clear");
     if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
     const m = comboMult();
     if (G.combo !== last.combo) {
@@ -514,6 +534,9 @@ export const ui = {
     } else if (!E["boss-bar"].hidden && !G.bossFx) {
       E["boss-bar"].hidden = true;
     }
+
+    // teammates (co-op)
+    if (slowTick) this.renderTeam();
 
     // guns
     const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier : "") + "|" + G.gunSlot;
@@ -670,11 +693,91 @@ export const ui = {
     n.innerHTML = input.mode === "kbm" ? "Press " + keys + " to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
   },
 
+  // ---------------- co-op ----------------
+  openLobby(name) {
+    $("lobby-start").hidden = false;
+    $("lobby-room").hidden = true;
+    $("lobby-name").value = name || "";
+    this.lobbyStatus(window.EG && window.EG.sb ? "" : "Co-op needs an internet connection.", window.EG && window.EG.sb ? "" : "bad");
+    this.show("lobby");
+    setTimeout(() => { try { $("lobby-name").focus(); } catch (e) { /* ignore */ } }, 40);
+  },
+  lobbyName() {
+    const n = ($("lobby-name").value || "").trim().slice(0, 16);
+    if (!n) { this.lobbyStatus("Pick a name first.", "bad"); $("lobby-name").focus(); return ""; }
+    return n;
+  },
+  lobbyRoom(code, host) {
+    $("lobby-start").hidden = true;
+    $("lobby-room").hidden = false;
+    $("lobby-code-show").textContent = code;
+    $("lobby-go").hidden = !host;
+    $("lobby-wait").hidden = host;
+  },
+  renderLobby(members, host) {
+    const list = $("lobby-list");
+    if (!list) return;
+    list.replaceChildren();
+    for (let i = 0; i < 4; i++) {
+      const m = members.find((x) => x.slot === i);
+      const li = el("li", "lobby-slot" + (m ? "" : " empty"));
+      li.style.setProperty("--slot", SLOT_COL[i]);
+      li.append(el("span", "lobby-dot"));
+      li.append(el("span", "lobby-pname", m ? m.name : "Waiting for a player…"));
+      if (m && m.slot === 0) li.append(el("span", "lobby-tag", "Host"));
+      list.append(li);
+    }
+    const go = $("lobby-go");
+    if (go) {
+      go.disabled = members.length < 2;
+      go.lastChild.textContent = members.length < 2 ? "Waiting for players" : "Start (" + members.length + " players)";
+    }
+  },
+  lobbyStatus(text, kind) {
+    const n = $("lobby-status");
+    if (!n) return;
+    n.textContent = text || "";
+    n.className = "lobby-status" + (kind ? " " + kind : "");
+  },
+  /** The HUD's teammate list: name, hearts, down. */
+  renderTeam() {
+    const box = this.els.team;
+    if (!box) return;
+    const on = G.net.role !== "off";
+    box.hidden = !on;
+    if (!on) return;
+    let key = "";
+    for (const P of G.players) if (P !== G.me) key += P.slot + ":" + P.hp + "/" + P.maxHp + (P.dead ? "d" + Math.round(P.reviveT * 10) : "") + (P.gone ? "g" : "") + ";";
+    if (key === last.team) return;
+    last.team = key;
+    box.replaceChildren();
+    for (const P of G.players) {
+      if (P === G.me) continue;
+      const row = el("div", "mate" + (P.dead ? " down" : "") + (P.gone ? " gone" : ""));
+      row.style.setProperty("--slot", SLOT_COL[P.slot] || "#fff");
+      row.append(el("span", "mate-name", P.name || "Player"));
+      if (P.gone) row.append(el("span", "mate-hp", "left"));
+      else if (P.dead) row.append(el("span", "mate-hp", P.reviveT > 0 ? "reviving " + Math.round(P.reviveT * 100) + "%" : "DOWN · go to them"));
+      else row.append(el("span", "mate-hp", "\u2665".repeat(Math.ceil(P.hp / 2)) + "\u2661".repeat(Math.max(0, Math.ceil(P.maxHp / 2) - Math.ceil(P.hp / 2)))));
+      box.append(row);
+    }
+  },
+  /** Co-op shop: you're ready, waiting on these people. */
+  setShopWaiting(names) {
+    const b = $("shop-go");
+    const lab = $("shop-go-label");
+    if (!b || !lab) return;
+    if (!names.length) { lab.textContent = "Starting…"; b.disabled = true; return; }
+    lab.textContent = "Ready · waiting for " + names.join(", ");
+    b.disabled = true;
+  },
+
   // ---------------- the Armory (shop) ----------------
   showShop(info) {
     $("shop-kicker").textContent = info.kicker;
     $("shop-next").innerHTML = info.next || "";
-    $("shop-go-label").textContent = info.go || "Next wave";
+    $("shop-go-label").textContent = G.net.role !== "off" ? "Ready" : info.go || "Next wave";
+    $("shop-go").disabled = false;
     this.renderShop();
     this.renderShopHint();
     this.show("shop");
@@ -798,8 +901,12 @@ export const ui = {
   },
 
   // ---------------- pause + game over ----------------
-  showPause(build) {
-    $("pause-sub").textContent = "Wave " + G.wave + " · " + formatScore(G.score) + " pts";
+  showPause(build, coop) {
+    $("pause-title").textContent = coop ? "Menu" : "Paused";
+    $("pause-sub").textContent = (coop ? "Co-op: the game keeps going · " : "") + "Wave " + G.wave + " · " + formatScore(G.score) + " pts";
+    $("restart-btn").hidden = !!coop;
+    $("resume-btn").lastChild.textContent = coop ? "Back to the fight" : "Resume";
+    $("quit-btn").lastChild.textContent = coop ? "Leave co-op" : "Quit to menu";
     renderBuild($("pause-build"), build);
     renderArsenal($("pause-build"));
     this.show("pause");
@@ -833,6 +940,11 @@ export const ui = {
     renderArsenal(buildBox);
     if (sum.unlock) buildBox.append(el("p", "set-note", "Unlocked the " + sum.unlock + " suit!"));
     this.renderOverHint();
+    // co-op: only the host can start the next run
+    const client = G.net.role === "client";
+    $("retry-btn").disabled = client;
+    $("retry-btn").lastChild.textContent = client ? "Waiting for the host" : G.net.role === "host" ? "Play again (everyone)" : "One more run";
+    $("over-menu-btn").lastChild.textContent = G.net.role !== "off" ? "Leave co-op" : "Menu";
     this.show("over");
   },
 

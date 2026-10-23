@@ -1,7 +1,7 @@
 /* Shared boss machinery: entrance, minions, the death payoff, endless-lap pacing,
    and the attack patterns several sins share (Envy steals them all). */
 
-import { G } from "../state.js";
+import { G, usePlayer } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, rand, randInt } from "../util.js";
 import { sprites, C, PAL, P_CYAN, P_WHITE } from "../sprites.js";
@@ -13,6 +13,18 @@ import { waves } from "../waves.js";
 export const A = BALANCE.arena;
 export const BB = BALANCE.bosses;
 const INTRO = 2.2;
+
+/** Runs fn for every player still standing, with their build live (area attacks hit everyone). */
+export function eachPlayer(fn) {
+  const cur = G.player;
+  for (let i = 0; i < G.players.length; i++) {
+    const Q = G.players[i];
+    if (Q.dead || Q.gone) continue;
+    usePlayer(Q);
+    fn(Q);
+  }
+  usePlayer(cur);
+}
 
 /** Cooldown multiplier for endless laps (each lap a bit faster). */
 export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0);
@@ -53,7 +65,7 @@ export function minionTick(e, dt, every, max, pool) {
   let alive = 0;
   const items = G.enemies.items;
   for (let i = 0; i < G.enemies.count; i++) { const o = items[i]; if (!o.dead && !o.boss && o.ally <= 0 && o.type !== "gem") alive++; }
-  if (alive + G.warnings.count * 2 >= max) return;
+  if (alive + G.warnings.count * 2 >= max * (1 + 0.35 * (Math.max(1, G.net.n || 1) - 1))) return;   // co-op: a bigger entourage
   const type = pool[randInt(0, pool.length - 1)];
   const count = type === "swarm" ? randInt(5, 7) : randInt(1, type === "drone" ? 3 : 2);
   waves.spawnGroup(type, count);

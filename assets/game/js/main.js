@@ -1,9 +1,10 @@
 /* Envious Glider: Sinners vs. Machines. Boot + game states:
    intro → menu → playing ⇄ paused → clear → upgrade (pick a card) → shop (the Armory) → playing …
    → (wave 35: Envy down) win → endless … → dying → over → (retry) playing.  The run is the Sin Ladder:
-   Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves. */
+   Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves.
+   Co-op (coop.js + net.js): the host runs this same flow for everyone; clients follow its messages. */
 
-import { G } from "./state.js";
+import { G, usePlayer } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { store, SUITS, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
@@ -13,7 +14,7 @@ import { renderer } from "./render.js";
 import { fx } from "./fx.js";
 import { ui } from "./ui.js";
 import { waves } from "./waves.js";
-import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy } from "./world.js";
+import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer } from "./world.js";
 import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
@@ -22,6 +23,8 @@ import { formatScore, rand, pick, TAU, withSeed, hashStr } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
 import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo } from "./armory.js";
+import { net } from "./net.js";
+import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
 // ---------------------------------------------------------------------------
 // boot
@@ -93,6 +96,7 @@ function applyQuality() {
 
 function setState(s) {
   G.state = s;
+  G.netMenu = false;
   ui.setState(s);
   input.enabled = s === "playing" || s === "clear";
   if (!input.enabled) { input.mouse.down = false; input.mouse.charge = false; input.queued.boost = false; input.queued.swap = false; cancelCharge(); }
@@ -101,11 +105,26 @@ function setState(s) {
 // ---------------------------------------------------------------------------
 // menu scene: the astronaut floats, rocks drift
 // ---------------------------------------------------------------------------
+/** Everyone in the run (solo: just you; co-op: the lobby), each with a fresh build. */
+function setupRunPlayers(isCoop) {
+  if (!isCoop) { G.net.role = "off"; G.net.slot = 0; G.net.n = 1; }
+  const list = isCoop ? coopRoster() : [{ slot: 0, name: online.name || "You", suit: G.settings.suit }];
+  setupPlayers(list, createPlayer);
+  const n = G.players.length;
+  for (const P of G.players) {
+    usePlayer(P);
+    resetArmory();
+    resetUpgrades();
+    P.hp = P.maxHp = G.stats.maxHp;
+    P.maxShield = G.stats.shieldCap;
+    if (n > 1) P.x = P.px = BALANCE.arena.w / 2 + (P.slot - (n - 1) / 2) * 70;
+  }
+  usePlayer(G.me);
+}
+
 function menuScene() {
   clearWorld();
-  resetArmory();
-  resetUpgrades();
-  G.player = createPlayer();
+  setupRunPlayers(false);
   G.player.iframes = 0;
   G.boss = null; G.bossFx = null;
   for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
@@ -126,8 +145,7 @@ function toMenu() {
 // ---------------------------------------------------------------------------
 function startRun(opts) {
   clearWorld();
-  resetArmory();
-  resetUpgrades();
+  const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
@@ -136,11 +154,11 @@ function startRun(opts) {
     hitstop: 0, slowmo: 0, slowScale: 1, freezeT: 0, vacuum: false, boss: null, bossFx: null, autoTarget: null,
     lastSlowmo: -9, hitMark: 0, killMark: 0,
   });
-  G.player = createPlayer();
-  for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
+  setupRunPlayers(isCoop);
+  if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
   G.cam.x = G.player.x; G.cam.y = G.player.y;
   // debug: start later with a matching handful of upgrades
-  const start = G.debug.on ? G.debug.startWave : 1;
+  const start = G.debug.on && !isCoop ? G.debug.startWave : 1;
   for (let i = 1; i < start; i++) { const ids = offerCards(); applyCard(pick(ids)); }
   G.player.hp = G.player.maxHp = G.stats.maxHp;
   G.player.maxShield = G.stats.shieldCap;
@@ -158,6 +176,7 @@ function startRun(opts) {
     if (d.date !== G.daily) { d.date = G.daily; d.score = 0; d.wave = 0; d.tries = 0; }
     d.tries++;
   }
+  if (G.net.role === "client") return;     // the host starts the waves
   startWave(start);
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
@@ -188,16 +207,24 @@ function seeded(tag, fn) {
 function startWave(n) {
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
-  if (G.player) G.player.bubble = G.stats.bubble;     // Bubble Shield refills every wave
-  if (waves.boss) {
-    const def = BALANCE.bosses[waves.bossType];
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; }     // Bubble Shield refills every wave
+  usePlayer(G.me);
+  waveIntro(n);
+  hostSend({ k: "go", n });
+}
+
+/** The banner and music for the start of wave n. */
+function waveIntro(n) {
+  const lap = waves.lapOf(n);
+  if (waves.isBossWave(n)) {
+    const def = BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(n)]];
     const rung = waves.rungOf(n);
-    ui.banner("Rung " + (rung + 1) + " of 7 · Wave " + n + (G.lap ? " · Lap " + (G.lap + 1) : ""), "@" + def.name,
+    ui.banner("Rung " + (rung + 1) + " of 7 · Wave " + n + (lap ? " · Lap " + (lap + 1) : ""), "@" + def.name,
       "<b>" + def.title + "</b> · " + def.tagline, "boss", true, def.c1);
     audio.musicIntensity(2);
   } else {
-    let hint = HINTS[n] && !G.lap ? HINTS[n]() : "";
-    if (waves.newMark) hint = "<b>Robots evolved: " + markName(G.mark) + ".</b> Same robots, nastier tricks.";
+    let hint = HINTS[n] && !lap ? HINTS[n]() : "";
+    if (n > 1 && waves.markOf(n) > waves.markOf(n - 1)) hint = "<b>Robots evolved: " + markName(waves.markOf(n)) + ".</b> Same robots, nastier tricks.";
     else if (n === BALANCE.elite.from) hint = "From here on, some robots come <b>overcharged</b> with a trait.";
     const r = ladderRungs()[waves.rungOf(n)];
     ui.banner(n === 1 ? "Rung 1 · @Sloth" : "Rung " + (r.i + 1) + " · @" + r.name, "Wave " + n, hint, "", !!hint, r.c1);
@@ -226,20 +253,26 @@ G.on("waveClear", (n) => {
     text += " · <b>Flawless</b> +" + formatScore(BALANCE.score.flawless * n);
   }
   const before = G.stars;
-  onWaveEnd();
+  for (const P of G.players) { if (P.gone) continue; usePlayer(P); onWaveEnd(); }    // interest, everyone's own
+  usePlayer(G.me);
   if (G.stars > before) text += " · Greed interest ★+" + (G.stars - before);
   G.lastBonus = text;
   G.vacuum = true;
+  // co-op: everyone who's down gets back up between waves
+  if (G.net.role === "host") for (const P of G.players) if (P.dead && !P.gone) revivePlayer(P);
   if (waves.boss && waves.bossType === "envy" && G.lap === 0 && !G.won) {
     G.won = true;
     G.winTime = G.time;
     clearT = 2.4;
     ui.banner("The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true);
+    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest" });
     audio.play("newBest");
     setState("clear");
     return;
   }
-  ui.banner(waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n, waves.boss ? "Clear!" : "Clear", text, "good");
+  const head = waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n;
+  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear" });
+  ui.banner(head, waves.boss ? "Clear!" : "Clear", text, "good");
   audio.play("clear");
   audio.musicIntensity(1);
   clearT = BALANCE.waves.breather + (waves.boss ? 1.2 : 0);
@@ -257,11 +290,14 @@ function showVictory() {
     if (!b.fastestWin || G.winTime < b.fastestWin) b.fastestWin = Math.round(G.winTime);
     store.save(true);
   }
-  ui.showWin({ score: Math.floor(G.score), time: fmtTime(G.time), kills: G.kills, hits: G.hitsTaken });
+  const sum = { score: Math.floor(G.score), time: fmtTime(G.time), kills: G.kills, hits: G.hitsTaken };
+  hostSend({ k: "win", sum });
+  ui.showWin(sum);
   audio.musicIntensity(0);
 }
 
 function openUpgrade() {
+  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
   ui.clearBanner();
   setState("upgrade");
   input.releaseAll();
@@ -321,6 +357,14 @@ function shopReroll() {
 
 function shopGo() {
   if (G.state !== "shop") return;
+  if (G.net.role !== "off") {
+    // co-op: ready up; the next wave starts when everyone is
+    if (G.net.role === "host") hostReady(); else if (!coop.waiting) clientReady();
+    coop.waiting = true;
+    ui.setShopWaiting(waitingOn());
+    audio.play("pick");
+    return;
+  }
   ui.show(null);
   setState("playing");
   startWave(G.wave + 1);
@@ -357,6 +401,16 @@ function patchUp() {
 // ---------------------------------------------------------------------------
 function pause() {
   if (G.state !== "playing" && G.state !== "clear") return;
+  if (G.net.role !== "off") {
+    // co-op: the world keeps going (your teammates are still in it); this is just a menu
+    if (G.netMenu) return;
+    G.netMenu = true;
+    input.enabled = false;
+    input.releaseAll();
+    cancelCharge();
+    ui.showPause(buildSummary(), true);
+    return;
+  }
   prevState = G.state;
   setState("paused");
   input.releaseAll();
@@ -364,6 +418,12 @@ function pause() {
   audio.musicIntensity(0);
 }
 function resume() {
+  if (G.netMenu) {
+    G.netMenu = false;
+    ui.show(null);
+    input.enabled = G.state === "playing" || G.state === "clear";
+    return;
+  }
   if (G.state !== "paused") return;
   ui.show(null);
   setState(prevState);
@@ -394,6 +454,7 @@ const TITLES = [
 
 async function postRun(sum) {
   if (G.debug.on) return;
+  if (G.net.role !== "off") { ui.setOnline(null); return; }   // the leaderboard is solo runs
   if (!online.available) { ui.setOnline(null); return; }
   if (!online.user) { ui.setOnline("signin"); return; }
   if (!store.data.settings.postScores) { ui.setOnline(null); return; }
@@ -422,7 +483,7 @@ function gameOver() {
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
     build: buildSummary(), buildTitle: buildTitle(),
   };
-  const record = !G.debug.on;           // debug runs (wave skips, god mode) don't count
+  const record = !G.debug.on && G.net.role === "off";    // debug and co-op runs don't count for your solo bests
   sum.newScore = record && sum.score > best.score && sum.score > 0;
   sum.newWave = record && sum.wave > best.wave;
   sum.newCombo = record && sum.combo > best.combo;
@@ -432,7 +493,8 @@ function gameOver() {
   if (sum.newCombo) best.combo = sum.combo;
   if (record) best.kills = Math.max(best.kills, sum.kills);
   store.data.totals.kills += sum.kills;
-  if (!record) sum.buildTitle = (sum.buildTitle || "") + " · debug run, bests not saved";
+  if (!record) sum.buildTitle = (sum.buildTitle || "") + (G.net.role !== "off" ? " · co-op run (solo bests and the leaderboard stay solo)" : " · debug run, bests not saved");
+  if (G.net.role !== "off") sum.team = G.players.filter((p) => !p.gone).map((p) => p.name).join(", ");
   const unlocked = SUITS.filter((s) => s.wave > oldWave && s.wave <= best.wave);
   if (unlocked.length) sum.unlock = unlocked.map((s) => s.name).join(" and ");
   const pool = TITLES.find((t) => sum.wave >= t[0])[1];
@@ -446,6 +508,7 @@ function gameOver() {
   store.save(true);
   postRun(sum);
   lastRun = sum;
+  hostSend({ k: "over", sum: { ...sum, build: [], buildTitle: "Co-op · " + (sum.team || "") } });
   setState("over");
   ui.showGameOver(sum);
   audio.play(sum.anyBest ? "newBest" : "gameOver");
@@ -472,12 +535,15 @@ function menuStep(dt) {
 
 function update(dt) {
   const s = G.state;
+  if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
   if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win") return;
-  if (G.hitstop > 0) { G.hitstop -= dt; return; }
+  if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
   if (s === "menu") { menuStep(sdt); return; }
+  if (G.net.role === "host") hostBefore(sdt);
   stepWorld(sdt);
+  if (G.net.role === "host") hostAfter();
   fx.update(sdt);
   if (s === "dying") {
     deathT += dt;
@@ -561,8 +627,19 @@ ui.init({
   onExit: () => { store.save(true); if (G.desktop) window.chrome.webview.postMessage({ type: "quit" }); },
   onPause: pause,
   onResume: resume,
-  onRestart: () => startRun(G.daily ? { daily: todayUTC() } : null),
-  onQuit: toMenu,
+  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); },
+  onQuit: () => { if (G.net.role !== "off") endCoop(); toMenu(); },
+  onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
+  onLobbyHost: async (name) => {
+    store.data.coopName = name; store.save();
+    try { await net.host(name, G.settings.suit); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+  },
+  onLobbyJoin: async (code, name) => {
+    store.data.coopName = name; store.save();
+    try { await net.join(code, name, G.settings.suit); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+  },
+  onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
+  onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
   onReroll: reroll,
   onPatch: patchUp,
@@ -593,6 +670,10 @@ input.onHotkey = (code) => {
 input.onModeChange = (m) => { G.touchActive = m === "touch"; ui.setMode(m); };
 input.onPause = () => {
   const s = G.state;
+  if ((s === "playing" || s === "clear") && G.netMenu) {
+    if (ui.screen === "settings") ui.closeSettings(); else resume();
+    return true;
+  }
   if (s === "playing" || s === "clear") { pause(); return true; }
   if (s === "paused") {
     if (ui.screen === "settings") { ui.closeSettings(); return true; }
@@ -600,6 +681,7 @@ input.onPause = () => {
     return true;
   }
   if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
 };
@@ -645,8 +727,9 @@ window.addEventListener("keydown", (e) => {
     }
   } else if (s === "over" && ui.screen === "over") {
     if (!ui.armed) return;
-    if (e.code === "KeyR") { e.preventDefault(); startRun(G.daily ? { daily: todayUTC() } : null); }
-    else if (e.code === "Enter" && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); startRun(G.daily ? { daily: todayUTC() } : null); }
+    const again = () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); };
+    if (e.code === "KeyR") { e.preventDefault(); again(); }
+    else if (e.code === "Enter" && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); again(); }
   } else if (s === "menu" && ui.screen === "menu") {
     if ((e.code === "Enter" || e.code === "Space") && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); audio.unlock(); startRun(); }
   }
@@ -657,10 +740,10 @@ window.addEventListener("keydown", (e) => {
 // tab switches, resizes
 // ---------------------------------------------------------------------------
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { if (!(G.debug.on && params.get("headless") === "1")) pause(); audio.suspend(); }
+  if (document.hidden) { if (!(G.debug.on && params.get("headless") === "1") && G.net.role === "off") pause(); audio.suspend(); }
   else { audio.resume(); loop.resetClock(); }
 });
-window.addEventListener("blur", () => { if (!G.debug.on) pause(); });
+window.addEventListener("blur", () => { if (!G.debug.on && G.net.role === "off") pause(); });
 let resizeT = 0;
 const onResize = () => {
   clearTimeout(resizeT);
@@ -675,6 +758,7 @@ if (window.ResizeObserver) new ResizeObserver(onResize).observe(root);
 // debug (?debug=1): N skip wave · B next boss · G god mode · K kill all · U upgrade · H heal · J +40 drones
 // ---------------------------------------------------------------------------
 function debugKey(e) {
+  if (G.net.role === "client") return;
   const P = G.player;
   switch (e.code) {
     case "KeyN": killAll(); waves.queue.length = 0; G.warnings.clear(); break;
@@ -708,16 +792,36 @@ if (G.debug.on && params.get("autoplay") === "1") {
     autopilot = bot;
     window.__bot = bot;
     G.debug.god = params.get("god") === "1";
+    if (params.get("cohost") || params.get("cojoin")) { bot.autoRetry = false; return; }   // co-op tests start from the lobby
     startRun();
     if (params.get("god") === "1") G.debug.god = true;
   });
 }
+// debug co-op: ?debug=1&cohost=N opens a lobby and starts once N players are in; ?debug=1&cojoin=CODE joins it
+if (G.debug.on && params.get("cohost")) {
+  setTimeout(async () => {
+    try {
+      const code = await net.host("Host", G.settings.suit);
+      window.__coopCode = code;
+      if (G.desktop) window.chrome.webview.postMessage({ type: "status", msg: "code " + code });
+      ui.lobbyRoom(code, true);
+      ui.show("lobby");
+      const want = Math.max(2, parseInt(params.get("cohost"), 10) || 2);
+      const prev = net.on.lobby;
+      net.on.lobby = (m) => { if (prev) prev(m); if (m.length >= want && G.state === "menu") setTimeout(startHost, 600); };
+    } catch (e) { console.log("[coop] " + e.message); }
+  }, 600);
+}
+if (G.debug.on && params.get("cojoin")) {
+  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
+}
+if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
 }
 if (G.debug.on) {
   import("./armory.js").then((armory) => {
-    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings };
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop };
   });
   ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm · M stars", 5000);
 }
@@ -767,6 +871,28 @@ function playIntro() {
   intro.addEventListener("pointerdown", skip);
   setTimeout(finish, G.desktop ? 3600 : 2300);
 }
+
+// ---------------------------------------------------------------------------
+// co-op: what a client does when the host says so
+// ---------------------------------------------------------------------------
+net.on.lobby = (members) => ui.renderLobby(members, net.role === "host");
+net.on.status = (text, kind) => ui.lobbyStatus(text, kind);
+initCoop({
+  startRun,
+  toMenu,
+  toast: (t, ms) => ui.toast(t, ms),
+  openUpgrade: (msg) => { G.wave = msg.w; G.lastBonus = msg.bonus || ""; openUpgrade(); },
+  closeBetween: (n) => {
+    if (G.state !== "playing") { ui.show(null); setState("playing"); }
+    G.wave = n;
+    waveIntro(n);
+  },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
+  gameOver: (sum) => { lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver"); },
+  showWin: (sum) => { ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
+  readyChanged: () => { if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn()); },
+  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(G.wave + 1); },
+});
 
 // damage-number digits are pre-rendered with the game font: redo them once it has loaded
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (sprites.P) sprites.buildDigits(sprites.P); });

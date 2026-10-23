@@ -11,8 +11,23 @@ import { rebuildRockSprites } from "./world.js";
 import { ROSTER } from "./enemies/roster.js";
 import { BOSSES } from "./enemies/bosses.js";
 import { ENVY_POWERS, hasEnvy } from "./upgrades.js";
-import { drones, GUN_COL } from "./armory.js";
+import { GUN_COL } from "./armory.js";
 import { gunPal } from "./player.js";
+import { SUITS } from "./storage.js";
+import { SLOT_COL } from "./coop.js";
+import { reviveRange } from "./world.js";
+
+// Teammates' astronauts, in their own suits (built on demand, rebuilt when the zoom changes).
+const suitCache = new Map();
+function suitSprites(id) {
+  let e = suitCache.get(id);
+  if (!e || e.P !== sprites.P) {
+    const suit = SUITS.find((x) => x.id === id) || SUITS[0];
+    e = { P: sprites.P, ...sprites.astronaut(sprites.P, suit) };
+    suitCache.set(id, e);
+  }
+  return e;
+}
 
 const A = BALANCE.arena;
 let canvas = null, g = null;
@@ -354,9 +369,13 @@ export const renderer = {
       }
       g.globalAlpha = 1;
     }
-    if (Pl && !Pl.dead && s && s.slowRadius > 0) {
+    for (let i = 0; i < G.players.length; i++) {
+      const Q = G.players[i];
+      const R = Q === G.me && s ? s.slowRadius : Q.slowR;
+      if (Q.dead || Q.gone || !(R > 0)) continue;
+      const qx = Q === Pl ? plx : lerp(Q.px, Q.x, alpha), qy = Q === Pl ? ply : lerp(Q.py, Q.y, alpha);
       g.fillStyle = "rgba(165,123,255,0.06)";
-      g.beginPath(); g.arc(plx, ply, s.slowRadius, 0, TAU); g.fill();
+      g.beginPath(); g.arc(qx, qy, R, 0, TAU); g.fill();
       g.strokeStyle = "rgba(201,184,255,0.3)";
       g.lineWidth = 1.5;
       g.setLineDash([3, 9]);
@@ -580,9 +599,28 @@ export const renderer = {
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
 
-    // the player
-    if (Pl && (!Pl.dead || Pl.deathT < 0.02)) this.drawPlayer(Pl, plx, ply, alpha, P, offX, offY, camX, camY);
+    // teammates (co-op), then you on top
+    const coop = G.net.role !== "off";
+    for (let i = 0; i < G.players.length; i++) {
+      const Q = G.players[i];
+      if (Q === Pl || Q.gone) continue;
+      const qx = lerp(Q.px, Q.x, alpha), qy = lerp(Q.py, Q.y, alpha);
+      if (Q.dead) this.drawDowned(Q, qx, qy, P, offX, offY, camX, camY);
+      else this.drawPlayer(Q, qx, qy, alpha, P, offX, offY, camX, camY);
+      g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+      this.drawTag(Q, qx, qy);
+    }
+    if (Pl && coop && Pl.dead && G.state !== "over") this.drawDowned(Pl, plx, ply, P, offX, offY, camX, camY);
+    else if (Pl && (!Pl.dead || Pl.deathT < 0.02)) this.drawPlayer(Pl, plx, ply, alpha, P, offX, offY, camX, camY);
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+    if (Pl && coop) {
+      // your colour, under you
+      g.strokeStyle = SLOT_COL[Pl.slot] || "#fff";
+      g.globalAlpha = 0.55;
+      g.lineWidth = 2;
+      g.beginPath(); g.ellipse(plx, ply + 21, 15, 5, 0, 0, TAU); g.stroke();
+      g.globalAlpha = 1;
+    }
 
     // robot shots (on top: always readable)
     const eb = G.eb;
@@ -628,16 +666,66 @@ export const renderer = {
     if (input.mode === "kbm" && input.mouse.inside && (G.state === "playing" || G.state === "clear")) this.drawCrosshair();
   },
 
+  /** A teammate's name and colour (co-op). */
+  drawTag(Q, x, y) {
+    const col = SLOT_COL[Q.slot] || "#fff";
+    g.strokeStyle = col;
+    g.globalAlpha = 0.55;
+    g.lineWidth = 2;
+    g.beginPath(); g.ellipse(x, y + 21, 15, 5, 0, 0, TAU); g.stroke();
+    g.globalAlpha = 1;
+    g.font = "700 12px Rajdhani, 'Plus Jakarta Sans', sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineWidth = 3;
+    g.strokeStyle = "rgba(3,5,24,0.85)";
+    g.strokeText(Q.name || "Player", x, y - 38);
+    g.fillStyle = col;
+    g.fillText(Q.name || "Player", x, y - 38);
+  },
+
+  /** Down (co-op): a ghost, and the ring a teammate stands in to revive them. */
+  drawDowned(Q, x, y, P, offX, offY, camX, camY) {
+    const col = SLOT_COL[Q.slot] || "#fff";
+    g.globalAlpha = 0.35 + Math.sin(G.time * 4) * 0.1;
+    const spr = Q === G.me ? sprites.player : suitSprites(Q.suit).player;
+    g.setTransform(P * 0.9, 0, 0, P * 0.9, offX + (x - camX) * P, offY + (y - camY) * P);
+    g.rotate(Math.PI / 2.4);
+    g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+    g.globalAlpha = 1;
+    g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+    g.strokeStyle = col;
+    g.lineWidth = 2;
+    g.setLineDash([6, 8]);
+    g.lineDashOffset = -G.time * 20;
+    g.globalAlpha = 0.6;
+    g.beginPath(); g.arc(x, y, reviveRange, 0, TAU); g.stroke();
+    g.setLineDash([]);
+    g.globalAlpha = 1;
+    if (Q.reviveT > 0) {
+      g.strokeStyle = C.mint;
+      g.lineWidth = 5;
+      g.beginPath(); g.arc(x, y, 30, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, Q.reviveT)); g.stroke();
+    }
+    g.font = "800 11px 'Plus Jakarta Sans', sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillStyle = C.danger;
+    g.fillText(Q === G.me ? "DOWN · a teammate can revive you" : "REVIVE", x, y + 44);
+  },
+
   drawPlayer(Pl, x, y, alpha, P, offX, offY, camX, camY) {
     const s = G.stats;
-    const bob = Math.sin(G.time * 3) * 1.5;
+    const me = Pl === G.me;
+    const look = me ? null : suitSprites(Pl.suit);
+    const bob = Math.sin(G.time * 3 + Pl.slot) * 1.5;
     // boost afterimages
     for (let k = G.gfx.trails ? Pl.trailN - 1 : -1; k >= 0; k--) {
       const tx = Pl.trailX[k], ty = Pl.trailY[k];
       g.setTransform(Pl.facing * P, 0, 0, P, offX + (tx - camX) * P, offY + (ty - camY) * P);
       g.globalCompositeOperation = "lighter";
       g.globalAlpha = 0.28 * (1 - k / 6) * Math.min(1, Pl.ghostT / 0.18 + 0.3);
-      const spr = sprites.playerFlash;
+      const spr = me ? sprites.playerFlash : look.flash;
       g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
     }
     g.globalAlpha = 1;
@@ -645,7 +733,7 @@ export const renderer = {
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
 
     // boost cooldown arc
-    if (Pl.boostCdT > 0 && Pl.boostT <= 0 && !Pl.dead) {
+    if (me && Pl.boostCdT > 0 && Pl.boostT <= 0 && !Pl.dead) {
       const max = s.boostCd;
       g.strokeStyle = "rgba(99,244,255,0.55)";
       g.lineWidth = 2.5;
@@ -660,7 +748,7 @@ export const renderer = {
     g.globalAlpha = blink ? 0.35 : 1;
 
     // gun behind or in front depending on aim
-    const gunId = s.gunId || "blaster";
+    const gunId = (me ? s.gunId : Pl.gunId) || "blaster";
     const gcol = GUN_COL[gunId] || C.cyan;
     const gpal = gunPal(gunId);
     const drawGun = () => {
@@ -680,7 +768,7 @@ export const renderer = {
       g.fillRect(4 + len - 3, -hw, 3, G2.w);
       // charged shot: a growing orb at the muzzle
       if (Pl.charging) {
-        const c2 = Pl.charge, pulse = Pl.chargeFull ? 1 + Math.sin(G.time * 28) * 0.15 : 1;
+        const c2 = Pl.charge, pulse = Pl.chargeFull || Pl.charge >= 1 ? 1 + Math.sin(G.time * 28) * 0.15 : 1;
         const r = (5 + c2 * 13) * pulse;
         g.globalCompositeOperation = "lighter";
         g.globalAlpha = 0.55 + c2 * 0.45;
@@ -699,7 +787,7 @@ export const renderer = {
     };
     const aimUp = Math.sin(Pl.aimAng) < -0.3;
     if (aimUp) drawGun();
-    const spr = Pl.hurtT > 0.3 ? sprites.playerFlash : sprites.player;
+    const spr = me ? (Pl.hurtT > 0.3 ? sprites.playerFlash : sprites.player) : (Pl.hurtT > 0.3 ? look.flash : look.player);
     g.setTransform(c * f * P, sn * f * P, -sn * P, c * P, offX + (x - camX) * P, offY + (y + bob - camY) * P);
     g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
     if (!aimUp) drawGun();
@@ -732,6 +820,7 @@ export const renderer = {
       g.fill();
     }
     // buddy drones
+    const drones = Pl.drones;
     if (drones.length && sprites.buddy) {
       const spr3 = sprites.buddy;
       for (let i = 0; i < drones.length; i++) {
@@ -740,7 +829,7 @@ export const renderer = {
       }
     }
     // stolen bulwark shield
-    if (Pl.envy.length && hasEnvy("bulwark")) {
+    if (me && Pl.envy.length && hasEnvy("bulwark")) {
       const arc = ENVY_POWERS.bulwark.arc;
       g.strokeStyle = C.mint;
       g.lineWidth = 5;
@@ -749,11 +838,12 @@ export const renderer = {
       g.globalAlpha = 1;
     }
     // moons
-    if (s.orbitals) {
+    const nMoons = me ? s.orbitals : Pl.orbN;
+    if (nMoons) {
       const O = BALANCE.upgrades.orbit;
       const spr2 = sprites.orbital;
-      for (let i = 0; i < s.orbitals; i++) {
-        const a = G.time * O.speed + (i / s.orbitals) * TAU;
+      for (let i = 0; i < nMoons; i++) {
+        const a = G.time * O.speed + (i / nMoons) * TAU;
         const ox = x + Math.cos(a) * O.radius, oy = y + Math.sin(a) * O.radius;
         g.drawImage(spr2.c, ox - spr2.w / 2, oy - spr2.h / 2, spr2.w, spr2.h);
       }
@@ -791,6 +881,13 @@ export const renderer = {
       const a = Math.max(0.25, Math.min(0.95, 1.4 - d / 900));
       arrow(sx, sy, e.kind.accent, e.boss ? 16 : 8, a);
       drawn++;
+    }
+    for (let i = 0; i < G.players.length; i++) {
+      const Q = G.players[i];
+      if (Q === G.me || Q.gone) continue;
+      const sx = (Q.x - cam.x) * z, sy = (Q.y - cam.y) * z;
+      if (Math.abs(sx) < W / 2 && Math.abs(sy) < H / 2) continue;
+      arrow(sx, sy, SLOT_COL[Q.slot] || "#fff", Q.dead ? 15 : 12, Q.dead ? 0.6 + Math.sin(G.time * 10) * 0.4 : 0.9);
     }
     const ws = G.warnings;
     for (let i = 0; i < ws.count; i++) {

@@ -148,3 +148,19 @@ export async function smoke(h) {
   }
   say("smoke done");
 }
+
+/** Debug only (?cosmoke=1 with cohost / cojoin, the Windows app's co-op self-tests): once a co-op run
+    is going, plays for a while, then reports what this side sees. */
+export async function coopSmoke() {
+  const say = (msg) => { try { window.chrome.webview.postMessage({ type: "status", msg }); } catch (e) { console.log("[coop smoke] " + msg); } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 240 && !(G.net.role !== "off" && G.state === "playing"); i++) await sleep(250);
+  if (G.net.role === "off") { say("coop: never connected"); say("smoke done"); return; }
+  say("coop: " + G.net.role + ", slot " + G.net.slot + ", " + G.players.length + " players");
+  const w0 = G.wave;
+  await sleep(25000);
+  const me = G.me;
+  say("coop: wave " + w0 + " -> " + G.wave + ", state " + G.state + ", robots " + G.enemies.count + ", my hp " + me.hp + ", stars " + G.stars +
+    ", players " + G.players.map((p) => p.name + "@" + Math.round(p.x) + "," + Math.round(p.y)).join(" "));
+  say("smoke done");
+}

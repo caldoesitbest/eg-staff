@@ -8,7 +8,7 @@ import { audio } from "../audio.js";
 import { seek, brake, face, angleToPlayer } from "./index.js";
 import { killEnemy, hurtPlayer } from "../world.js";
 import { playerHurtRadius } from "../player.js";
-import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, chargeRing, moves, pace } from "./boss-common.js";
+import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, chargeRing, moves, pace } from "./boss-common.js";
 
 const COL = SIN.glutton;
 
@@ -74,10 +74,10 @@ export const glutton = {
           audio.play("chomp", e.x, e.y);
         }
       }
-      if (!P.dead) {
-        const dx = mx - P.x, dy = my - P.y, dd = Math.hypot(dx, dy) || 1;
-        if (dd < range) { P.vx += (dx / dd) * d.playerPull * dt * 3; P.vy += (dy / dd) * d.playerPull * dt * 3; }
-      }
+      eachPlayer((Q) => {
+        const dx = mx - Q.x, dy = my - Q.y, dd = Math.hypot(dx, dy) || 1;
+        if (dd < range) { Q.vx += (dx / dd) * d.playerPull * dt * 3; Q.vy += (dy / dd) * d.playerPull * dt * 3; }
+      });
       if (Math.random() < 0.6) {
         const a = rand(0, TAU), rr = rand(range * 0.5, range);
         const px = mx + Math.cos(a) * rr, py = my + Math.sin(a) * rr;
@@ -95,7 +95,7 @@ export const glutton = {
         fx.debris(e.x, e.y, 14, "#7a5c96", 340);
         fx.shake(0.55);
         audio.play("slam", e.x, e.y);
-        if (!P.dead && Math.hypot(P.x - e.x, P.y - e.y) < R + playerHurtRadius()) hurtPlayer(d.slamDmg, e.x, e.y);
+        eachPlayer((Q) => { if (Math.hypot(Q.x - e.x, Q.y - e.y) < R + playerHurtRadius()) hurtPlayer(d.slamDmg, e.x, e.y); });
         e.state = 0; e.t2 = randRange(d.slamEvery) * pc;
       }
     }

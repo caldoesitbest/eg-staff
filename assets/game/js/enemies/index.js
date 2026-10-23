@@ -1,7 +1,7 @@
 /* Robot spawning, the shared update loop (slow fields, knockback, charm), separation
    and the steering helpers every robot uses. */
 
-import { G } from "../state.js";
+import { G, usePlayer } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, turnTowards, rand } from "../util.js";
 import { sprites, C, P_HEART } from "../sprites.js";
@@ -64,9 +64,12 @@ export function spawnEnemy(type, x, y, opts) {
   e.x = e.px = x; e.y = e.py = y;
   e.vx = e.vy = e.kx = e.ky = 0;
   e.r = def.r; e.scale = 1;
-  e.maxHp = e.hp = def.hp * hpMul * (elite ? E.hp : 1);
+  // co-op: bosses get much tougher per extra player, robots a little (most of the extra comes as more robots)
+  const crew = Math.max(1, G.net.n || 1);
+  const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
+  e.maxHp = e.hp = def.hp * hpMul * crewMul * (elite ? E.hp : 1);
   if (boss && def.fightSecs && G.stats) {
-    const floor = estimateDps() * def.fightSecs;
+    const floor = teamDps() * def.fightSecs;
     if (floor > e.maxHp) { e.maxHp = e.hp = floor; e.scaledToYou = true; } else e.scaledToYou = false;
   }
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
@@ -79,12 +82,41 @@ export function spawnEnemy(type, x, y, opts) {
   e.state = 0; e.t = e.t2 = e.t3 = e.cd = 0; e.a = e.b = e.c = 0; e.tx = e.ty = 0;
   e.flash = 0; e.spawnT = (opts && opts.spawnT !== undefined) ? opts.spawnT : 0.35;
   e.ally = 0; e.slowMul = 1; e.dmgMul = 1; e.orbCd = 0; e.invuln = false; e.warnPlayed = false;
-  e.ramStamp = 0; e.target = null;
+  e.ramStamp = 0; e.target = null; e.tgtP = null; e.tgtT = 0; e.allyBy = null;
   e.mark = boss ? (G.lap || 0) : G.mark;
   e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   return e;
+}
+
+/** Everyone's firepower together (co-op bosses are sized to the whole team). */
+function teamDps() {
+  if (G.players.length <= 1) return estimateDps();
+  const cur = G.player;
+  let t = 0;
+  for (let i = 0; i < G.players.length; i++) { const P = G.players[i]; if (P.gone) continue; usePlayer(P); t += estimateDps(); }
+  usePlayer(cur);
+  return t;
+}
+
+/** Which player a robot is after: the nearest, re-picked every second or two so a crowd spreads out. */
+function targetOf(e) {
+  const list = G.players;
+  if (list.length === 1) return list[0];
+  e.tgtT -= 1 / 60;
+  const cur = e.tgtP;
+  if (cur && !cur.dead && !cur.gone && e.tgtT > 0) return cur;
+  let best = null, bd = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    const P = list[i];
+    if (P.dead || P.gone) continue;
+    const d2 = ((P.x - e.x) ** 2 + (P.y - e.y) ** 2) * (0.75 + Math.random() * 0.5);
+    if (d2 < bd) { bd = d2; best = P; }
+  }
+  e.tgtP = best || cur || G.me;
+  e.tgtT = 1 + Math.random() * 1.2;
+  return e.tgtP;
 }
 
 const TRAIT_KEYS = ["shielded", "hasted", "volatile", "regen"];
@@ -110,6 +142,7 @@ export function hostileCount() {
 
 // ---------- charmed robots (Lust) ----------
 function popAlly(e) {
+  if (e.allyBy && e.allyBy !== G.player) usePlayer(e.allyBy);
   const s = G.stats;
   queueBlast(e.x, e.y, (s.lustBurst || 40) + e.r, 22 + G.wave * 3, true, false, 0, C.magenta, P_HEART);
   fx.burst(e.x, e.y, 10, P_HEART, 200, 0.6, 1.6);
@@ -137,7 +170,7 @@ function updateAlly(e, dt, realDt) {
     e.target = best;
     e.targetId = best ? best.id : 0;
   }
-  const P = G.player;
+  const P = e.allyBy || G.me;
   if (e.target) {
     const d = seek(e, e.target.x, e.target.y, Math.max(140, e.speed * 1.3), 5, dt);
     e.cd -= dt;
@@ -159,10 +192,11 @@ function updateAlly(e, dt, realDt) {
 export function updateEnemies(dt) {
   const pool = G.enemies;
   const items = pool.items;
-  const P = G.player;
-  const s = G.stats;
+  const list = G.players;
   const freeze = G.freezeT > 0 ? 0.15 : 1;
-  const slowR2 = s.slowRadius * s.slowRadius;
+  // each player's Sloth field
+  for (let i = 0; i < list.length; i++) { const Q = list[i]; usePlayer(Q); Q.slowR2 = G.stats.slowRadius * G.stats.slowRadius; Q.slowM = G.stats.slowMul; }
+  const alive = list.some((Q) => !Q.dead);
   const puddles = G.puddles;
   const trailSlow = BALANCE.upgrades.sloth.trailSlow;
   const as = G.asteroids;
@@ -178,8 +212,11 @@ export function updateEnemies(dt) {
     if ((e.traits & TRAIT.regen) && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * E.traits.regen.perSec * dt);
 
     let m = freeze;
-    if (P && !P.dead && e.ally <= 0) {
-      if (slowR2 && (e.x - P.x) ** 2 + (e.y - P.y) ** 2 < slowR2) m *= s.slowMul;
+    if (alive && e.ally <= 0) {
+      for (let k = 0; k < list.length; k++) {
+        const Q = list[k];
+        if (!Q.dead && Q.slowR2 && (e.x - Q.x) ** 2 + (e.y - Q.y) ** 2 < Q.slowR2) { m *= Q.slowM; break; }
+      }
       for (let k = 0; k < puddles.count; k++) {
         const q = puddles.items[k];
         if ((e.x - q.x) ** 2 + (e.y - q.y) ** 2 < q.r * q.r) { m *= trailSlow; break; }
@@ -194,8 +231,10 @@ export function updateEnemies(dt) {
     } else if (e.ally > 0) {
       updateAlly(e, edt, dt);
       if (e.dead) continue;
-    } else if (P) {
-      e.kind.update(e, edt * e.haste, P);
+    } else {
+      const T = targetOf(e);
+      usePlayer(T);
+      e.kind.update(e, edt * e.haste, T);
       if (e.dead) continue;
     }
 
@@ -226,6 +265,7 @@ export function updateEnemies(dt) {
     if (r > maxR) maxR = r;
   }
   G.maxR = maxR;
+  usePlayer(G.me);
 
   G.hash.build(pool);
   separate();

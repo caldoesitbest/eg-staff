@@ -1,7 +1,8 @@
 /* The simulation: one fixed step of everything, plus the shared actions
-   (damage, kills, scoring, pickups, explosions, asteroids). */
+   (damage, kills, scoring, pickups, explosions, asteroids). Co-op: every player is checked in turn
+   with usePlayer(), so "the player" in damage/heal/kill code is whoever it's happening to. */
 
-import { G } from "./state.js";
+import { G, usePlayer, coop } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { TAU, rand, randInt, chance, fracRound, clamp } from "./util.js";
 import { fx } from "./fx.js";
@@ -186,13 +187,18 @@ export function hurtPlayer(dmg, sx, sy) {
   G.waveHits++;
   G.hitsTaken++;
 
-  fx.screenFlash("#ff2a55", 0.32, 2.6);
-  fx.shake(BALANCE.fx.shake.hurt);
-  hitStop(BALANCE.fx.hitstop.hurt, true);
+  P.hurtSeq++;                 // co-op: tells that player's own screen to flash
+  if (P === G.me) {
+    G.personal = true;           // your screen only (not sent to teammates)
+    fx.screenFlash("#ff2a55", 0.32, 2.6);
+    fx.shake(BALANCE.fx.shake.hurt);
+    hitStop(BALANCE.fx.hitstop.hurt, true);
+    audio.play("hurt");
+    haptic(60);
+    G.personal = false;
+  }
   fx.burst(P.x, P.y, 14, P_DANGER, 240, 0.5, 1.6);
   fx.sparks(P.x, P.y, Math.atan2(dy, dx), 0.9, 8, P_WHITE, 360, 0.3);
-  audio.play("hurt");
-  haptic(60);
   G.emit("hurt", false);
   if (P.hp <= 0) { P.hp = 0; killPlayer(); }
   return true;
@@ -205,7 +211,7 @@ export function perfectBoost() {
   const B = BALANCE.player.boost;
   P.boostCdT *= 1 - B.perfectRefund;
   if (G.stats.bulletTime) { G.freezeT = BALANCE.upgrades.sloth.bulletTime; }
-  else if (G.time - (G.lastSlowmo || -9) > 2.5 && G.settings.hitstop !== "off") {
+  else if (!coop() && G.time - (G.lastSlowmo || -9) > 2.5 && G.settings.hitstop !== "off") {
     // slow-mo at most every 2.5s: in a bullet storm back-to-back perfects felt like lag
     G.slowmo = B.perfectSlowmo; G.slowScale = 0.35; G.lastSlowmo = G.time;
   }
@@ -213,11 +219,12 @@ export function perfectBoost() {
   G.comboTimer = BALANCE.combo.window;
   if (G.combo > G.bestCombo) G.bestCombo = G.combo;
   G.perfects = (G.perfects || 0) + 1;
+  P.perfSeq = (P.perfSeq || 0) + 1;
   if (G.stats.perfectCharge) { if (P.charging) P.charge = 1; else P.chargeBank = true; }
   fx.text(P.x, P.y - 38, "PERFECT!", C.cyan, 18, 0.9);
   fx.ring(P.x, P.y, 10, 95, 0.35, C.cyan, 3);
   audio.play("perfect", P.x, P.y);
-  haptic(15);
+  if (P === G.me) haptic(15);
   G.emit("perfect");
 }
 
@@ -239,17 +246,49 @@ function killPlayer() {
   const P = G.player;
   P.dead = true;
   P.deathT = 0;
+  P.reviveT = 0;
   fx.explode(P.x, P.y, 34, P_CYAN, C.cyan);
   fx.burst(P.x, P.y, 30, P_HEART, 320, 1.0, 2);
   fx.ring(P.x, P.y, 20, 260, 0.7, C.white, 4);
-  fx.shake(1);
-  fx.screenFlash("#ffffff", 0.6, 1.6);
+  audio.play("bigExplode", P.x, P.y);
+  if (P === G.me) { G.personal = true; fx.shake(1); fx.screenFlash("#ffffff", 0.6, 1.6); haptic([80, 60, 160]); G.personal = false; }
+  if (coop()) {
+    // co-op: you're down, not out, until everyone is
+    fx.text(P.x, P.y - 40, (P.name || "Player").toUpperCase() + " IS DOWN", C.danger, 16, 1.4);
+    if (G.players.some((o) => !o.dead && !o.gone)) return;
+  }
   G.slowmo = 1.1;
   G.slowScale = 0.28;
-  audio.play("bigExplode", P.x, P.y);
-  haptic([80, 60, 160]);
   G.emit("playerDown");
 }
+
+/** Co-op: stand next to a downed teammate to bring them back. */
+const REVIVE = { time: 2.4, range: 70, hp: 2 };
+export function revivePlayer(P) {
+  P.dead = false;
+  P.reviveT = 0;
+  P.hp = Math.max(P.hp, REVIVE.hp);
+  P.iframes = 2;
+  fx.ring(P.x, P.y, 10, 120, 0.5, C.mint, 4);
+  fx.text(P.x, P.y - 40, "REVIVED", C.mint, 18, 1.2);
+  audio.play("heal", P.x, P.y);
+}
+function updateRevives(dt) {
+  const list = G.players;
+  for (let i = 0; i < list.length; i++) {
+    const P = list[i];
+    if (!P.dead || P.gone) continue;
+    let near = false;
+    for (let j = 0; j < list.length; j++) {
+      const o = list[j];
+      if (o === P || o.dead || o.gone) continue;
+      if ((o.x - P.x) ** 2 + (o.y - P.y) ** 2 < REVIVE.range * REVIVE.range) { near = true; break; }
+    }
+    P.reviveT = near ? P.reviveT + dt / REVIVE.time : Math.max(0, P.reviveT - dt * 0.3);
+    if (P.reviveT >= 1) revivePlayer(P);
+  }
+}
+export const reviveRange = REVIVE.range;
 
 // ---------------------------------------------------------------------------
 // Spawning helpers
@@ -287,6 +326,7 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.split = hasSplitEnvy();
   b.knock = plain ? PG.knock : s.knock;
   b.tgt = null; b.tgtId = 0; b.tgtT = 0;
+  b.by = G.player;            // whose build gets the kill (co-op)
   return b;
 }
 
@@ -418,6 +458,7 @@ export function queueBlast(x, y, r, enemyDmg, friendly, hurtsPlayer, playerDmg, 
   if (!q) return;
   q.dead = false; q.x = x; q.y = y; q.r = r; q.enemyDmg = enemyDmg; q.friendly = friendly;
   q.hurtsPlayer = !!hurtsPlayer; q.dmg = playerDmg || 0; q.col = col || C.orange; q.pal = pal === undefined ? P_ORANGE : pal;
+  q.by = G.player;
 }
 
 function processBlasts() {
@@ -434,6 +475,7 @@ function processBlasts() {
     fx.shake(Math.min(0.35, q.r / 400));
     audio.play("explode", q.x, q.y, 0.7);
     if (q.enemyDmg > 0) {
+      if (q.by && q.by !== G.player) usePlayer(q.by);
       const n = G.hash.query(q.x, q.y, q.r + G.maxR);
       const res = G.hash.results, items = G.enemies.items;
       for (let j = 0; j < n; j++) {
@@ -448,10 +490,14 @@ function processBlasts() {
         damageEnemy(e, e.boss ? q.enemyDmg * 0.3 : q.enemyDmg, false, dx / d, dy / d, 160);
       }
     }
-    if (q.hurtsPlayer && G.player && !G.player.dead) {
-      const P = G.player;
+    if (q.hurtsPlayer) {
       const rr = q.r + playerHurtRadius();
-      if ((P.x - q.x) ** 2 + (P.y - q.y) ** 2 < rr * rr) hurtPlayer(q.dmg, q.x, q.y);
+      for (let k = 0; k < G.players.length; k++) {
+        const P = G.players[k];
+        if (P.dead || (P.x - q.x) ** 2 + (P.y - q.y) ** 2 >= rr * rr) continue;
+        usePlayer(P);
+        hurtPlayer(q.dmg, q.x, q.y);
+      }
     }
   }
   bl.sweep();
@@ -509,8 +555,8 @@ export function spawnEdgeAsteroid(initial) {
   for (let tries = 0; tries < 12; tries++) {
     x = rand(r + 20, A.w - r - 20);
     y = rand(r + 20, A.h - r - 20);
-    const P = G.player;
-    const far = !P || (x - P.x) ** 2 + (y - P.y) ** 2 > 360 * 360;
+    let far = true;
+    for (let k = 0; k < G.players.length; k++) { const P = G.players[k]; if ((x - P.x) ** 2 + (y - P.y) ** 2 < 360 * 360) far = false; }
     let clear = true;
     for (let i = 0; i < G.asteroids.count; i++) {
       const o = G.asteroids.items[i];
@@ -527,9 +573,27 @@ export function onScreen(x, y, pad) {
   return Math.abs(x - c.x) < c.viewW / 2 + pad && Math.abs(y - c.y) < c.viewH / 2 + pad;
 }
 
+/** Bounces a player off the rocks (a co-op client runs this for its own astronaut). */
+export function collideRocks(P, canBreak) {
+  if (!P || P.dead) return;
+  const as = G.asteroids;
+  for (let i = 0; i < as.count; i++) {
+    const a = as.items[i];
+    if (a.dead) continue;
+    const dx = P.x - a.x, dy = P.y - a.y, rr = a.r * 0.92 + P.r * 0.8;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= rr * rr || d2 === 0) continue;
+    const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+    if (canBreak && P.boostT > 0 && (a.r <= 32 || G.stats.boostRam)) damageAsteroid(a, a.r <= 32 ? 9999 : G.stats.boostRam * 2);
+    if (P.input) continue;              // a teammate's own game moves them
+    P.x = a.x + nx * rr; P.y = a.y + ny * rr;
+    const vn = P.vx * nx + P.vy * ny;
+    if (vn < 0) { P.vx -= 1.6 * vn * nx; P.vy -= 1.6 * vn * ny; a.vx += vn * nx * 0.08; a.vy += vn * ny * 0.08; }
+  }
+}
+
 function updateAsteroids(dt) {
   const as = G.asteroids;
-  const P = G.player;
   for (let i = 0; i < as.count; i++) {
     const a = as.items[i];
     if (a.dead) continue;
@@ -552,20 +616,8 @@ function updateAsteroids(dt) {
       const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
       if (rel < 0) { a.vx += nx * rel; a.vy += ny * rel; b.vx -= nx * rel; b.vy -= ny * rel; }
     }
-    if (P && !P.dead) {
-      const dx = P.x - a.x, dy = P.y - a.y, rr = a.r * 0.92 + P.r * 0.8;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < rr * rr && d2 > 0) {
-        const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
-        if (P.boostT > 0 && (a.r <= 32 || G.stats.boostRam)) {
-          damageAsteroid(a, a.r <= 32 ? 9999 : G.stats.boostRam * 2);
-        }
-        P.x = a.x + nx * rr; P.y = a.y + ny * rr;
-        const vn = P.vx * nx + P.vy * ny;
-        if (vn < 0) { P.vx -= 1.6 * vn * nx; P.vy -= 1.6 * vn * ny; a.vx += vn * nx * 0.08; a.vy += vn * ny * 0.08; }
-      }
-    }
   }
+  for (let k = 0; k < G.players.length; k++) { const P = G.players[k]; usePlayer(P); collideRocks(P, true); }
   as.sweep();
 }
 
@@ -587,6 +639,7 @@ function updatePlayerBullets(dt) {
     if (b.dead) continue;
     b.px = b.x; b.py = b.y;
     b.life -= dt;
+    if ((b.life <= 0 || b.special) && b.by && b.by !== G.player) usePlayer(b.by);
     if (b.life <= 0) { endShot(b); continue; }
     if (b.special === 2) { b.zapT -= dt; if (b.zapT <= 0) { b.zapT = 0.12; stormZap(b); } }
 
@@ -652,6 +705,7 @@ function updatePlayerBullets(dt) {
     if (b.dead) continue;
 
     const n = G.hash.query(b.x, b.y, b.r + G.maxR);
+    if (n && b.by && b.by !== G.player) usePlayer(b.by);
     for (let j = 0; j < n; j++) {
       const e = items[res[j]];
       if (e.dead || e.ally > 0 || e.spawnT > 0.15) continue;
@@ -712,15 +766,35 @@ function steerShot(b, tx, ty, step) {
   b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
 }
 
+// Per-player numbers the enemy-shot loop needs, gathered once a tick (no build switching per shot).
+const ebInfo = [0, 1, 2, 3].map(() => ({ P: null, slowR2: 0, slowMul: 1, nOrb: 0, bulwark: false }));
+function playerInfo() {
+  const list = G.players;
+  ebInfo.n = Math.min(4, list.length);
+  for (let i = 0; i < ebInfo.n; i++) {
+    const P = list[i], f = ebInfo[i];
+    usePlayer(P);
+    const s = G.stats;
+    f.P = P; f.slowR2 = s.slowRadius * s.slowRadius; f.slowMul = s.slowMul; f.nOrb = P.dead ? 0 : s.orbitals; f.bulwark = !P.dead && hasEnvy("bulwark");
+  }
+  return ebInfo;
+}
+function nearestPlayer(x, y) {
+  let best = null, bd = Infinity;
+  for (let i = 0; i < G.players.length; i++) {
+    const P = G.players[i];
+    if (P.dead) continue;
+    const d2 = (P.x - x) ** 2 + (P.y - y) ** 2;
+    if (d2 < bd) { bd = d2; best = P; }
+  }
+  return best;
+}
+
 function updateEnemyBullets(dt) {
   const eb = G.eb;
-  const P = G.player;
-  const s = G.stats;
   const as = G.asteroids;
-  const orb = G.orbPos, nOrb = P && !P.dead ? s.orbitals : 0;
+  const info = playerInfo();
   const hurtR = playerHurtRadius();
-  const bulwark = P && !P.dead && hasEnvy("bulwark");
-  const slowR2 = s.slowRadius * s.slowRadius;
   const k = dt * (G.freezeT > 0 ? 0.15 : 1);
   for (let i = 0; i < eb.count; i++) {
     const b = eb.items[i];
@@ -729,7 +803,10 @@ function updateEnemyBullets(dt) {
     b.life -= dt;
     if (b.life <= 0) { b.dead = true; continue; }
     let m = k;
-    if (slowR2 > 0 && P && (b.x - P.x) ** 2 + (b.y - P.y) ** 2 < slowR2) m *= s.slowMul;
+    for (let q = 0; q < info.n; q++) {
+      const f = info[q];
+      if (f.slowR2 > 0 && !f.P.dead && (b.x - f.P.x) ** 2 + (b.y - f.P.y) ** 2 < f.slowR2) { m *= f.slowMul; break; }
+    }
     b.age += dt;
     if (b.hp > 0) {
       // Lust's kisses can be shot down
@@ -750,9 +827,10 @@ function updateEnemyBullets(dt) {
       }
       if (b.dead) continue;
     }
-    if (b.turn > 0 && P && !P.dead && b.age < (b.home || 3)) {
-      // Lust's kisses: curve gently toward you (slow enough to outrun or boost through)
-      steerShot(b, P.x, P.y, b.turn * dt);
+    const near = b.turn > 0 ? nearestPlayer(b.x, b.y) : null;
+    if (near && b.age < (b.home || 3)) {
+      // Lust's kisses: curve gently toward the nearest of you (slow enough to outrun or boost through)
+      steerShot(b, near.x, near.y, b.turn * dt);
     } else if (b.back > 0 && b.age > b.back) {
       // Greed's coins: fly out, then come home
       const o = b.owner;
@@ -775,35 +853,40 @@ function updateEnemyBullets(dt) {
     }
     if (b.dead) continue;
 
-    for (let o = 0; o < nOrb; o++) {
-      const ox = orb[o * 2], oy = orb[o * 2 + 1];
-      if ((b.x - ox) ** 2 + (b.y - oy) ** 2 < (b.r + 10) ** 2) {
-        b.dead = true;
-        fx.sparks(b.x, b.y, Math.atan2(b.y - oy, b.x - ox), 0.8, 4, P_CYAN, 220, 0.18);
-        audio.play("clank", b.x, b.y, 0.4);
-        break;
+    for (let q = 0; q < info.n && !b.dead; q++) {
+      const f = info[q], P = f.P;
+      if (P.dead) continue;
+      const orb = P.orbPos;
+      for (let o = 0; o < f.nOrb; o++) {
+        const ox = orb[o * 2], oy = orb[o * 2 + 1];
+        if ((b.x - ox) ** 2 + (b.y - oy) ** 2 < (b.r + 10) ** 2) {
+          b.dead = true;
+          fx.sparks(b.x, b.y, Math.atan2(b.y - oy, b.x - ox), 0.8, 4, P_CYAN, 220, 0.18);
+          audio.play("clank", b.x, b.y, 0.4);
+          break;
+        }
       }
-    }
-    if (b.dead || !P || P.dead) continue;
-
-    const dx = b.x - P.x, dy = b.y - P.y;
-    const d2 = dx * dx + dy * dy;
-    if (bulwark && d2 < 44 * 44) {
-      const ang = Math.atan2(dy, dx);
-      let diff = ang - P.aimAng;
-      while (diff > Math.PI) diff -= TAU;
-      while (diff < -Math.PI) diff += TAU;
-      if (Math.abs(diff) < ENVY_POWERS.bulwark.arc) {
-        b.dead = true;
-        fx.sparks(b.x, b.y, ang, 0.6, 4, P_MINT, 220, 0.2);
-        audio.play("clank", b.x, b.y, 0.4);
-        continue;
+      if (b.dead) break;
+      const dx = b.x - P.x, dy = b.y - P.y;
+      const d2 = dx * dx + dy * dy;
+      if (f.bulwark && d2 < 44 * 44) {
+        const ang = Math.atan2(dy, dx);
+        let diff = ang - P.aimAng;
+        while (diff > Math.PI) diff -= TAU;
+        while (diff < -Math.PI) diff += TAU;
+        if (Math.abs(diff) < ENVY_POWERS.bulwark.arc) {
+          b.dead = true;
+          fx.sparks(b.x, b.y, ang, 0.6, 4, P_MINT, 220, 0.2);
+          audio.play("clank", b.x, b.y, 0.4);
+          break;
+        }
       }
-    }
-    if (d2 < (b.r + hurtR) ** 2) {
-      if (hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) {
-        b.dead = true;
-        fx.burst(b.x, b.y, 6, P_DANGER, 160, 0.3, 1.2);
+      if (d2 < (b.r + hurtR) ** 2) {
+        usePlayer(P);
+        if (hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) {
+          b.dead = true;
+          fx.burst(b.x, b.y, 6, P_DANGER, 160, 0.3, 1.2);
+        }
       }
     }
   }
@@ -839,10 +922,9 @@ function collect(q) {
 
 function updatePickups(dt) {
   const ps = G.pickups;
-  const P = G.player;
-  const mag = G.stats.magnet, mag2 = mag * mag;
+  const list = G.players;
+  for (let i = 0; i < list.length; i++) { usePlayer(list[i]); list[i].mag = G.stats.magnet; }
   const pull = D.magnetPull;
-  const grab = P ? P.r + 10 : 0;
   if (G.starChainT > 0) G.starChainT -= dt;
   for (let i = 0; i < ps.count; i++) {
     const q = ps.items[i];
@@ -853,11 +935,13 @@ function updatePickups(dt) {
     if (q.life <= 0) { q.dead = true; continue; }
     const fr = 1 - Math.min(1, 3.5 * dt);
     q.vx *= fr; q.vy *= fr;
-    if (P && !P.dead && q.t > 0.25) {
+    const P = q.t > 0.25 ? nearestPlayer(q.x, q.y) : null;
+    if (P) {
       const dx = P.x - q.x, dy = P.y - q.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 < grab * grab) { q.dead = true; collect(q); continue; }
-      if (q.pulled || d2 < mag2 || G.vacuum) {
+      const grab = P.r + 10;
+      if (d2 < grab * grab) { q.dead = true; usePlayer(P); collect(q); continue; }
+      if (q.pulled || d2 < P.mag * P.mag || G.vacuum) {
         q.pulled = true;
         const d = Math.sqrt(d2) || 1;
         const sp = G.vacuum ? pull * 1.8 : pull;
@@ -877,8 +961,14 @@ function updatePickups(dt) {
 // Contact damage, orbitals, boost ram, sloth trail
 // ---------------------------------------------------------------------------
 function contacts(dt) {
-  const P = G.player;
-  if (!P || P.dead) return;
+  for (let i = 0; i < G.players.length; i++) {
+    const P = G.players[i];
+    if (P.dead) continue;
+    usePlayer(P);
+    contactsFor(P);
+  }
+}
+function contactsFor(P) {
   const items = G.enemies.items, res = G.hash.results;
   const hurtR = playerHurtRadius();
   const s = G.stats;
@@ -907,7 +997,7 @@ function contacts(dt) {
   // moons
   const nOrb = s.orbitals;
   if (nOrb) {
-    const orb = G.orbPos;
+    const orb = P.orbPos;
     const dmg = BALANCE.upgrades.orbit.dmg * (1 + G.wave * 0.04) * (s.damage / BALANCE.player.gun.damage);
     for (let o = 0; o < nOrb; o++) {
       const ox = orb[o * 2], oy = orb[o * 2 + 1];
@@ -955,10 +1045,18 @@ export function stepWorld(dt) {
     G.comboTimer -= dt;
     if (G.comboTimer <= 0) G.combo = 0;
   }
-  const P = G.player;
-  updatePlayer(dt);
-  G.playerSlow = 1;            // bosses lower it again this tick if you're in an aura
-  if (P && !P.dead) tickEnvy(dt);
+  const list = G.players;
+  for (let i = 0; i < list.length; i++) {
+    const P = list[i];
+    if (P.gone) continue;
+    usePlayer(P);
+    G.fxOwner = P.slot;          // co-op: effects this player's own screen already showed
+    updatePlayer(dt, P);
+    G.fxOwner = -1;
+    P.slowMul = 1;             // bosses lower it again this tick if you're in an aura
+    if (!P.dead) tickEnvy(dt);
+  }
+  usePlayer(G.me);
   waves.update(dt);
   updateEnemies(dt);           // also rebuilds the spatial hash
   contacts(dt);
@@ -970,7 +1068,9 @@ export function stepWorld(dt) {
   updatePickups(dt);
   updateAsteroids(dt);
   updatePuddles(dt);
+  if (coop()) updateRevives(dt);
   G.enemies.sweep();
+  usePlayer(G.me);
   if (G.state === "playing" || G.state === "clear") {
     // keep the rocks topped up
     if (G.asteroids.count < A.asteroids && Math.random() < dt * 0.25) spawnEdgeAsteroid(false);

@@ -59,7 +59,13 @@ export const G = {
   perfects: 0,
   orbPos: new Float32Array(8),
 
-  player: null,
+  player: null,              // the player being processed right now (see usePlayer); outside the simulation, your own
+  me: null,                  // your own player
+  players: [],               // everyone in the run (1 solo, 2-4 co-op), by slot
+  net: { role: "off", slot: 0, n: 1 },   // co-op: "off" | "host" | "client" (coop.js)
+  fxOwner: -1,               // co-op host: whose update made the current effects (that player already saw them)
+  personal: false,           // co-op host: effects for your own screen only (not sent to teammates)
+  netLeft: 0,                // co-op client: robots left this wave (from the host)
   stats: null,               // computed from upgrades (upgrades.js)
   up: {},                    // upgrade levels by id
   guns: [{ id: "blaster", tier: 1 }, null], gunSlot: 0,   // two gun slots (armory.js)
@@ -90,6 +96,9 @@ export const G = {
   touchActive: false,        // the player is using touch (enables vibration)
   quality: 2,                // 2 high, 1 medium, 0 low (auto adjusts)
 
+  // ---------- whose build is live (co-op: each player has their own) ----------
+  // The fields below belong to one player. The simulation switches between players with usePlayer().
+
   // ---------- event bus ----------
   _ev: Object.create(null),
   on(name, fn) { (this._ev[name] || (this._ev[name] = [])).push(fn); },
@@ -98,3 +107,24 @@ export const G = {
     if (list) for (let i = 0; i < list.length; i++) list[i](a, b, c);
   },
 };
+
+// Each player carries their own build; usePlayer() swaps it into G so the rest of the code
+// (stats, guns, gear, stars) reads "the current player" without knowing about co-op.
+const CTX = ["stats", "up", "guns", "gunSlot", "items", "stars", "starsTotal", "shop", "rerolls", "patches"];
+export function makeCtx() {
+  return { stats: null, up: {}, guns: [{ id: "blaster", tier: 1 }, null], gunSlot: 0, items: {}, stars: 0, starsTotal: 0, shop: { offers: [], rerolls: 0 }, rerolls: 0, patches: 0 };
+}
+export function usePlayer(P) {
+  const cur = G.player;
+  if (cur === P) return;
+  if (cur && cur.ctx) for (let i = 0; i < CTX.length; i++) cur.ctx[CTX[i]] = G[CTX[i]];
+  G.player = P;
+  if (P && P.ctx) for (let i = 0; i < CTX.length; i++) G[CTX[i]] = P.ctx[CTX[i]];
+}
+/** Saves the live build back into the current player (before reading another player's ctx directly). */
+export function syncCtx() {
+  const cur = G.player;
+  if (cur && cur.ctx) for (let i = 0; i < CTX.length; i++) cur.ctx[CTX[i]] = G[CTX[i]];
+}
+export const coop = () => G.net.role !== "off";
+export const isMe = (P) => P === G.me;

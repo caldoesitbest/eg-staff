@@ -63,6 +63,7 @@
       <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
       <div class="daily-chip" id="daily-chip" hidden>Daily</div>
       <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
+      <div class="team" id="team" hidden aria-label="Teammates"></div>
       <div class="envy-chips" id="envy-chips"></div>
     </div>
     <div class="boss-bar" id="boss-bar" hidden>
@@ -102,6 +103,7 @@
       <div class="menu-actions">
         <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
         <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
+        <button class="btn btn-ghost btn-coop" id="coop-btn" type="button"><i data-icon="users"></i>Co-op <small>2–4</small></button>
       </div>
       <div class="menu-actions menu-actions-2">
         <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
@@ -122,7 +124,7 @@
       <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
       <ol class="mini-ladder" id="mini-ladder"></ol>
     </aside>
-    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v3.0 · The Armory</span><span>Same planet.</span> <span>Different breed.</span></footer>
+    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v3.0 · Armory + Co-op</span><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
   <!-- pause -->
@@ -234,7 +236,7 @@
         <button class="btn btn-primary btn-xl" id="win-endless" type="button"><i data-icon="infinity"></i>Keep climbing (endless)</button>
         <button class="btn btn-ghost" id="win-finish" type="button"><i data-icon="flag"></i>Finish the run</button>
       </div>
-      <p class="set-note">Endless laps the ladder again: robots evolve and every sin comes back harder.</p>
+      <p class="set-note" id="win-note">Endless laps the ladder again: robots evolve and every sin comes back harder.</p>
     </div>
   </section>
 
@@ -297,12 +299,49 @@
     </form>
   </section>
 
+  <!-- co-op lobby -->
+  <section class="screen screen-lobby" id="screen-lobby" hidden aria-labelledby="lobby-title">
+    <div class="panel panel-wide glow-card lobby">
+      <p class="kicker"><span>Co-op</span><i>&#10022;</i><span>2&ndash;4 players</span></p>
+      <h2 class="panel-title" id="lobby-title">Climb together</h2>
+      <div class="lobby-start" id="lobby-start">
+        <label class="set-row"><span>Your name</span><input id="lobby-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false"></label>
+        <div class="lobby-choices">
+          <div class="lobby-choice">
+            <h3>Host</h3>
+            <p class="set-note">Make a lobby and share its code. Your game runs the robots, so the player with the best connection should host.</p>
+            <button class="btn btn-primary" id="lobby-host" type="button"><i data-icon="users"></i>Create a lobby</button>
+          </div>
+          <div class="lobby-choice">
+            <h3>Join</h3>
+            <p class="set-note">Type the 5-letter code your host sent you.</p>
+            <div class="lobby-join"><input id="lobby-code-in" type="text" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Lobby code"><button class="btn btn-ghost" id="lobby-join" type="button"><i data-icon="log-in"></i>Join</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="lobby-room" id="lobby-room" hidden>
+        <div class="lobby-codebox">
+          <span class="lobby-code-label">Lobby code</span>
+          <span class="lobby-code" id="lobby-code-show">-----</span>
+          <button class="icon-btn" id="lobby-copy" type="button" aria-label="Copy the code"><i data-icon="copy"></i></button>
+        </div>
+        <ol class="lobby-list" id="lobby-list"></ol>
+        <button class="btn btn-primary btn-xl" id="lobby-go" type="button" disabled><i data-icon="zap"></i>Waiting for players</button>
+        <p class="set-note" id="lobby-wait" hidden>You're in. The host starts the run.</p>
+      </div>
+      <p class="lobby-status" id="lobby-status" role="status"></p>
+      <p class="set-note">Everyone plays on their own screen (browser or the Windows game) and connects directly to the host. Everyone picks their own cards and shops on their own, then readies up. Standing next to a downed teammate revives them.</p>
+      <button class="btn btn-ghost" id="lobby-leave" type="button">Back</button>
+    </div>
+  </section>
+
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 3</span><i>&#10022;</i><span>The Armory</span></p>
+      <p class="kicker"><span>Update 3</span><i>&#10022;</i><span>Armory + Co-op</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
+        <li><b>Co-op, 2&ndash;4 players.</b> Host a lobby, send the code, climb the Sin Ladder together (browser or the Windows game). Waves and bosses scale up, everyone builds their own loadout, and you can revive each other.</li>
         <li><b>The Armory.</b> A shop after every wave: seven guns (Scattergun, Pulse SMG, Rail Lance, Nova Launcher, Arc Caster, Heartseeker), 19 pieces of gear from Common to Legendary. Lock what you like, reroll the rest, buy a gun again to tier it up to IV.</li>
         <li><b>Two gun slots.</b> Swap with <kbd>Q</kbd>, the mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>, <kbd>Y</kbd> on a gamepad, or tap your gun on a phone.</li>
         <li><b>Charged shots.</b> Hold right-click (or <kbd>E</kbd>, <kbd>LT</kbd>, the Charge button) and let go. Every gun charges differently: a plasma orb, a pellet wall, a screen-wide rail beam, a cluster bomb, a storm orb, a heart swarm. New cards: Overcharge and Capacitor.</li>
@@ -330,6 +369,7 @@
           <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
           <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
           <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
+          <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
         </ul>
       </div>
@@ -353,6 +393,7 @@
     "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=4",
     "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=4",
     "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=4",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=4",
     "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=4",
     "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=4",
     "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=4",
@@ -368,6 +409,7 @@
     "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=4",
     "/assets/game/js/input.js": "/assets/game/js/input.js?v=4",
     "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=4",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=4",
     "/assets/game/js/online.js": "/assets/game/js/online.js?v=4",
     "/assets/game/js/player.js": "/assets/game/js/player.js?v=4",
     "/assets/game/js/render.js": "/assets/game/js/render.js?v=4",

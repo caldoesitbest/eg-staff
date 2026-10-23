@@ -280,8 +280,9 @@ export function onKill(e) {
 
 export function onHit(e) {
   const s = G.stats;
-  if (s.lustChance && !e.boss && e.type !== "gem" && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
+  if (s.lustChance && !e.boss && e.type !== "gem" && e.type !== "decoy" && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
     e.ally = s.lustTime;
+    e.allyBy = G.player;
     e.allyMax = s.lustTime;
     e.state = 0; e.t = 0;
     fx.text(e.x, e.y - e.r - 8, "♥", C.magenta, 20, 0.8);

@@ -10,7 +10,7 @@ import { audio } from "../audio.js";
 import { seek, brake, angleToPlayer } from "./index.js";
 import { hurtPlayer } from "../world.js";
 import { playerHurtRadius } from "../player.js";
-import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, chargeRing, moves, pace } from "./boss-common.js";
+import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, chargeRing, moves, pace } from "./boss-common.js";
 
 const COL = SIN.sloth;
 const IDLE = 0, YAWN = 1, NAP = 2, WAKE = 3, SWIPE = 4;
@@ -35,7 +35,13 @@ export const sloth = {
 
     // the drowse aura (off while it naps)
     const dist = Math.hypot(P.x - e.x, P.y - e.y);
-    if (e.state !== NAP && !P.dead && dist < d.drowse.radius) G.playerSlow = Math.min(G.playerSlow, d.drowse.slow);
+    if (e.state !== NAP) {
+      // everyone inside the drowse aura moves slower
+      for (let i = 0; i < G.players.length; i++) {
+        const Q = G.players[i];
+        if (!Q.dead && Math.hypot(Q.x - e.x, Q.y - e.y) < d.drowse.radius) Q.slowMul = Math.min(Q.slowMul, d.drowse.slow);
+      }
+    }
 
     // second (and third) yawn ring, a beat after the first
     if (e.ringsLeft > 0) {
@@ -87,7 +93,7 @@ export const sloth = {
           fx.ring(e.x, e.y, e.r, d.nap.wakeRadius, 0.4, COL, 8);
           fx.shake(0.4);
           audio.play("slam", e.x, e.y);
-          if (!P.dead && dist < d.nap.wakeRadius + playerHurtRadius()) hurtPlayer(d.nap.wakeDmg, e.x, e.y);
+          eachPlayer((Q) => { if (Math.hypot(Q.x - e.x, Q.y - e.y) < d.nap.wakeRadius + playerHurtRadius()) hurtPlayer(d.nap.wakeDmg, e.x, e.y); });
           moves.ring(e, 12, 190, "sloth");
           e.state = IDLE; e.t2 = randRange(d.nap.every) * pc;
         }
@@ -96,8 +102,10 @@ export const sloth = {
         brake(e, 8, dt);
         e.t -= dt;
         if (e.t <= 0) {
-          const a = Math.atan2(P.y - e.y, P.x - e.x);
-          if (!P.dead && dist < d.swipe.reach + playerHurtRadius() && Math.abs(angDiff(e.a, a)) < d.swipe.arc / 2) hurtPlayer(d.swipe.dmg, e.x, e.y);
+          eachPlayer((Q) => {
+            const a = Math.atan2(Q.y - e.y, Q.x - e.x);
+            if (Math.hypot(Q.x - e.x, Q.y - e.y) < d.swipe.reach + playerHurtRadius() && Math.abs(angDiff(e.a, a)) < d.swipe.arc / 2) hurtPlayer(d.swipe.dmg, e.x, e.y);
+          });
           fx.sparks(e.x + Math.cos(e.a) * e.r, e.y + Math.sin(e.a) * e.r, e.a, d.swipe.arc / 2, 12, P_SLOTH, 420, 0.25);
           audio.play("charge", e.x, e.y, 0.7);
           e.state = IDLE; e.t3 = d.swipe.cooldown * pc;

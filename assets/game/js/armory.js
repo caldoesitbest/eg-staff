@@ -2,7 +2,7 @@
    Brotato-style: four offers a wave, lock the ones you like, reroll, and buy a gun you already
    hold to raise its tier (I → IV). Also runs the gear that acts on its own (mines, buddy drones). */
 
-import { G } from "./state.js";
+import { G, usePlayer } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { rng, TAU } from "./util.js";
 import { fx } from "./fx.js";
@@ -74,7 +74,7 @@ export function itemArt(id) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-export const drones = [];        // { x, y, cd, a } buddy drones (read by the renderer)
+// Buddy drones live on each player (P.drones: { x, y, cd, a }); the renderer draws them.
 
 export function resetArmory() {
   G.guns = [{ id: "blaster", tier: 1 }, null];
@@ -82,7 +82,7 @@ export function resetArmory() {
   G.items = {};
   G.shop = { offers: [], rerolls: 0 };
   G.mines.clear();
-  drones.length = 0;
+  if (G.player) G.player.drones.length = 0;
 }
 export const itemLvl = (id) => (G.items && G.items[id]) || 0;
 export function activeGun() { return (G.guns && (G.guns[G.gunSlot] || G.guns[0])) || { id: "blaster", tier: 1 }; }
@@ -278,12 +278,13 @@ function dropMines() {
     const a = (k / Math.max(1, n)) * TAU + P.boostDX;
     q.dead = false;
     q.x = P.x + (n > 1 ? Math.cos(a) * 22 : 0); q.y = P.y + (n > 1 ? Math.sin(a) * 22 : 0);
-    q.t = 0; q.life = 12;
+    q.t = 0; q.life = 12; q.by = P;
   }
 }
 
 function blowMine(q) {
   q.dead = true;
+  if (q.by && q.by !== G.player) usePlayer(q.by);
   const M = ITEMS.mines;
   queueBlast(q.x, q.y, M.radius, M.dmg * BALANCE.player.gun.damage * hpMul(), true, false, 0, C.orange, P_ORANGE);
 }
@@ -302,7 +303,6 @@ function nearestHostile(x, y, range) {
 }
 
 export function updateGear(dt) {
-  const P = G.player, s = G.stats;
   // mines
   const ms = G.mines;
   for (let i = 0; i < ms.count; i++) {
@@ -313,8 +313,14 @@ export function updateGear(dt) {
     if (q.t > 0.35 && nearestHostile(q.x, q.y, 36)) blowMine(q);
   }
   ms.sweep();
-  // buddy drones
-  const want = P && !P.dead ? s.turrets : 0;
+  for (let i = 0; i < G.players.length; i++) { const P = G.players[i]; usePlayer(P); updateDrones(P, G.stats, dt); }
+  usePlayer(G.me);
+}
+
+/** Buddy drones follow their owner and shoot. On a co-op client they only fly (the host shoots). */
+export function updateDrones(P, s, dt) {
+  const drones = P.drones;
+  const want = !P.dead ? s.turrets : 0;
   while (drones.length < want) drones.push({ x: P.x, y: P.y, cd: 0.5 + drones.length * 0.2, a: drones.length * Math.PI });
   if (drones.length > want) drones.length = want;
   if (!want) return;
@@ -327,7 +333,7 @@ export function updateGear(dt) {
     const k = Math.min(1, dt * 7);
     d.x += (ox - d.x) * k; d.y += (oy - d.y) * k;
     d.cd -= dt;
-    if (d.cd <= 0 && fighting) {
+    if (d.cd <= 0 && fighting && G.net.role !== "client") {
       const e = nearestHostile(d.x, d.y, 520);
       if (e) {
         d.cd = 1 / T2.rate;
@@ -343,10 +349,10 @@ export function updateGear(dt) {
 }
 
 // Gear hooks
-G.on("boost", () => { if (G.stats.mines && (G.state === "playing" || G.state === "clear")) dropMines(); });
+G.on("boost", () => { if (G.stats.mines && G.net.role !== "client" && (G.state === "playing" || G.state === "clear")) dropMines(); });
 G.on("hurt", (absorbed) => {
   const s = G.stats, P = G.player;
-  if (!s.thorns || !P || P.dead) return;
+  if (!s.thorns || !P || P.dead || G.net.role === "client") return;
   const n = ITEMS.thorns.count[s.thorns - 1];
   const off = Math.random() * TAU;
   for (let i = 0; i < n; i++) firePlayerBullet(P.x, P.y, off + (i / n) * TAU, 3, 1, ITEMS.thorns.dmg * s.baseDamage);

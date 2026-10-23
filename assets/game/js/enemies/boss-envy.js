@@ -10,7 +10,7 @@ import { audio } from "../audio.js";
 import { seek, angleToPlayer } from "./index.js";
 import { fireEnemyBullet, hurtPlayer } from "../world.js";
 import { playerHurtRadius } from "../player.js";
-import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, moves, pace } from "./boss-common.js";
+import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, moves, pace } from "./boss-common.js";
 import { sloth } from "./boss-sloth.js";
 import { greed } from "./boss-greed.js";
 import { lust } from "./boss-lust.js";
@@ -137,7 +137,7 @@ export const envy = {
           if (b.dead) continue;
           if ((b.x - ox) ** 2 + (b.y - oy) ** 2 < 14 * 14) { b.dead = true; fx.sparks(b.x, b.y, a, 0.8, 3, P_ENVY, 200, 0.15); }
         }
-        if (!P.dead && (P.x - ox) ** 2 + (P.y - oy) ** 2 < (10 + playerHurtRadius()) ** 2) hurtPlayer(1, ox, oy);
+        eachPlayer((Q) => { if ((Q.x - ox) ** 2 + (Q.y - oy) ** 2 < (10 + playerHurtRadius()) ** 2) hurtPlayer(1, ox, oy); });
       }
     }
   },

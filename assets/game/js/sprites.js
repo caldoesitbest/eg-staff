@@ -431,6 +431,12 @@ export const sprites = {
     this.digits = { normal: set(13, "#ffffff"), crit: set(19, "#ffc861") };
   },
 
+  /** An astronaut in any suit (co-op teammates), without touching your own sprites. */
+  astronaut(P, suit) {
+    const player = make(64, P, (g) => drawAstronaut(g, P, suit));
+    return { player, flash: tinted(player, "#ffffff", 0.85) };
+  },
+
   buildPlayer(P, suit) {
     this.player = make(64, P, (g) => drawAstronaut(g, P, suit));
     this.playerFlash = tinted(this.player, "#ffffff", 0.85);

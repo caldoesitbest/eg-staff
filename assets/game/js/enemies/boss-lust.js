@@ -39,7 +39,7 @@ export const lust = {
     bossInit(e, A.w / 2, A.h * 0.3);
     e.kissCd = 2.2; e.heartCd = 4.5; e.lureCd = 7; e.blinkCd = 5.5;
     e.orb = rand(0, TAU); e.alpha = 1; e.beat = 0; e.ribbon = 0; e.real = 0;
-    e.marks = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]; e.nMarks = 0;
+    e.marks = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]; e.nMarks = 0; e.lureSlot = 0;
   },
   update(e, dt, P) {
     const d = BB.lust;
@@ -65,6 +65,7 @@ export const lust = {
         const dist = Math.hypot(P.x - e.x, P.y - e.y);
         if (e.lureCd <= 0 && dist < d.allure.range && !P.dead) {
           e.state = LURE_WIND; e.t = d.allure.windup;
+          e.lureSlot = P.slot || 0;          // co-op: it lures one of you
           fx.text(e.x, e.y - 64, "♥ come here ♥", COL, 18, 1);
           audio.play("charm", e.x, e.y);
         } else if (e.blinkCd <= 0) {
@@ -107,6 +108,7 @@ export const lust = {
       case LURE: {
         brake(e, 6, dt);
         e.t -= dt;
+        P = G.players[e.lureSlot] || P;
         const dx = e.x - P.x, dy = e.y - P.y, dd = Math.hypot(dx, dy) || 1;
         if (!P.dead && dd < d.allure.range) {
           if (P.boostT > 0) {
@@ -182,8 +184,8 @@ export const lust = {
       g.restore();
     }
     if (e.ribbon > 0) {
-      // the lure: rings rolling in, and two ribbons reaching for you
-      const P = G.player;
+      // the lure: rings rolling in, and two ribbons reaching for whoever it chose
+      const P = G.players[e.lureSlot] || G.player;
       g.save();
       for (let k = 0; k < 3; k++) {
         const f = (G.time * 0.8 + k / 3) % 1;
