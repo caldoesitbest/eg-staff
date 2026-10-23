@@ -844,3 +844,245 @@ body.eg-game::before { display: none; }
 /* ---------- elites: trait marks drawn on the canvas, legend in How to play ---------- */
 .trait-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 0.85rem; color: #c9d2f0; }
 .trait-legend b { font-family: var(--g-num); letter-spacing: 0.06em; }
+
+/* =====================================================================
+   v3: the Armory (shop), guns, charged shot, settings tabs, what's new
+   ===================================================================== */
+
+/* ---------- HUD: your guns ---------- */
+.gun-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid rgba(150, 170, 255, 0.3);
+  border-color: color-mix(in srgb, var(--gun-col, #63f4ff) 55%, transparent);
+  border-radius: 999px;
+  background: rgba(3, 5, 24, 0.6);
+  color: #f4f6ff;
+  font: 700 0.82rem var(--g-num);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.gun-main, .gun-alt { display: inline-flex; align-items: center; gap: 6px; }
+.gun-main b { color: var(--gun-col, #63f4ff); font-weight: 700; }
+.gun-alt { padding-left: 8px; border-left: 1px solid rgba(150, 170, 255, 0.25); opacity: 0.6; font-size: 0.7rem; }
+.gun-alt[hidden] { display: none; }
+.gun-art { width: 34px; height: 17px; flex: none; color: var(--gun-col, #c9d2f0); }
+.gun-alt .gun-art { width: 24px; height: 12px; color: #c9d2f0; }
+.game.mode-kbm .gun-chip, .game.mode-gamepad .gun-chip { pointer-events: none; cursor: default; }
+
+/* ---------- touch: charge button ---------- */
+.charge-btn { display: none; }
+.game.mode-touch.state-playing .charge-btn, .game.mode-touch.state-clear .charge-btn { display: grid; }
+.charge-btn {
+  position: absolute;
+  right: calc(34px + var(--safe-r));
+  bottom: calc(216px + var(--safe-b));
+  z-index: 4;
+  width: 66px;
+  height: 66px;
+  place-items: center;
+  align-content: center;
+  padding: 0;
+  border: 2px solid rgba(255, 200, 97, 0.45);
+  border-radius: 50%;
+  background:
+    conic-gradient(rgba(255, 200, 97, 0.55) calc(var(--charge, 0) * 360deg), transparent 0) border-box,
+    rgba(255, 255, 255, 0.1);
+  color: var(--g-amber);
+  font: 800 9px "Plus Jakarta Sans", system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  touch-action: none;
+  pointer-events: auto;
+}
+.charge-btn svg { width: 26px; height: 26px; fill: currentColor; }
+.charge-btn span { color: #fff; }
+.charge-btn.pressed { transform: scale(0.92); }
+.charge-btn.full { box-shadow: 0 0 18px rgba(255, 200, 97, 0.9), 0 0 36px rgba(255, 200, 97, 0.4); border-color: #fff; }
+.charge-btn.cooling { opacity: 0.55; }
+@media (orientation: portrait) { .charge-btn { bottom: calc(26vh + 96px + var(--safe-b)); right: calc(36px + var(--safe-r)); } }
+@media (max-height: 520px) { .charge-btn { right: calc(34px + var(--safe-r)); bottom: calc(170px + var(--safe-b)); width: 58px; height: 58px; } }
+
+/* ---------- four cards (Four-Leaf Chip) ---------- */
+.cards.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card:nth-child(4) { animation-delay: 0.18s; }
+@media (max-width: 760px) { .cards.four { grid-template-columns: 1fr; } }
+@media (max-width: 760px) and (max-height: 520px) { .cards.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ---------- the Armory ---------- */
+.screen-shop { background: rgba(3, 5, 24, 0.84); place-items: start center; }
+.shop-wrap { display: grid; gap: 12px; width: min(1120px, 100%); margin-block: auto; }
+.shop-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.shop-heading { display: grid; gap: 4px; justify-items: start; }
+.shop-heading .kicker { justify-content: flex-start; }
+.shop-title { margin: 0; font-family: var(--g-tag); font-weight: 400; font-size: clamp(2rem, 5.4vw, 3.2rem); line-height: 1; color: var(--g-cream); text-shadow: 0 0 18px rgba(255, 200, 97, 0.55); transform: rotate(-2deg); }
+.shop-heading .up-bonus { text-align: left; }
+.shop-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 1px solid rgba(99, 244, 255, 0.4);
+  border-radius: 14px;
+  background: rgba(8, 12, 32, 0.8);
+  font: 700 1.7rem var(--g-num);
+  color: var(--g-cyan);
+  font-variant-numeric: tabular-nums;
+}
+.shop-wallet svg { width: 22px; height: 22px; fill: var(--g-cyan); filter: drop-shadow(0 0 6px rgba(99, 244, 255, 0.8)); }
+.shop-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+.shop-offers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.offer { position: relative; display: grid; animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1.2) backwards; }
+.offer:nth-child(2) { animation-delay: 0.05s; }
+.offer:nth-child(3) { animation-delay: 0.1s; }
+.offer:nth-child(4) { animation-delay: 0.15s; }
+.offer-buy {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr auto;
+  gap: 7px;
+  justify-items: center;
+  align-content: start;
+  min-height: 268px;
+  padding: 16px 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background:
+    linear-gradient(#0b1029, #0b1029) padding-box,
+    linear-gradient(160deg, var(--offer-col, #63f4ff), rgba(142, 68, 255, 0.3) 60%, rgba(99, 244, 255, 0.18)) border-box;
+  color: #f4f6ff;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 18px 46px -30px var(--offer-col, #63f4ff);
+  transition: transform 0.14s ease, box-shadow 0.18s ease;
+}
+.offer-buy:hover:not([disabled]), .offer-buy:focus-visible { transform: translateY(-4px); box-shadow: 0 22px 56px -22px var(--offer-col, #63f4ff); }
+.offer-buy:focus-visible { outline: 2px solid var(--g-cyan); outline-offset: 3px; }
+.offer-buy:active:not([disabled]) { transform: translateY(-1px) scale(0.98); }
+.offer-key { position: absolute; top: 10px; left: 12px; font: 700 0.8rem var(--g-num); color: #6f7aa3; }
+.offer-kicker { font: 700 0.68rem var(--g-num); letter-spacing: 0.14em; text-transform: uppercase; color: var(--offer-col, #63f4ff); }
+.offer-art { position: relative; display: grid; place-items: center; width: 84px; height: 64px; color: var(--offer-col, #63f4ff); filter: drop-shadow(0 4px 14px var(--offer-col, #63f4ff)); }
+.offer-art .i { width: 44px; height: 44px; }
+.offer-art .gun-art { width: 84px; height: 42px; color: var(--offer-col, #63f4ff); }
+.offer-tier { position: absolute; right: -4px; bottom: 0; padding: 0 6px; border-radius: 6px; background: var(--offer-col, #63f4ff); color: #040616; font: 700 0.72rem var(--g-num); letter-spacing: 0.06em; }
+.offer-name { font-family: var(--g-num); font-weight: 700; font-size: 1.2rem; line-height: 1.05; letter-spacing: 0.04em; text-transform: uppercase; }
+.offer-text { margin: 0; color: #c9d2f0; font-size: 0.86rem; line-height: 1.35; }
+.offer-note { color: #8f9cc7; font-size: 0.74rem; font-weight: 600; }
+.offer-price {
+  justify-self: stretch;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(99, 244, 255, 0.12);
+  font: 700 1.05rem var(--g-num);
+  letter-spacing: 0.04em;
+  color: var(--g-cyan);
+}
+.offer-price.short { background: rgba(255, 125, 149, 0.1); color: var(--g-danger); }
+.offer.sold .offer-buy { cursor: default; opacity: 0.4; filter: grayscale(0.6); }
+.offer.sold .offer-price { color: #c9d2f0; background: rgba(150, 170, 255, 0.1); }
+.offer-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(150, 170, 255, 0.22);
+  border-radius: 9px;
+  background: rgba(8, 12, 32, 0.8);
+  color: #6f7aa3;
+  cursor: pointer;
+}
+.offer-lock .i { width: 15px; height: 15px; }
+.offer-lock:hover { color: #fff; border-color: var(--g-cyan); }
+.offer-lock[aria-pressed="true"] { color: #040616; background: var(--g-amber); border-color: var(--g-amber); }
+.offer.locked .offer-buy { background: linear-gradient(#0d1129, #0d1129) padding-box, linear-gradient(160deg, var(--g-amber), var(--offer-col, #63f4ff)) border-box; }
+.offer.empty { display: grid; place-items: center; min-height: 268px; border: 1px dashed rgba(150, 170, 255, 0.2); border-radius: 18px; color: #4b5375; font: 700 0.85rem var(--g-num); letter-spacing: 0.12em; text-transform: uppercase; }
+
+.shop-side { display: grid; gap: 8px; padding: 14px; border: 1px solid rgba(150, 170, 255, 0.16); border-radius: 18px; background: rgba(8, 12, 32, 0.7); }
+.shop-h { margin: 4px 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 700 0.75rem var(--g-num); letter-spacing: 0.18em; text-transform: uppercase; color: var(--g-cyan); }
+.shop-h small { font-size: 0.66rem; letter-spacing: 0.04em; color: #6f7aa3; text-transform: none; }
+.shop-guns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.slot {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid rgba(150, 170, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(10, 14, 38, 0.8);
+  color: #c9d2f0;
+  font: 700 0.72rem var(--g-num);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.slot .gun-art { width: 52px; height: 26px; color: var(--gun-col, #c9d2f0); }
+.slot.active { border-color: var(--gun-col, #63f4ff); box-shadow: 0 0 14px -6px var(--gun-col, #63f4ff); color: #fff; }
+.slot.empty { border-style: dashed; color: #4b5375; min-height: 64px; align-content: center; cursor: default; }
+.slot-pips { display: flex; gap: 3px; }
+.slot-pips i { width: 12px; height: 4px; border-radius: 2px; background: rgba(150, 170, 255, 0.2); }
+.slot-pips i.on { background: var(--gun-col, #63f4ff); }
+.shop-gear { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; align-items: center; }
+.gear-chip { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(150, 170, 255, 0.3); border-radius: 10px; background: rgba(10, 14, 38, 0.8); color: var(--chip-col, #c9d2f0); }
+.gear-chip .i { width: 18px; height: 18px; }
+.gear-chip b { position: absolute; right: -4px; bottom: -4px; padding: 0 4px; border-radius: 6px; background: #0b1029; font: 700 0.62rem var(--g-num); color: #fff; }
+.shop-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0; }
+.shop-stats div { padding: 6px 8px; border-radius: 10px; background: rgba(10, 14, 38, 0.7); }
+.shop-stats dt { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #6f7aa3; }
+.shop-stats dd { margin: 0; font: 700 0.98rem var(--g-num); color: #f4f6ff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shop-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; }
+.shop-actions .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.shop-actions .btn-xl { min-width: 200px; }
+.build-chip.gun .gun-art { width: 30px; height: 15px; color: var(--chip-col, #63f4ff); }
+
+@media (max-width: 1040px) {
+  .shop-body { grid-template-columns: 1fr; }
+  .shop-side { grid-template-columns: 1fr 1fr; align-items: start; }
+  .shop-side .shop-h { grid-column: span 2; }
+  .shop-side .shop-guns, .shop-side .shop-gear, .shop-side .shop-stats { grid-column: span 2; }
+}
+@media (max-width: 760px) {
+  .shop-offers { grid-template-columns: 1fr 1fr; }
+  .offer-buy { min-height: 230px; padding: 14px 10px 12px; }
+  .offer-text { font-size: 0.8rem; }
+  .offer-key { display: none; }
+  .shop-actions { justify-content: center; }
+  .shop-actions .btn-xl { width: 100%; }
+}
+@media (max-height: 520px) {
+  .offer-buy { min-height: 0; gap: 4px; padding: 10px 8px; }
+  .offer-art { width: 64px; height: 40px; }
+  .offer-art .gun-art { width: 64px; height: 32px; }
+  .offer-art .i { width: 30px; height: 30px; }
+  .offer-text { font-size: 0.76rem; }
+  .shop-offers { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .shop-title { font-size: 1.8rem; }
+  .shop-side { display: none; }
+  .shop-body { grid-template-columns: 1fr; }
+}
+.game.reduced .offer { animation: none; }
+
+/* ---------- settings tabs ---------- */
+.settings .tabs { margin-top: -4px; }
+.set-page { display: grid; gap: 4px; }
+.set-page[hidden] { display: none; }
+.settings .set-row small kbd { min-width: 0; padding: 0 4px; font-size: 0.7rem; }
+
+/* ---------- what's new ---------- */
+.news { text-align: left; }
+.news .panel-title { text-align: center; }
+.news-list { margin: 0; padding-left: 18px; display: grid; gap: 10px; color: #c9d2f0; font-size: 0.94rem; line-height: 1.45; }
+.news-list b { color: #f4f6ff; }
+.news-list kbd { display: inline-block; padding: 0 5px; border: 1px solid rgba(150, 170, 255, 0.35); border-bottom-width: 2px; border-radius: 5px; background: rgba(10, 14, 38, 0.8); font: 700 0.75rem/1.4 var(--g-num); color: #f4f6ff; }
+#news-btn { position: relative; }
+#news-btn.fresh::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--g-magenta); box-shadow: 0 0 8px var(--g-magenta); }
+.menu-foot .menu-ver { margin-right: auto; align-self: end; font: 700 0.72rem var(--g-num); letter-spacing: 0.16em; text-transform: uppercase; color: #4b5375; text-shadow: none; transform: rotate(2deg); }

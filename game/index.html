@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=5">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=3">
+<link rel="stylesheet" href="../assets/game/game.css?v=4">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -51,6 +51,10 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
     <span>Boost</span>
   </button>
+  <button class="charge-btn" id="charge-btn" type="button" aria-label="Charged shot: hold, then let go" tabindex="-1">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M4.2 19.8 7 17M17 7l2.8-2.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Charge</span>
+  </button>
 
   <!-- HUD -->
   <div class="hud" id="hud" hidden>
@@ -58,6 +62,7 @@
       <div class="hearts" id="hearts" role="img" aria-label="Health"></div>
       <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
       <div class="daily-chip" id="daily-chip" hidden>Daily</div>
+      <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
       <div class="envy-chips" id="envy-chips"></div>
     </div>
     <div class="boss-bar" id="boss-bar" hidden>
@@ -102,6 +107,7 @@
         <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
         <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
         <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
         <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
@@ -116,7 +122,7 @@
       <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
       <ol class="mini-ladder" id="mini-ladder"></ol>
     </aside>
-    <footer class="menu-foot"><span>Same planet.</span> <span>Different breed.</span></footer>
+    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v3.0 · The Armory</span><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
   <!-- pause -->
@@ -145,10 +151,40 @@
       <div class="cards" id="cards" role="list"></div>
       <div class="up-econ">
         <button class="btn btn-ghost btn-sm" id="reroll-btn" type="button"><i data-icon="refresh-cw"></i><span id="reroll-label">Reroll</span></button>
-        <button class="btn btn-ghost btn-sm" id="patch-btn" type="button"><i data-icon="heart"></i><span id="patch-label">Patch up</span></button>
         <span class="up-stars" id="up-stars"></span>
       </div>
       <p class="up-hint" id="up-hint"></p>
+    </div>
+  </section>
+
+  <!-- shop (between waves, after the card pick) -->
+  <section class="screen screen-shop" id="screen-shop" hidden aria-labelledby="shop-title">
+    <div class="shop-wrap">
+      <header class="shop-head">
+        <div class="shop-heading">
+          <p class="kicker" id="shop-kicker">Between waves</p>
+          <h2 class="shop-title" id="shop-title">The Armory</h2>
+          <p class="up-bonus" id="shop-next"></p>
+        </div>
+        <div class="shop-wallet" title="Stars to spend"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.1 6.6.6-5 4.4 1.5 6.5L12 16.7 6.3 20.1l1.5-6.5-5-4.4 6.6-.6Z"/></svg><span id="shop-stars">0</span></div>
+      </header>
+      <div class="shop-body">
+        <div class="shop-offers" id="shop-offers" role="list" aria-label="For sale"></div>
+        <aside class="shop-side" aria-label="Your loadout">
+          <h3 class="shop-h">Guns <small id="shop-swap-hint"></small></h3>
+          <div class="shop-guns" id="shop-guns"></div>
+          <h3 class="shop-h">Gear</h3>
+          <div class="shop-gear" id="shop-gear"></div>
+          <h3 class="shop-h">Stats</h3>
+          <dl class="shop-stats" id="shop-stats"></dl>
+        </aside>
+      </div>
+      <div class="shop-actions">
+        <button class="btn btn-ghost btn-sm" id="shop-reroll" type="button"><i data-icon="refresh-cw"></i><span id="shop-reroll-label">Reroll</span></button>
+        <button class="btn btn-ghost btn-sm" id="shop-patch" type="button"><i data-icon="heart"></i><span id="shop-patch-label">Patch up</span></button>
+        <button class="btn btn-primary btn-xl" id="shop-go" type="button"><i data-icon="zap"></i><span id="shop-go-label">Next wave</span></button>
+      </div>
+      <p class="up-hint" id="shop-hint"></p>
     </div>
   </section>
 
@@ -204,23 +240,79 @@
 
   <!-- settings -->
   <section class="screen screen-settings" id="screen-settings" hidden aria-labelledby="settings-title">
-    <form class="panel glow-card settings" id="settings-form" onsubmit="return false">
+    <form class="panel panel-wide glow-card settings" id="settings-form" onsubmit="return false">
       <h2 class="panel-title" id="settings-title">Settings</h2>
-      <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
-      <label class="set-row"><span>Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-muted"><span>Mute everything</span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-shake"><span>Screen shake</span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-autoaim"><span>Auto-aim <small>(touch &amp; gamepad: aims and fires at the nearest robot while you're not aiming)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
-      <label class="set-row"><span>Quality</span>
-        <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select>
-      </label>
+      <div class="tabs" role="tablist" aria-label="Settings sections">
+        <button class="tab" id="stab-audio" data-tab="audio" type="button" role="tab" aria-selected="true">Audio</button>
+        <button class="tab" id="stab-graphics" data-tab="graphics" type="button" role="tab" aria-selected="false">Graphics</button>
+        <button class="tab" id="stab-gameplay" data-tab="gameplay" type="button" role="tab" aria-selected="false">Gameplay</button>
+      </div>
+      <div class="set-page" data-page="audio" role="tabpanel" aria-labelledby="stab-audio">
+        <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
+        <label class="set-row"><span>Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-muted"><span>Mute everything</span></label>
+      </div>
+      <div class="set-page" data-page="graphics" role="tabpanel" aria-labelledby="stab-graphics" hidden>
+        <label class="set-row"><span>Preset <small>Auto steps down by itself if frames get slow</small></span>
+          <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="potato">Potato (fastest)</option><option value="custom">Custom</option></select>
+        </label>
+        <label class="set-row"><span>Render resolution <small>Lower is faster, a little softer</small></span>
+          <select id="set-res"><option value="1">100%</option><option value="0.85">85%</option><option value="0.7">70%</option><option value="0.5">50%</option></select>
+        </label>
+        <label class="set-row"><span>Frame rate cap <small>Saves battery and heat on laptops</small></span>
+          <select id="set-fpscap"><option value="0">Match screen</option><option value="144">144</option><option value="120">120</option><option value="60">60</option><option value="30">30</option></select>
+        </label>
+        <label class="set-row"><span>Particles</span>
+          <select id="set-particles"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="minimal">Minimal</option></select>
+        </label>
+        <label class="set-row"><span>Background</span>
+          <select id="set-background"><option value="full">Full (stars, nebula, parallax)</option><option value="simple">Simple</option><option value="off">Off (flat)</option></select>
+        </label>
+        <label class="set-row"><span>Damage numbers</span>
+          <select id="set-dmgnum"><option value="all">All</option><option value="crits">Crits only</option><option value="off">Off</option></select>
+        </label>
+        <label class="set-row set-check"><input type="checkbox" id="set-glow"><span>Glow effects <small>(boss auras, big lights)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-trails"><span>Trails <small>(boost afterimages, jetpack puffs)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-grid"><span>Floor grid</span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-flashes"><span>Screen flashes</span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-contrast"><span>Bold robot shots <small>(a dark rim makes enemy fire easier to see)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
+      </div>
+      <div class="set-page" data-page="gameplay" role="tabpanel" aria-labelledby="stab-gameplay" hidden>
+        <label class="set-row"><span>Auto-aim <small>Works on mouse too: full auto fires at the nearest robot; hold left-click to aim yourself. <kbd>T</kbd> toggles in a run</small></span>
+          <select id="set-autoaim"><option value="off">Off</option><option value="assist">Aim assist</option><option value="auto">Full auto</option></select>
+        </label>
+        <label class="set-row"><span>Screen shake</span><input type="range" id="set-shake" min="0" max="100" step="10"></label>
+        <label class="set-row"><span>Impact freeze <small>The split-second pause on big hits. Light or Off keeps huge fights flowing</small></span>
+          <select id="set-hitstop"><option value="full">Full</option><option value="light">Light</option><option value="off">Off</option></select>
+        </label>
+        <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-lookahead"><span>Camera looks ahead <small>(leans toward where you aim)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-arrows"><span>Off-screen markers <small>(arrows at the edge for robots you can't see)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
+      </div>
       <p class="set-note" id="set-note"></p>
       <button class="btn btn-primary" id="settings-done" type="button">Done</button>
     </form>
+  </section>
+
+  <!-- what's new -->
+  <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
+    <div class="panel panel-wide glow-card news">
+      <p class="kicker"><span>Update 3</span><i>&#10022;</i><span>The Armory</span></p>
+      <h2 class="panel-title" id="news-title">What's new</h2>
+      <ul class="news-list">
+        <li><b>The Armory.</b> A shop after every wave: seven guns (Scattergun, Pulse SMG, Rail Lance, Nova Launcher, Arc Caster, Heartseeker), 19 pieces of gear from Common to Legendary. Lock what you like, reroll the rest, buy a gun again to tier it up to IV.</li>
+        <li><b>Two gun slots.</b> Swap with <kbd>Q</kbd>, the mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>, <kbd>Y</kbd> on a gamepad, or tap your gun on a phone.</li>
+        <li><b>Charged shots.</b> Hold right-click (or <kbd>E</kbd>, <kbd>LT</kbd>, the Charge button) and let go. Every gun charges differently: a plasma orb, a pellet wall, a screen-wide rail beam, a cluster bomb, a storm orb, a heart swarm. New cards: Overcharge and Capacitor.</li>
+        <li><b>Lust, reworked.</b> Shoot its kisses down. Its heart is exposed while it lures you, and boosting out of the lure stuns it. Heartbroken, it brings fakes: find the one with the beating heart.</li>
+        <li><b>Auto-aim on mouse and keyboard</b>, plus a lighter Aim assist. <kbd>T</kbd> toggles it mid-run.</li>
+        <li><b>Graphics settings.</b> Presets down to Potato, render resolution, frame-rate cap, particles, background, glow, trails, damage numbers, flashes, bold robot shots.</li>
+        <li><b>Feel.</b> Hit markers, gun-specific sounds and recoil, a charge hum, a low-health heartbeat, clearer menus.</li>
+      </ul>
+      <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
+    </div>
   </section>
 
   <!-- how to play -->
@@ -234,7 +326,9 @@
           <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
           <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Volatile (bursts when it dies), <em>green +</em> Regenerating.</li>
           <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser.</li>
-          <li>Grab <b>stars</b>. Between waves, spend them to reroll cards or patch up.</li>
+          <li>Grab <b>stars</b>. After every wave you pick a card, then hit <b>the Armory</b>: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
+          <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
+          <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
           <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
         </ul>
@@ -256,34 +350,35 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=3",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=3",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=3",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=3",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=3",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=3",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=3",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=3",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=3",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=3",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=3",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=3",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=3",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=3",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=3",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=3",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=3",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=3",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=3",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=3",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=3",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=3",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=3",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=3",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=3",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=3",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=3",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=3"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=4",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=4",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=4",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=4",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=4",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=4",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=4",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=4",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=4",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=4",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=4",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=4",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=4",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=4",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=4",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=4",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=4",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=4",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=4",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=4",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=4",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=4",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=4",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=4",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=4",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=4",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=4",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=4",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=4"
   }
 }
 </script>
@@ -292,6 +387,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=8" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=3"></script>
+<script type="module" src="../assets/game/js/main.js?v=4"></script>
 </body>
 </html>

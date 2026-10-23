@@ -88,6 +88,7 @@ export const BALANCE = {
     gem:      { hp: 170, r: 15, speed: 0, contact: 0, score: 30, stars: 1, mass: 99, threat: 0 },   // Pride's crown gems
     patch:    { hp: 50, r: 15, speed: 92, contact: 1, score: 40, stars: 3, mass: 1.2, threat: 4,
                 healRadius: 160, healEvery: 1.4, healPct: 0.12, keep: 300 },
+    decoy:    { hp: 1, r: 40, speed: 125, contact: 0, score: 15, stars: 0.5, mass: 3, threat: 0 },   // Lust's fakes: one hit pops them
   },
 
   elite: {                   // "overcharged" robots from this wave on, each with a trait you can see
@@ -129,6 +130,70 @@ export const BALANCE = {
     minSpawnDist: 420,
   },
 
+  // Charged shot (right-click / LT / E: hold, then release). Damage is a multiple of your bullet damage.
+  charge: {
+    time: 1.0,               // seconds to full charge
+    min: 0.15,               // below this a release does nothing
+    cooldown: 0.3,
+    dmg: [1.5, 9],           // x bullet damage, no charge -> full charge
+    radius: [7, 19],
+    speed: 820,
+    blast: 95, blastDmg: 0.5,          // full charges burst at the end (x the shot's damage)
+    moveMul: 0.9,            // you move a little slower while charging
+    pierceLoss: 0.12,        // a charged shot loses this much damage per robot it passes through
+  },
+
+  // Guns: two slots (Q / mouse wheel / Y swaps). Multipliers are on the player gun above.
+  // Buying a gun you already hold raises its tier (I to IV).
+  guns: {
+    blaster: { name: "Blaster", price: 0, rate: 1, dmg: 1, speed: 1, life: 1, pellets: 1, spread: 0.035, fan: 0.16, knock: 1, look: 0,
+               blurb: "Reliable all-rounder. Charged: a piercing plasma orb.", charge: "orb" },
+    scatter: { name: "Scattergun", price: 42, rate: 0.42, dmg: 0.64, speed: 0.85, life: 0.62, pellets: 5, spread: 0.06, fan: 0.12, knock: 2.4, look: 4,
+               blurb: "Five pellets, short range, big knockback. Charged: a wall of 14.", charge: "cone" },
+    smg:     { name: "Pulse SMG", price: 42, rate: 2.1, dmg: 0.48, speed: 1.05, life: 0.65, pellets: 1, spread: 0.11, fan: 0.12, knock: 0.45, look: 3,
+               blurb: "Sprays light bolts. More hits, more sin procs. Charged: a 14-bolt burst.", charge: "burst" },
+    rail:    { name: "Rail Lance", price: 58, rate: 0.55, dmg: 2.3, speed: 2.3, life: 0.6, pellets: 1, spread: 0, fan: 0.1, knock: 2, pierce: 3, look: 1,
+               blurb: "Slow, heavy bolts that pierce 3. Charged: a beam across the screen.", charge: "beam" },
+    nova:    { name: "Nova Launcher", price: 58, rate: 0.6, dmg: 1.5, speed: 0.62, life: 0.9, pellets: 1, spread: 0.04, fan: 0.22, knock: 1, explode: 70, splash: 0.6, look: 7,
+               blurb: "Grenades that burst on impact. Charged: a cluster bomb.", charge: "cluster" },
+    arc:     { name: "Arc Caster", price: 62, rate: 0.95, dmg: 0.85, speed: 1.1, life: 0.62, pellets: 1, spread: 0.03, fan: 0.16, knock: 0.6, chain: 2, chainRange: 170, chainDmg: 0.6, look: 12,
+               blurb: "Bolts arc to 2 nearby robots. Charged: a storm orb that zaps as it flies.", charge: "storm" },
+    heart:   { name: "Heartseeker", price: 62, rate: 1.1, dmg: 0.8, speed: 0.75, life: 1.15, pellets: 1, spread: 0.08, fan: 0.2, knock: 0.6, homing: 3.2, look: 16,
+               blurb: "Homing heart darts. Charged: a swarm of 8 hearts.", charge: "swarm" },
+  },
+  gunTiers: { dmg: [1, 1.25, 1.55, 1.9], rate: [1, 1.05, 1.1, 1.18], upgradeCost: [0, 0.8, 1.1, 1.5] },   // upgrade price = gun price x this
+
+  // The shop between waves. Rarity: 0 common, 1 rare, 2 epic, 3 legendary.
+  shop: {
+    slots: 4,
+    priceGrowth: 0.09,       // prices x (1 + this x (wave - 1))
+    reroll: { base: 4, perWave: 0.8, step: 3 },
+    gunChance: 0.3,          // chance each slot is a gun (from wave 2)
+    rarity: { rare: [2, 0.04, 0.35], epic: [5, 0.016, 0.2], legendary: [10, 0.006, 0.08] },   // [from wave, + per wave, max]
+    patch: 18, patchStep: 14, patchHeal: 2,
+  },
+  items: {
+    battery:   { name: "Spare Battery", r: 0, price: 22, max: 5, rate: 0.08, text: "+8% fire rate" },
+    hollow:    { name: "Hollow Points", r: 0, price: 22, max: 5, dmg: 0.08, text: "+8% damage" },
+    fuel:      { name: "Jet Fuel", r: 0, price: 18, max: 3, boostCd: 0.1, text: "Boost recharges 10% faster" },
+    coolant:   { name: "Coolant", r: 0, price: 18, max: 3, chargeTime: 0.15, text: "Charged shots charge 15% faster" },
+    magnet:    { name: "Star Magnet", r: 0, price: 16, max: 3, magnet: 0.35, text: "+35% pickup range" },
+    nanoweave: { name: "Nanoweave", r: 1, price: 40, max: 3, hp: 2, text: "+1 💜 max (and fills it)" },
+    capbank:   { name: "Capacitor Bank", r: 1, price: 38, max: 3, chargeDmg: 0.25, text: "+25% charged-shot damage" },
+    scope:     { name: "Long Scope", r: 1, price: 34, max: 2, range: 0.25, crit: 0.05, text: "+25% range, +5% crit chance" },
+    fang:      { name: "Vampire Fang", r: 1, price: 45, max: 2, every: [35, 25], text: "Every 35 kills heals ½💜 (2nd: every 25)" },
+    thorns:    { name: "Thorn Plating", r: 1, price: 40, max: 2, count: [12, 20], dmg: 1.5, text: "When you're hit, fire a ring of 12 shots (2nd: 20)" },
+    coupon:    { name: "Loyalty Card", r: 1, price: 30, max: 2, discount: 0.08, text: "Shop prices −8%" },
+    piggy:     { name: "Piggy Bank", r: 1, price: 35, max: 1, interest: 0.12, cap: 30, text: "Banked stars earn 12% each wave (up to 30)" },
+    bubble:    { name: "Bubble Shield", r: 2, price: 70, max: 1, text: "Blocks the first hit of every wave" },
+    mines:     { name: "Mine Layer", r: 2, price: 60, max: 2, radius: 80, dmg: 3, text: "Boosting drops a mine that blasts robots (2nd: two mines)" },
+    turret:    { name: "Buddy Drone", r: 2, price: 80, max: 2, rate: 2.2, dmg: 0.45, text: "A drone flies with you and shoots robots (2nd: two drones)" },
+    glass:     { name: "Glass Cannon", r: 2, price: 55, max: 1, dmg: 0.35, hp: -2, text: "+35% damage, −1 💜 max" },
+    crown:     { name: "Crown of Sins", r: 3, price: 150, max: 1, text: "Your strongest unfinished sin gains a level" },
+    clover:    { name: "Four-Leaf Chip", r: 3, price: 120, max: 1, text: "Pick from 4 cards instead of 3. Shops lean rarer" },
+    overdrive: { name: "Overdrive Core", r: 3, price: 140, max: 1, text: "Full charges fire twice" },
+  },
+
   // The Sin Ladder: the same seven rungs, colours and order as the Ladder on the homepage.
   // One sin boss every 5 waves. Beating Envy (wave 35) wins the run; "Keep climbing" laps the
   // ladder again with every boss tougher and faster.
@@ -165,13 +230,14 @@ export const BALANCE = {
       minionEvery: 2.4, minionMax: 10,
     },
     lust: {
-      name: "Lust", title: "The Heartbreaker", tagline: "Don't let it pull you in.", emoji: "lust", c1: "#d77fb0", c2: "#a64a7b",
-      hp: 3400, fightSecs: 22, r: 40, speed: 140, contact: 2, score: 2800,
-      allure: { every: [6.5, 8], windup: 0.8, time: 2.2, pull: 260, range: 760 },
-      kiss: { every: [2.2, 3.0], count: 3, speed: 200, turn: 1.5, life: 4 },
-      heart: { every: [4.5, 5.5], count: 28, speed: 165 },
-      blink: { every: [5, 7], fade: 0.6 },
-      minionEvery: 2.2, minionMax: 10,
+      name: "Lust", title: "The Heartbreaker", tagline: "Don't fall for it.", emoji: "lust", c1: "#d77fb0", c2: "#a64a7b",
+      hp: 2900, fightSecs: 19, r: 40, speed: 125, contact: 2, score: 2800,
+      orbit: { radius: 360, speed: 0.5 },
+      kiss: { every: [2.8, 3.6], count: 2, enraged: 3, speed: 185, turn: 1.15, home: 2.2, life: 4.2 },   // kisses can be shot down
+      heart: { every: [5, 6.2], windup: 0.75, count: 22, enraged: 26, speed: 150 },
+      allure: { every: [8, 10], windup: 1.1, time: 1.8, pull: 170, range: 620, exposed: 1.6, stun: 1.4 },   // while it lures you its heart is exposed; boost out to stun it
+      dance: { every: [6.5, 8], fade: 0.55, mark: 0.9, decoys: 2, decoyLife: 6 },                          // blinks; heartbroken, it brings two fakes
+      minionEvery: 3.2, minionMax: 6,
     },
     wrath: {
       name: "Wrath", title: "The Overclock", tagline: "Three phases. Zero chill.", emoji: "wrath", c1: "#ff9448", c2: "#e05ad6",
@@ -220,6 +286,8 @@ export const BALANCE = {
     thrusters:{ max: 3, speed: 0.12 },
     homing:   { max: 2, turn: [2.2, 4.2] },
     rear:     { max: 1 },
+    overcharge: { max: 3, dmg: [0.5, 1, 1.5], speed: [0.2, 0.35, 0.5] },   // charged-shot damage, charge speed
+    capacitor:  { max: 2 },
   },
 
   // What Envy steals from each robot (lasts upgrades.envy.time seconds).

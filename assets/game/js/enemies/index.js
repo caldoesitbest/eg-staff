@@ -8,7 +8,7 @@ import { sprites, C, P_HEART } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
-import { BOSSES } from "./bosses.js";
+import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage } from "../world.js";
 import { estimateDps } from "../upgrades.js";
 
@@ -43,7 +43,7 @@ export function visible(e, pad = 0) {
 
 // ---------- spawning ----------
 export function spawnEnemy(type, x, y, opts) {
-  const kind = ROSTER[type] || BOSSES[type];
+  const kind = ROSTER[type] || BOSSES[type] || BOSS_MINIONS[type];
   if (!kind) return null;
   const e = G.enemies.get();
   if (!e) return null;
@@ -60,7 +60,7 @@ export function spawnEnemy(type, x, y, opts) {
   e.dead = false;
   e.id = G.nextId++;
   e.type = type; e.def = def; e.kind = kind; e.boss = boss; e.elite = elite;
-  e.art = boss ? null : sprites.robots[type];
+  e.art = boss ? null : sprites.robots[type] || null;    // null: the kind draws itself (Lust's fakes)
   e.x = e.px = x; e.y = e.py = y;
   e.vx = e.vy = e.kx = e.ky = 0;
   e.r = def.r; e.scale = 1;

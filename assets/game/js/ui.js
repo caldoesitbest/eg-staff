@@ -1,11 +1,12 @@
-/* DOM overlays: HUD, banners, menus, upgrade cards, game over, settings, touch sticks.
+/* DOM overlays: HUD, banners, menus, upgrade cards, the shop, game over, settings, touch sticks.
    The HUD only touches the DOM when a value actually changes. */
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { input } from "./input.js";
-import { store, SUITS } from "./storage.js";
-import { CARD_BY_ID, ENVY_POWERS } from "./upgrades.js";
+import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
+import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
+import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, GUN_COL, TIER_NAMES } from "./armory.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
@@ -24,7 +25,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1 };
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1 };
 let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
 let boardKind = "all";
 
@@ -41,6 +42,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
+const NEWS_VERSION = 3;     // bump with each update's What's new
 
 export const ui = {
   els: {},
@@ -49,7 +51,8 @@ export const ui = {
     handlers = h;
     const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
       "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
-      "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "cards", "rotate-hint"];
+      "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "charge-btn", "cards", "rotate-hint",
+      "gun-chip", "gun-main", "gun-alt"];
     for (const id of ids) this.els[id] = $(id);
 
     // half-heart clip, shared by every heart icon
@@ -71,7 +74,14 @@ export const ui = {
     click("retry-btn", () => { if (armed()) handlers.onRestart(); });
     click("over-menu-btn", () => { if (armed()) handlers.onQuit(); });
     click("reroll-btn", () => handlers.onReroll());
-    click("patch-btn", () => handlers.onPatch());
+    click("shop-reroll", () => handlers.onShopReroll());
+    click("shop-patch", () => handlers.onPatch());
+    click("shop-go", () => { if (armed()) handlers.onShopGo(); });
+    click("news-btn", () => this.show("news"));
+    click("news-done", () => { store.data.seenNews = NEWS_VERSION; store.save(); this.show("menu"); });
+    const gunChip = $("gun-chip");
+    if (gunChip) gunChip.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); handlers.onSwap && handlers.onSwap(); });
+    document.querySelectorAll("#settings-form .tab").forEach((t) => t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.settingsTab(t.dataset.tab); }));
     click("settings-done", () => this.closeSettings());
     click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
     click("daily-btn", () => handlers.onDaily());
@@ -106,13 +116,33 @@ export const ui = {
     bind("set-sfx", "input", (n) => { s().sfx = n.value / 100; });
     bind("set-music", "input", (n) => { s().music = n.value / 100; });
     bind("set-muted", "change", (n) => { s().muted = n.checked; });
-    bind("set-shake", "change", (n) => { s().shake = n.checked; });
+    bind("set-shake", "input", (n) => { s().shakeAmt = Number(n.value); s().shake = s().shakeAmt > 0; });
     bind("set-reduced", "change", (n) => { s().reducedMotion = n.checked; });
-    bind("set-autoaim", "change", (n) => { s().autoAim = n.checked; });
+    bind("set-autoaim", "change", (n) => { s().autoAim = n.value; });
     bind("set-haptics", "change", (n) => { s().haptics = n.checked; });
     bind("set-fps", "change", (n) => { s().showFps = n.checked; });
-    bind("set-quality", "change", (n) => { s().quality = n.value; });
     bind("set-post", "change", (n) => { s().postScores = n.checked; });
+    bind("set-fpscap", "change", (n) => { s().fpsCap = Number(n.value); });
+    bind("set-dmgnum", "change", (n) => { s().dmgNumbers = n.value; });
+    bind("set-flashes", "change", (n) => { s().flashes = n.checked; });
+    bind("set-contrast", "change", (n) => { s().contrastShots = n.checked; });
+    bind("set-lookahead", "change", (n) => { s().lookahead = n.checked; });
+    bind("set-arrows", "change", (n) => { s().arrows = n.checked; });
+    bind("set-hitstop", "change", (n) => { s().hitstop = n.value; });
+    // graphics preset: picking one fills in the detail settings; changing a detail makes it "custom"
+    bind("set-quality", "change", (n) => {
+      s().quality = n.value;
+      const pre = GFX_PRESETS[n.value === "auto" ? "high" : n.value];
+      if (pre) Object.assign(s(), pre);
+      this.syncSettings();
+    });
+    const detail = (id, ev, fn) => bind(id, ev, (n) => { fn(n); if (s().quality !== "custom") { s().quality = "custom"; const q = $("set-quality"); if (q) q.value = "custom"; } });
+    detail("set-res", "change", (n) => { s().resScale = Number(n.value); });
+    detail("set-particles", "change", (n) => { s().particles = n.value; });
+    detail("set-background", "change", (n) => { s().background = n.value; });
+    detail("set-glow", "change", (n) => { s().glow = n.checked; });
+    detail("set-trails", "change", (n) => { s().trails = n.checked; });
+    detail("set-grid", "change", (n) => { s().grid = n.checked; });
 
     this.renderSuits();
     this.syncSettings();
@@ -121,7 +151,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "over", "settings", "how", "board", "win"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -130,10 +160,10 @@ export const ui = {
       else if (!on) node.hidden = true;
     }
     screen = name;
-    if (name === "upgrade" || name === "over" || name === "win") armedAt = performance.now() + (name === "upgrade" ? 450 : 800);
+    if (name === "upgrade" || name === "over" || name === "win" || name === "shop") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : 800);
     if (name === "how") this.renderHow();
     if (name === "menu") this.refreshMenu();
-    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : ".btn-primary, .btn, button");
+    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
   },
@@ -143,9 +173,9 @@ export const ui = {
 
   setState(state) {
     const g = this.els.game;
-    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-dying", "state-over", "state-win");
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win");
     g.classList.add("state-" + state);
-    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "win");
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win");
     this.updateRotateHint();
   },
 
@@ -156,6 +186,7 @@ export const ui = {
     this.renderControlsHint();
     if (screen === "how") this.renderHow();
     if (screen === "upgrade") this.renderUpgradeHint();
+    if (screen === "shop") this.renderShopHint();
     if (screen === "over") this.renderOverHint();
     this.updateRotateHint();
   },
@@ -166,6 +197,13 @@ export const ui = {
     this.settingsBack = back;
     this.syncSettings();
     this.show("settings");
+    this.settingsTab(this.lastTab || "audio", true);
+  },
+  settingsTab(tab, keepFocus) {
+    this.lastTab = tab;
+    document.querySelectorAll("#settings-form .tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.tab === tab ? "true" : "false"));
+    document.querySelectorAll("#settings-form .set-page").forEach((pg) => { pg.hidden = pg.dataset.page !== tab; });
+    if (!keepFocus && input.mode !== "touch") { const t = $("stab-" + tab); if (t) t.focus(); }
   },
   closeSettings() {
     store.save();
@@ -177,13 +215,26 @@ export const ui = {
     set("set-sfx", "value", Math.round(s.sfx * 100));
     set("set-music", "value", Math.round(s.music * 100));
     set("set-muted", "checked", s.muted);
-    set("set-shake", "checked", s.shake);
+    set("set-shake", "value", s.shakeAmt);
     set("set-reduced", "checked", s.reducedMotion);
-    set("set-autoaim", "checked", s.autoAim);
+    set("set-autoaim", "value", s.autoAim);
     set("set-haptics", "checked", s.haptics);
     set("set-fps", "checked", s.showFps);
     set("set-quality", "value", s.quality);
     set("set-post", "checked", s.postScores);
+    set("set-res", "value", String(s.resScale));
+    set("set-fpscap", "value", String(s.fpsCap));
+    set("set-particles", "value", s.particles);
+    set("set-background", "value", s.background);
+    set("set-dmgnum", "value", s.dmgNumbers);
+    set("set-glow", "checked", s.glow);
+    set("set-trails", "checked", s.trails);
+    set("set-grid", "checked", s.grid);
+    set("set-flashes", "checked", s.flashes);
+    set("set-contrast", "checked", s.contrastShots);
+    set("set-lookahead", "checked", s.lookahead);
+    set("set-arrows", "checked", s.arrows);
+    set("set-hitstop", "value", s.hitstop);
     const note = $("set-note");
     if (note) note.textContent = store.writable ? "Settings save on this device." : "Your browser is blocking storage, so settings and bests won't be saved after you leave.";
   },
@@ -216,6 +267,8 @@ export const ui = {
     const daily = store.data.daily;
     const today = todayUTC();
     $("daily-label").textContent = daily.date === today && daily.score > 0 ? "Daily · best " + formatScore(daily.score) : "Daily Challenge";
+    const nb = $("news-btn");
+    if (nb) nb.classList.toggle("fresh", store.data.seenNews !== NEWS_VERSION);
     this.renderAccount();
   },
 
@@ -349,9 +402,9 @@ export const ui = {
   },
 
   controlsLine(mode) {
-    if (mode === "touch") return "Left thumb moves · right thumb aims &amp; fires · tap <b>⚡ Boost</b> to dash";
-    if (mode === "gamepad") return "<kbd>L</kbd> move · <kbd>R</kbd> aim &amp; fire · <kbd>A</kbd>/<kbd>LB</kbd> boost · <kbd>Start</kbd> pause";
-    return "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · mouse aims · hold click to fire · <kbd>Space</kbd> or right-click to boost · <kbd>Esc</kbd> pause";
+    if (mode === "touch") return "Left thumb moves · right thumb aims &amp; fires · <b>⚡ Boost</b> to dash · hold <b>Charge</b> for a charged shot · tap your gun to swap";
+    if (mode === "gamepad") return "<kbd>L</kbd> move · <kbd>R</kbd> aim &amp; fire · <kbd>A</kbd>/<kbd>LB</kbd> boost · hold <kbd>LT</kbd> to charge · <kbd>Y</kbd> swap gun · <kbd>Start</kbd> pause";
+    return "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · hold left-click to fire · hold right-click to charge · <kbd>Space</kbd> boost · <kbd>Q</kbd> swap gun · <kbd>Esc</kbd> pause";
   },
 
   renderHow() {
@@ -359,9 +412,9 @@ export const ui = {
     if (!box) return;
     const mode = input.mode;
     const rows = {
-      kbm: [["Move", "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows"], ["Aim", "Mouse"], ["Fire", "Hold left click"], ["Boost", "<kbd>Space</kbd>, <kbd>Shift</kbd> or right-click"], ["Pause", "<kbd>Esc</kbd> or <kbd>P</kbd>"], ["Pick a card", "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>"]],
-      touch: [["Move", "Drag anywhere on the left half"], ["Aim + fire", "Drag on the right half (auto-fires)"], ["Boost", "Tap the ⚡ button"], ["Auto-aim", "On by default: just move, it shoots for you"], ["Pause", "⏸ top right"]],
-      gamepad: [["Move", "Left stick"], ["Aim + fire", "Right stick (or hold RT)"], ["Boost", "<kbd>A</kbd>, <kbd>LB</kbd> or <kbd>RB</kbd>"], ["Pause", "<kbd>Start</kbd>"]],
+      kbm: [["Move", "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows"], ["Aim", "Mouse (or auto-aim: <kbd>T</kbd>)"], ["Fire", "Hold left click"], ["Charged shot", "Hold right-click or <kbd>E</kbd>, let go to fire"], ["Boost", "<kbd>Space</kbd> or <kbd>Shift</kbd>"], ["Swap gun", "<kbd>Q</kbd>, mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>"], ["Pause", "<kbd>Esc</kbd> or <kbd>P</kbd>"], ["Cards / shop", "<kbd>1</kbd>–<kbd>4</kbd> to pick or buy"]],
+      touch: [["Move", "Drag anywhere on the left half"], ["Aim + fire", "Drag on the right half (auto-fires)"], ["Boost", "Tap the ⚡ button"], ["Charged shot", "Hold the Charge button, let go to fire"], ["Swap gun", "Tap your gun (top left)"], ["Auto-aim", "On by default: just move, it shoots for you"], ["Pause", "⏸ top right"]],
+      gamepad: [["Move", "Left stick"], ["Aim + fire", "Right stick (or hold RT)"], ["Charged shot", "Hold <kbd>LT</kbd>, let go to fire"], ["Boost", "<kbd>A</kbd>, <kbd>LB</kbd> or <kbd>RB</kbd>"], ["Swap gun", "<kbd>Y</kbd>"], ["Pause", "<kbd>Start</kbd>"]],
     };
     const title = { kbm: "Keyboard + mouse", touch: "Touch", gamepad: "Gamepad" };
     box.replaceChildren();
@@ -462,6 +515,19 @@ export const ui = {
       E["boss-bar"].hidden = true;
     }
 
+    // guns
+    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier : "") + "|" + G.gunSlot;
+    if (gk !== last.gun) {
+      last.gun = gk;
+      const a = G.guns[G.gunSlot] || G.guns[0], b = G.guns[1 - G.gunSlot];
+      E["gun-main"].replaceChildren(gunArt(a.id), el("b", "", gunName(a)));
+      E["gun-chip"].style.setProperty("--gun-col", GUN_COL[a.id]);
+      E["gun-alt"].replaceChildren();
+      if (b) E["gun-alt"].append(gunArt(b.id), el("span", "", input.mode === "kbm" ? "Q" : input.mode === "gamepad" ? "Y" : "tap"));
+      E["gun-alt"].hidden = !b;
+      E["gun-chip"].classList.toggle("solo", !b);
+    }
+
     // envy powers
     let key = "";
     for (const p of P.envy) key += p.type + ",";
@@ -483,6 +549,13 @@ export const ui = {
         last.cd = q;
         E["boost-btn"].style.setProperty("--cd", q);
         E["boost-btn"].classList.toggle("cooling", q > 0);
+      }
+      const ch = P.charging ? Math.round(P.charge * 20) / 20 : -1;
+      if (ch !== last.charge) {
+        last.charge = ch;
+        E["charge-btn"].style.setProperty("--charge", Math.max(0, ch));
+        E["charge-btn"].classList.toggle("full", ch >= 1);
+        E["charge-btn"].classList.toggle("cooling", P.chargeCd > 0 && ch < 0);
       }
       this.updateSticks();
     }
@@ -551,6 +624,7 @@ export const ui = {
   renderCards(ids) {
     const box = this.els.cards;
     box.replaceChildren();
+    box.classList.toggle("four", ids.length > 3);
     ids.forEach((id, i) => {
       const c = CARD_BY_ID[id];
       const lvl = G.up[id] || 0;
@@ -584,20 +658,138 @@ export const ui = {
   renderEconomy() {
     const E = BALANCE.economy;
     const rr = E.reroll + E.rerollStep * G.rerolls;
-    const pc = E.patch + E.patchStep * G.patches;
-    const P = G.player;
-    const rb = $("reroll-btn"), pb = $("patch-btn");
     $("reroll-label").textContent = "Reroll · ★" + rr;
-    $("patch-label").textContent = "Patch up +½💜 · ★" + pc;
-    rb.disabled = G.stars < rr;
-    pb.disabled = G.stars < pc || !P || P.hp >= P.maxHp;
-    $("up-stars").textContent = "You have ★" + G.stars;
+    $("reroll-btn").disabled = G.stars < rr;
+    $("up-stars").textContent = "You have ★" + G.stars + " · the Armory is next";
   },
 
   renderUpgradeHint() {
     const n = $("up-hint");
     if (!n) return;
-    n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
+    const keys = (G.stats.cards || 3) > 3 ? "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd>" : "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>";
+    n.innerHTML = input.mode === "kbm" ? "Press " + keys + " to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
+  },
+
+  // ---------------- the Armory (shop) ----------------
+  showShop(info) {
+    $("shop-kicker").textContent = info.kicker;
+    $("shop-next").innerHTML = info.next || "";
+    $("shop-go-label").textContent = info.go || "Next wave";
+    this.renderShop();
+    this.renderShopHint();
+    this.show("shop");
+  },
+
+  renderShop() {
+    const box = $("shop-offers");
+    box.replaceChildren();
+    G.shop.offers.forEach((o, i) => {
+      const wrap = el("div", "offer" + (o && o.sold ? " sold" : "") + (o && o.locked ? " locked" : "") + (!o ? " empty" : ""));
+      wrap.setAttribute("role", "listitem");
+      if (!o) { wrap.append(el("span", "offer-empty", "Sold out")); box.append(wrap); return; }
+      const info = offerInfo(o);
+      const price = offerPrice(o);
+      wrap.style.setProperty("--offer-col", info.col);
+      const b = el("button", "offer-buy");
+      b.type = "button";
+      b.dataset.i = String(i);
+      b.append(el("span", "offer-key", String(i + 1)));
+      b.append(el("span", "offer-kicker", info.kicker));
+      const art = el("span", "offer-art" + (info.gun ? " gun" : ""));
+      art.append(info.gun ? gunArt(o.id) : itemArt(o.id));
+      if (info.gun) art.append(el("span", "offer-tier", TIER_NAMES[info.tier - 1]));
+      b.append(art);
+      b.append(el("span", "offer-name", info.name));
+      b.append(el("p", "offer-text", info.text));
+      if (info.note) b.append(el("span", "offer-note", info.note));
+      const pr = el("span", "offer-price" + (G.stars < price && !o.sold ? " short" : ""), o.sold ? "Sold" : "★ " + price);
+      b.append(pr);
+      b.disabled = o.sold;
+      b.setAttribute("aria-label", info.name + ", " + info.kicker + ". " + info.text + (info.note ? ". " + info.note : "") + (o.sold ? ". Sold" : ". " + price + " stars"));
+      b.addEventListener("click", () => { if (armed()) handlers.onBuy(i); });
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+      wrap.append(b);
+      if (!o.sold) {
+        const lk = el("button", "offer-lock");
+        lk.type = "button";
+        lk.setAttribute("aria-pressed", o.locked ? "true" : "false");
+        lk.setAttribute("aria-label", (o.locked ? "Unlock " : "Lock ") + info.name + " (keeps it for the next shop)");
+        lk.title = o.locked ? "Locked: it'll still be here next shop" : "Lock: keep it for the next shop";
+        lk.append(icon("lock"));
+        lk.addEventListener("click", () => handlers.onLock(i));
+        wrap.append(lk);
+      }
+      box.append(wrap);
+    });
+    this.renderShopEconomy();
+    this.renderLoadout();
+  },
+
+  renderShopEconomy() {
+    const P = G.player;
+    const rc = rerollCost(), pc = patchCost();
+    $("shop-stars").textContent = String(G.stars);
+    $("shop-reroll-label").textContent = "Reroll · ★" + rc;
+    $("shop-patch-label").textContent = "Patch up +½💜 · ★" + pc;
+    $("shop-reroll").disabled = G.stars < rc;
+    $("shop-patch").disabled = G.stars < pc || !P || P.hp >= P.maxHp;
+    // prices you can't afford go dim as stars change
+    document.querySelectorAll("#shop-offers .offer-buy").forEach((b) => {
+      const o = G.shop.offers[Number(b.dataset.i)];
+      const pr = b.querySelector(".offer-price");
+      if (o && pr && !o.sold) pr.classList.toggle("short", G.stars < offerPrice(o));
+    });
+  },
+
+  renderLoadout() {
+    const guns = $("shop-guns");
+    guns.replaceChildren();
+    for (let i = 0; i < 2; i++) {
+      const g = G.guns[i];
+      const b = el("button", "slot" + (i === G.gunSlot ? " active" : "") + (g ? "" : " empty"));
+      b.type = "button";
+      if (g) {
+        b.style.setProperty("--gun-col", GUN_COL[g.id]);
+        b.append(gunArt(g.id), el("span", "slot-name", gunName(g)));
+        const pips = el("span", "slot-pips");
+        for (let k = 0; k < 4; k++) pips.append(el("i", k < g.tier ? "on" : ""));
+        b.append(pips);
+        b.title = i === G.gunSlot ? "Equipped. New guns replace this one when both slots are full" : "Click to equip";
+      } else b.append(el("span", "slot-name", "Empty slot"));
+      b.setAttribute("aria-pressed", i === G.gunSlot ? "true" : "false");
+      b.addEventListener("click", () => handlers.onSelectSlot && handlers.onSelectSlot(i));
+      guns.append(b);
+    }
+    $("shop-swap-hint").textContent = input.mode === "kbm" ? "Q swaps in a fight" : input.mode === "gamepad" ? "Y swaps in a fight" : "tap your gun to swap";
+    const gear = $("shop-gear");
+    gear.replaceChildren();
+    const owned = ownedItems();
+    if (!owned.length) gear.append(el("span", "set-note", "Nothing yet."));
+    for (const it of owned) {
+      const c = el("span", "gear-chip");
+      c.style.setProperty("--chip-col", it.col);
+      c.title = it.name;
+      c.append(itemArt(it.id));
+      if (it.n > 1) c.append(el("b", "", "×" + it.n));
+      gear.append(c);
+    }
+    const st = G.stats, P = G.player;
+    const dl = $("shop-stats");
+    dl.replaceChildren();
+    const add = (k, v) => { const d = el("div"); d.append(el("dt", "", k), el("dd", "", v)); dl.append(d); };
+    add("Damage", st.damage.toFixed(st.damage < 10 ? 1 : 0) + (st.projectiles > 1 ? " ×" + st.projectiles : ""));
+    add("Fire rate", st.rate.toFixed(1) + "/s");
+    add("DPS", "~" + Math.round(estimateDps()));
+    add("Crit", Math.round(st.crit * 100) + "%");
+    add("Charge", st.chargeTime.toFixed(2) + "s · ×" + st.chargeMul.toFixed(2));
+    add("Health", (P ? P.hp / 2 : 0) + " / " + st.maxHp / 2 + " 💜");
+  },
+
+  renderShopHint() {
+    const n = $("shop-hint");
+    if (!n) return;
+    n.innerHTML = input.mode === "kbm" ? "<kbd>1</kbd>–<kbd>4</kbd> buy · <kbd>R</kbd> reroll · <kbd>Enter</kbd> next wave · 🔒 keeps an offer for next time"
+      : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to buy · 🔒 keeps an offer for next time" : "Tap to buy · 🔒 keeps an offer for next time";
   },
 
   focusCard(i) {
@@ -609,6 +801,7 @@ export const ui = {
   showPause(build) {
     $("pause-sub").textContent = "Wave " + G.wave + " · " + formatScore(G.score) + " pts";
     renderBuild($("pause-build"), build);
+    renderArsenal($("pause-build"));
     this.show("pause");
   },
 
@@ -637,6 +830,7 @@ export const ui = {
     if (sum.bosses) add("Bosses", String(sum.bosses));
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
+    renderArsenal(buildBox);
     if (sum.unlock) buildBox.append(el("p", "set-note", "Unlocked the " + sum.unlock + " suit!"));
     this.renderOverHint();
     this.show("over");
@@ -690,6 +884,24 @@ function heartSvg(v, shield) {
   else if (v === 1) html += '<path class="h-fill" clip-path="url(#eg-half)" d="' + HEART + '"/>';
   s.innerHTML = html;
   return s;
+}
+
+/** Guns + gear chips (pause and game over), after the cards. */
+function renderArsenal(box) {
+  for (const g of G.guns) {
+    if (!g) continue;
+    const chip = el("span", "build-chip gun");
+    chip.style.setProperty("--chip-col", GUN_COL[g.id]);
+    chip.append(gunArt(g.id), document.createTextNode(gunName(g)));
+    box.append(chip);
+  }
+  for (const it of ownedItems()) {
+    const chip = el("span", "build-chip");
+    chip.style.setProperty("--chip-col", it.col);
+    chip.append(itemArt(it.id), document.createTextNode(it.name + " "));
+    if (it.n > 1) chip.append(el("b", "", "×" + it.n));
+    box.append(chip);
+  }
 }
 
 function renderBuild(box, build, title) {

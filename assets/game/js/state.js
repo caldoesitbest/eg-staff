@@ -20,11 +20,12 @@ function makePBullet() {
     dead: true, id: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 5, dmg: 10, life: 1,
     pierce: 0, hits: new Int32Array(8), nh: 0, bounces: 0, crit: false, homing: 0, kind: 0, explode: 0, split: false, knock: 0,
     tgt: null, tgtId: 0, tgtT: 0,
+    explodeDmg: 0, chain: 0, special: 0, full: false, zapT: 0, plain: false,   // gun effects + charged shots
   };
 }
 function makeEBullet() {
   return { dead: true, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 6, dmg: 1, life: 1, look: "pink", bolt: false, grazed: false,
-    age: 0, turn: 0, back: 0, homeX: 0, homeY: 0, owner: null };
+    age: 0, turn: 0, back: 0, homeX: 0, homeY: 0, owner: null, hp: 0, home: 0 };
 }
 function makePickup() {
   return { dead: true, kind: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, life: 1, value: 1, t: 0, etype: "", pulled: false };
@@ -36,10 +37,11 @@ function makeAsteroid() {
   return { dead: true, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 30, hp: 1, maxHp: 1, rot: 0, prot: 0, vr: 0, spr: null, flash: 0, seed: 1 };
 }
 function makePuddle() { return { dead: true, x: 0, y: 0, r: 30, life: 0, max: 1 }; }
+function makeMine() { return { dead: true, x: 0, y: 0, t: 0, life: 1 }; }
 function makeBlast() { return { dead: true, x: 0, y: 0, r: 0, dmg: 0, friendly: true, hurtsPlayer: false, enemyDmg: 0, col: "#fff", pal: 0 }; }
 
 export const G = {
-  state: "boot",             // boot | menu | playing | paused | clear | upgrade | dying | over
+  state: "boot",             // boot | menu | playing | paused | clear | upgrade | shop | dying | over | win
   debug: { on: false, god: false, startWave: 1 },
   time: 0,                   // simulation seconds this run
   nextId: 1,
@@ -60,6 +62,11 @@ export const G = {
   player: null,
   stats: null,               // computed from upgrades (upgrades.js)
   up: {},                    // upgrade levels by id
+  guns: [{ id: "blaster", tier: 1 }, null], gunSlot: 0,   // two gun slots (armory.js)
+  items: {},                 // shop gear by id → stacks
+  shop: { offers: [], rerolls: 0 },
+  gfx: { resScale: 1, particles: "high", glow: true, background: "full", grid: true, trails: true },   // effective graphics (main.js)
+  hitMark: 0, killMark: 0,   // crosshair hit markers
   boss: null,
   bossFx: null,              // boss death sequence in progress
   maxR: 30,                  // biggest enemy radius this tick (for collision queries)
@@ -72,6 +79,7 @@ export const G = {
   asteroids: new Pool(makeAsteroid, 32),
   puddles: new Pool(makePuddle, 60),
   blasts: new Pool(makeBlast, 80),
+  mines: new Pool(makeMine, 24),
   hash: new SpatialHash(BALANCE.arena.w, BALANCE.arena.h, 64, MAX_ENEMIES),
 
   cam: { x: 1000, y: 650, px: 1000, py: 650, z: 1, P: 1, dpr: 1, cssW: 1, cssH: 1, viewW: 1, viewH: 1, leadX: 0, leadY: 0 },

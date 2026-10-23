@@ -1,11 +1,11 @@
 /* Envious Glider: Sinners vs. Machines. Boot + game states:
-   intro → menu → playing ⇄ paused → clear → upgrade → playing … → (wave 35: Envy down) win → endless …
-   → dying → over → (retry) playing.  The run is the Sin Ladder: Sloth → Gluttony → Greed → Lust →
-   Wrath → Pride → Envy, one boss every 5 waves. */
+   intro → menu → playing ⇄ paused → clear → upgrade (pick a card) → shop (the Armory) → playing …
+   → (wave 35: Envy down) win → endless … → dying → over → (retry) playing.  The run is the Sin Ladder:
+   Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves. */
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { store, SUITS } from "./storage.js";
+import { store, SUITS, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
 import { input } from "./input.js";
 import { audio } from "./audio.js";
@@ -14,13 +14,14 @@ import { fx } from "./fx.js";
 import { ui } from "./ui.js";
 import { waves } from "./waves.js";
 import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy } from "./world.js";
-import { createPlayer } from "./player.js";
+import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
 import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
 import { formatScore, rand, pick, TAU, withSeed, hashStr } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo } from "./armory.js";
 
 // ---------------------------------------------------------------------------
 // boot
@@ -43,8 +44,19 @@ const layer = document.getElementById("touch-layer");
 
 const suitDef = () => SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0];
 
-G.quality = G.settings.quality === "low" ? 0 : 2;
-fx.setQuality(G.quality);
+const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
+G.quality = G.settings.quality in FIXED_LEVEL ? FIXED_LEVEL[G.settings.quality] : 2;
+
+/** The graphics the renderer actually uses: the preset's (Auto: by its current step) or your custom picks. */
+function computeGfx() {
+  const st = G.settings;
+  const src = st.quality === "auto" ? GFX_PRESETS[["low", "medium", "high"][G.quality]] : st;
+  const g = G.gfx;
+  g.resScale = src.resScale; g.particles = src.particles; g.glow = src.glow;
+  g.background = src.background; g.grid = src.grid; g.trails = src.trails;
+}
+computeGfx();
+fx.setQuality(2, G.gfx.particles);
 renderer.init(canvas, suitDef());
 renderer.resize();
 
@@ -55,30 +67,35 @@ let deathT = 0;
 let overShown = false;
 let lastRun = null;
 
-let lastQualitySetting = G.settings.quality;
+let gfxKey = "";
 function applySettings() {
   const s = G.settings;
-  if (s.quality === "auto" && lastQualitySetting !== "auto" && G.quality !== 2) { G.quality = 2; applyQuality(); }
-  lastQualitySetting = s.quality;
+  if (s.quality in FIXED_LEVEL) G.quality = FIXED_LEVEL[s.quality];
+  else if (s.quality === "auto" && gfxKey.indexOf("auto") !== 0) G.quality = 2;      // switching to Auto starts it at the top
   audio.setVolumes(s.sfx, s.music, s.muted);
-  fx.shakeOn = s.shake && !s.reducedMotion;
+  fx.shakeOn = s.shakeAmt > 0 && !s.reducedMotion;
+  fx.shakeScale = s.shakeAmt / 100;
+  fx.flashesOn = s.flashes;
   fx.reduced = s.reducedMotion;
   ui.setReduced(s.reducedMotion);
-  if (s.quality === "high" && G.quality !== 2) { G.quality = 2; applyQuality(); }
-  if (s.quality === "low" && G.quality !== 0) { G.quality = 0; applyQuality(); }
+  loop.setCap(s.fpsCap);
+  applyQuality();
   if (!s.showFps) ui.setFps(null);
   store.save();
 }
 function applyQuality() {
-  fx.setQuality(G.quality);
-  renderer.resize();
+  computeGfx();
+  fx.setQuality(2, G.gfx.particles);        // the preset (or Auto's current step) already picked the particle level
+  // only rebuild the canvas when something that affects it changed
+  const key = G.settings.quality + ":" + G.quality + ":" + G.gfx.resScale;
+  if (key !== gfxKey) { gfxKey = key; renderer.resize(); }
 }
 
 function setState(s) {
   G.state = s;
   ui.setState(s);
   input.enabled = s === "playing" || s === "clear";
-  if (!input.enabled) { input.mouse.down = false; input.queued.boost = false; }
+  if (!input.enabled) { input.mouse.down = false; input.mouse.charge = false; input.queued.boost = false; input.queued.swap = false; cancelCharge(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +103,7 @@ function setState(s) {
 // ---------------------------------------------------------------------------
 function menuScene() {
   clearWorld();
+  resetArmory();
   resetUpgrades();
   G.player = createPlayer();
   G.player.iframes = 0;
@@ -108,6 +126,7 @@ function toMenu() {
 // ---------------------------------------------------------------------------
 function startRun(opts) {
   clearWorld();
+  resetArmory();
   resetUpgrades();
   G.daily = opts && opts.daily ? opts.daily : null;
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
@@ -115,6 +134,7 @@ function startRun(opts) {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
     waveHits: 0, hitsTaken: 0, flawlessWaves: 0, bossesKilled: 0, rerolls: 0, patches: 0, perfects: 0,
     hitstop: 0, slowmo: 0, slowScale: 1, freezeT: 0, vacuum: false, boss: null, bossFx: null, autoTarget: null,
+    lastSlowmo: -9, hitMark: 0, killMark: 0,
   });
   G.player = createPlayer();
   for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
@@ -168,6 +188,7 @@ function seeded(tag, fn) {
 function startWave(n) {
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
+  if (G.player) G.player.bubble = G.stats.bubble;     // Bubble Shield refills every wave
   if (waves.boss) {
     const def = BALANCE.bosses[waves.bossType];
     const rung = waves.rungOf(n);
@@ -259,6 +280,47 @@ function pickCard(id) {
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);
   fx.text(P.x, P.y - 40, c.name.toUpperCase() + (lvl >= c.max ? " MAX" : " " + lvl), c.color, 18, 1.3);
+  openArmory();
+}
+
+// ---------------------------------------------------------------------------
+// the Armory (shop between waves)
+// ---------------------------------------------------------------------------
+function openArmory() {
+  setState("shop");
+  input.releaseAll();
+  seeded("shop" + G.wave, () => rollNewShop());
+  const next = G.wave + 1;
+  const boss = next % BALANCE.waves.bossEvery === 0;
+  const nb = boss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(next)]] : null;
+  ui.showShop({
+    kicker: "Wave " + G.wave + " cleared · the Armory",
+    next: nb ? "Next: <b>@" + nb.name + "</b>, " + nb.title + ". Stock up." : "Next: wave " + next + (waves.markOf(next) > G.mark ? " · <b>robots evolve</b>" : ""),
+    go: nb ? "Face @" + nb.name : "Wave " + next,
+  });
+}
+
+function shopBuy(i) {
+  if (G.state !== "shop") return;
+  const o = G.shop.offers[i];
+  if (!o || o.sold) return;
+  const info = offerInfo(o);
+  if (!buy(i)) { audio.play("deny"); ui.toast("Not enough stars"); return; }
+  audio.play("buy");
+  const P = G.player;
+  if (P) fx.ring(P.x, P.y, 10, 90, 0.4, info.col, 3);
+  ui.renderShop();
+}
+
+function shopReroll() {
+  if (G.state !== "shop") return;
+  if (!seeded("shopRoll" + G.wave + ":" + G.shop.rerolls, () => rerollShop())) { audio.play("deny"); return; }
+  audio.play("steal");
+  ui.renderShop();
+}
+
+function shopGo() {
+  if (G.state !== "shop") return;
   ui.show(null);
   setState("playing");
   startWave(G.wave + 1);
@@ -278,15 +340,15 @@ function reroll() {
 }
 
 function patchUp() {
-  const E = BALANCE.economy;
-  const cost = E.patch + E.patchStep * G.patches;
+  const cost = patchCost();
   const P = G.player;
-  if (G.state !== "upgrade" || G.stars < cost || P.hp >= P.maxHp) return;
+  if (G.state !== "shop" || G.stars < cost || P.hp >= P.maxHp) { audio.play("deny"); return; }
   G.stars -= cost;
   G.patches++;
-  P.hp = Math.min(P.maxHp, P.hp + E.patchHeal);
+  P.hp = Math.min(P.maxHp, P.hp + BALANCE.shop.patchHeal);
   audio.play("heart");
-  ui.renderEconomy();
+  ui.renderShopEconomy();
+  ui.renderLoadout();
   ui.renderHearts(P);
 }
 
@@ -311,6 +373,7 @@ function resume() {
 }
 
 G.on("playerDown", () => {
+  cancelCharge();
   setState("dying");
   deathT = 0;
   overShown = false;
@@ -337,7 +400,7 @@ async function postRun(sum) {
   ui.setOnline("posting");
   const res = await online.submit({
     score: sum.score, wave: sum.wave, kills: sum.kills, combo: sum.combo, seconds: G.time, won: G.won,
-    daily: G.daily, buildIds: { ...G.up },
+    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items } },
   });
   if (G.state !== "over") return;
   if (res.skipped) ui.setOnline(null);
@@ -409,7 +472,7 @@ function menuStep(dt) {
 
 function update(dt) {
   const s = G.state;
-  if (s === "paused" || s === "upgrade" || s === "over" || s === "win") return;
+  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win") return;
   if (G.hitstop > 0) { G.hitstop -= dt; return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
@@ -425,7 +488,7 @@ function update(dt) {
   }
 }
 
-let fpsT = 0, qT = 0, slowWin = 0, fastWin = 0;
+let fpsT = 0, qT = 0, slowWin = 0, fastWin = 0, beatT = 0;
 function before(dt) {
   input.poll(dt);
 }
@@ -435,6 +498,12 @@ function render(alpha, dt) {
   audio.setListener(G.cam.x, G.cam.y);
   renderer.draw(alpha, dt);
   if (G.state !== "menu") ui.updateHud(dt);
+  // low health: a heartbeat
+  const Pl = G.player;
+  if (Pl && !Pl.dead && Pl.hp <= 2 && G.state === "playing") {
+    beatT -= dt;
+    if (beatT <= 0) { beatT = Pl.hp <= 1 ? 0.75 : 1.1; audio.play("heartbeat", undefined, undefined, Pl.hp <= 1 ? 0.9 : 0.6); }
+  } else beatT = 0;
 
   fpsT += dt;
   if (fpsT >= 0.5) {
@@ -450,8 +519,9 @@ function render(alpha, dt) {
   if (qT >= 1 && G.settings.quality === "auto" && !document.hidden) {
     qT = 0;
     const st = loop.stats;
-    if (st.frameMs > 23 && G.state === "playing") { slowWin++; fastWin = 0; }
-    else if (st.frameMs < 17.5 && st.workMs < 5) { fastWin++; slowWin = 0; }
+    const capMs = G.settings.fpsCap ? 1000 / G.settings.fpsCap : 0;      // a capped frame rate isn't "slow"
+    if (st.frameMs > Math.max(23, capMs * 1.35) && G.state === "playing") { slowWin++; fastWin = 0; }
+    else if (st.frameMs < Math.max(17.5, capMs * 1.1) && st.workMs < 5) { fastWin++; slowWin = 0; }
     else { slowWin = 0; fastWin = 0; }
     if (slowWin >= 3 && G.quality > 0) { G.quality--; slowWin = 0; applyQuality(); }
     if (fastWin >= 10 && G.quality < 2) { G.quality++; fastWin = 0; applyQuality(); }
@@ -496,6 +566,12 @@ ui.init({
   onPick: pickCard,
   onReroll: reroll,
   onPatch: patchUp,
+  onBuy: shopBuy,
+  onLock: (i) => { toggleLock(i); audio.play("click"); ui.renderShop(); },
+  onShopReroll: shopReroll,
+  onShopGo: shopGo,
+  onSelectSlot: (i) => { if (swapGun(i)) audio.play("swap"); ui.renderShop(); },
+  onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
   onSettings: applySettings,
   onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
@@ -503,7 +579,17 @@ ui.init({
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
 });
 
-input.init({ root, layer, boostButton: document.getElementById("boost-btn") });
+input.init({ root, layer, boostButton: document.getElementById("boost-btn"), chargeButton: document.getElementById("charge-btn") });
+const AIM_NAMES = { off: "Off", assist: "Aim assist", auto: "Full auto" };
+input.onHotkey = (code) => {
+  if (code !== "KeyT") return;
+  const order = ["off", "assist", "auto"];
+  const s = G.settings;
+  s.autoAim = order[(order.indexOf(s.autoAim) + 1) % order.length];
+  store.save();
+  ui.syncSettings();
+  ui.toast("Auto-aim: " + AIM_NAMES[s.autoAim] + (s.autoAim === "auto" && input.mode === "kbm" ? " · hold left-click to aim yourself" : ""));
+};
 input.onModeChange = (m) => { G.touchActive = m === "touch"; ui.setMode(m); };
 input.onPause = () => {
   const s = G.state;
@@ -513,7 +599,7 @@ input.onPause = () => {
     resume();
     return true;
   }
-  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
 };
@@ -522,7 +608,7 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
-  else if (ui.screen === "how") ui.show("menu");
+  else if (ui.screen === "how" || ui.screen === "news") ui.show("menu");
   else if (G.state === "paused") resume();
 };
 
@@ -542,8 +628,14 @@ window.addEventListener("touchend", unlock, { passive: true });
 window.addEventListener("keydown", (e) => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
   const s = G.state;
-  if (s === "upgrade") {
-    const i = ["Digit1", "Digit2", "Digit3", "Numpad1", "Numpad2", "Numpad3"].indexOf(e.code) % 3;
+  const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"].indexOf(e.code) % 4;
+  if (s === "shop") {
+    if (digit >= 0) { e.preventDefault(); if (ui.armed) shopBuy(digit); return; }
+    if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
+    const onButton = document.activeElement && document.activeElement.tagName === "BUTTON" && document.activeElement.id !== "shop-go";
+    if ((e.code === "Enter" || e.code === "Space") && !onButton) { e.preventDefault(); if (ui.armed) shopGo(); return; }
+  } else if (s === "upgrade") {
+    const i = digit;
     if (i >= 0 && offered[i]) { e.preventDefault(); if (ui.armed) pickCard(offered[i]); return; }
     if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
       const cards = Array.from(document.querySelectorAll("#cards .card"));
@@ -597,6 +689,7 @@ function debugKey(e) {
     case "KeyU": { const ids = offerCards(); const id = pick(ids); applyCard(id); ui.toast("+" + CARD_BY_ID[id].name); break; }
     case "KeyH": if (P) { P.hp = P.maxHp; } break;
     case "KeyJ": for (let i = 0; i < 40; i++) waves.spawnGroup(pick(["drone", "swarm", "gunner", "ripper"]), 1); break;
+    case "KeyM": G.stars += 500; ui.toast("+500 stars"); break;
     default: return;
   }
   e.preventDefault();
@@ -610,6 +703,8 @@ if (G.debug.on && params.get("autoplay") === "1") {
   import("./debug-bot.js").then(({ bot }) => {
     bot.onRetry = startRun;
     bot.onPick = pickCard;
+    bot.onBuy = shopBuy;
+    bot.onShopGo = shopGo;
     autopilot = bot;
     window.__bot = bot;
     G.debug.god = params.get("god") === "1";
@@ -617,9 +712,14 @@ if (G.debug.on && params.get("autoplay") === "1") {
     if (params.get("god") === "1") G.debug.god = true;
   });
 }
+if (G.debug.on && params.get("smoke") === "1") {
+  import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
+}
 if (G.debug.on) {
-  window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input };
-  ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm", 5000);
+  import("./armory.js").then((armory) => {
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings };
+  });
+  ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm · M stars", 5000);
 }
 
 // ---------------------------------------------------------------------------

@@ -270,7 +270,86 @@ const SOUNDS = {
     const t = now();
     [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(d, "square", f, f, t + i * 0.07, 0.2, 0.06));
   }],
+  // ---- guns ----
+  shotgun: [0.08, (d) => {
+    const t = now();
+    noise(d, t, 0.18, 0.6, "lowpass", 2600, 300, 0.7);
+    tone(d, "square", jitter(180, 0.08), 60, t, 0.12, 0.16);
+  }],
+  smg: [0.035, (d) => {
+    const t = now();
+    tone(d, "square", jitter(1300, 0.08), 500, t, 0.04, 0.045);
+  }],
+  rail: [0.1, (d) => {
+    const t = now();
+    tone(d, "sawtooth", 2200, 300, t, 0.2, 0.12, 0.002);
+    tone(d, "sine", 140, 60, t, 0.25, 0.25);
+  }],
+  launch: [0.1, (d) => {
+    const t = now();
+    noise(d, t, 0.16, 0.35, "bandpass", 700, 300, 1.2);
+    tone(d, "sine", 300, 120, t, 0.16, 0.18);
+  }],
+  zap: [0.06, (d) => {
+    const t = now();
+    noise(d, t, 0.09, 0.3, "highpass", 3500, 7000, 1);
+    tone(d, "sawtooth", jitter(900, 0.2), 1800, t, 0.07, 0.05);
+  }],
+  kissShot: [0.06, (d) => {
+    const t = now();
+    tone(d, "sine", jitter(990, 0.05), 1480, t, 0.08, 0.07);
+  }],
+  swap: [0.12, (d) => {
+    const t = now();
+    tone(d, "square", 600, 600, t, 0.04, 0.05);
+    tone(d, "square", 900, 900, t + 0.05, 0.05, 0.05);
+    noise(d, t, 0.06, 0.12, "highpass", 4000, 6000);
+  }],
+  // ---- charged shot ----
+  chargeFull: [0.2, (d) => {
+    const t = now();
+    tone(d, "triangle", 1568, 1568, t, 0.16, 0.1);
+    tone(d, "sine", 2349, 2349, t + 0.04, 0.2, 0.07);
+  }],
+  chargeShot: [0.08, (d) => {
+    const t = now();
+    noise(d, t, 0.45, 0.8, "lowpass", 3000, 120, 0.7);
+    tone(d, "sawtooth", 420, 70, t, 0.35, 0.22, 0.002);
+    tone(d, "sine", 110, 40, t, 0.4, 0.5);
+  }],
+  beam: [0.1, (d) => {
+    const t = now();
+    tone(d, "sawtooth", 1800, 90, t, 0.5, 0.2, 0.002);
+    noise(d, t, 0.5, 0.5, "bandpass", 5000, 400, 0.8);
+    tone(d, "sine", 70, 35, t, 0.5, 0.6);
+  }],
+  fizzle: [0.1, (d) => {
+    const t = now();
+    noise(d, t, 0.12, 0.12, "highpass", 2500, 900, 1);
+  }],
+  // ---- shop + Lust ----
+  buy: [0.06, (d) => {
+    const t = now();
+    [988, 1319, 1976].forEach((f, i) => tone(d, "square", f, f, t + i * 0.045, 0.1, 0.06));
+    noise(d, t, 0.15, 0.08, "highpass", 6000, 9000);
+  }],
+  deny: [0.12, (d) => {
+    const t = now();
+    tone(d, "square", 220, 180, t, 0.12, 0.08);
+  }],
+  pop: [0.05, (d) => {
+    const t = now();
+    tone(d, "sine", jitter(1200, 0.1), 400, t, 0.08, 0.12);
+  }],
+  heartbeat: [0.5, (d) => {
+    const t = now();
+    tone(d, "sine", 70, 45, t, 0.14, 0.4);
+    tone(d, "sine", 64, 42, t + 0.18, 0.14, 0.3);
+  }],
 };
+
+// The charged shot's hum: one oscillator that rises with the charge.
+let hum = null;
 
 // ---------- procedural music ----------
 // A minor synthwave loop. Intensity 0 = menu pad, 1 = waves (drums), 2 = boss (lead + faster hats).
@@ -378,6 +457,38 @@ export const audio = {
     if (++budgetN > 28 && name !== "hurt" && name !== "bossDown" && name !== "perfect") return;
     last[name] = t;
     try { s[1](out(x, y, gain), opts); } catch (e) { /* never let audio break the game */ }
+  },
+
+  chargeStart() {
+    if (!ctx || !unlocked || vol.muted || vol.sfx <= 0 || ctx.state !== "running" || hum) return;
+    try {
+      const o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = "sawtooth"; o2.type = "sine";
+      o.frequency.value = 110; o2.frequency.value = 220;
+      f.type = "lowpass"; f.frequency.value = 600; f.Q.value = 6;
+      g.gain.value = 0.0001;
+      g.gain.setTargetAtTime(0.07, now(), 0.05);
+      o.connect(f); o2.connect(f); f.connect(g); g.connect(sfxBus);
+      o.start(); o2.start();
+      hum = { o, o2, g, f };
+    } catch (e) { hum = null; }
+  },
+  chargeLevel(p) {
+    if (!hum) return;
+    const t = now();
+    hum.o.frequency.setTargetAtTime(110 + p * 330, t, 0.03);
+    hum.o2.frequency.setTargetAtTime(220 + p * 660 + (p >= 1 ? Math.sin(t * 40) * 30 : 0), t, 0.03);
+    hum.f.frequency.setTargetAtTime(600 + p * 2600, t, 0.03);
+  },
+  chargeStop() {
+    if (!hum) return;
+    const h = hum;
+    hum = null;
+    try {
+      const t = now();
+      h.g.gain.setTargetAtTime(0.0001, t, 0.02);
+      h.o.stop(t + 0.1); h.o2.stop(t + 0.1);
+    } catch (e) { /* already stopped */ }
   },
 
   musicStart(intensity) {

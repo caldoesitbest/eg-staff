@@ -10,11 +10,17 @@ export function startLoop({ before, update, render, timer }) {
   let last = performance.now();
   let acc = 0;
   let running = true;
+  let gap = 0, due = 0;                  // frame-rate cap (settings): ms between drawn frames, 0 = uncapped
   const stats = { fps: 60, frameMs: 16.7, workMs: 0, samples: 0, sum: 0, workSum: 0, windowStart: last };
 
   function frame(now) {
     if (!running) return;
     next(frame);
+    if (gap) {
+      // skip display refreshes until the next frame is due (1 ms early is fine: refreshes jitter)
+      if (now < due - 1) return;
+      due = due + gap > now ? due + gap : now + gap;   // on schedule: keep the rhythm; fell behind: restart it
+    }
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;           // tab was asleep: don't fast-forward
@@ -50,6 +56,7 @@ export function startLoop({ before, update, render, timer }) {
   return {
     stats,
     resetClock() { last = performance.now(); acc = 0; },
+    setCap(fps) { gap = fps > 0 ? 1000 / fps : 0; due = 0; },
     stop() { running = false; },
   };
 }

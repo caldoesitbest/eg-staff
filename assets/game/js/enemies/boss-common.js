@@ -7,7 +7,7 @@ import { TAU, rand, randInt } from "../util.js";
 import { sprites, C, PAL, P_CYAN, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
-import { fireEnemyBullet, killEnemy, dropPickup, addScore, haptic } from "../world.js";
+import { fireEnemyBullet, killEnemy, dropPickup, addScore, haptic, hitStop } from "../world.js";
 import { waves } from "../waves.js";
 
 export const A = BALANCE.arena;
@@ -96,7 +96,7 @@ export function updateBossFx(dt) {
   fx.burst(f.x, f.y, 24, P_CYAN, 420, 1.0, 2.2);
   fx.screenFlash("#ffffff", 0.7, 1.4);
   fx.shake(BALANCE.fx.shake.boss);
-  G.hitstop = Math.max(G.hitstop, BALANCE.fx.hitstop.boss);
+  hitStop(BALANCE.fx.hitstop.boss, true);
   audio.play("bossDown");
   const stars = 30 + (f.type === "greed" ? 30 : 0);
   for (let i = 0; i < stars; i++) dropPickup(0, f.x, f.y, G.stats.starValue);
@@ -111,6 +111,7 @@ export function updateBossFx(dt) {
 }
 
 export function glowBall(g, x, y, r, pal, a) {
+  if (!G.gfx.glow) return;              // graphics setting: glow off
   g.globalCompositeOperation = "lighter";
   g.globalAlpha = a;
   g.drawImage(sprites.dots[pal], x - r, y - r, r * 2, r * 2);
@@ -168,13 +169,13 @@ export const moves = {
       fireEnemyBullet(e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 1, look, 7);
     }
   },
-  /** Lust's kisses: slow homing hearts. */
-  kiss(e, P, count, speed, turn, life) {
+  /** Lust's kisses: slow homing hearts that home for a while (and can be shot down). */
+  kiss(e, P, count, speed, turn, life, home) {
     const base = Math.atan2(P.y - e.y, P.x - e.x);
     for (let i = 0; i < count; i++) {
       const a = base + (i - (count - 1) / 2) * 0.5;
       const b = fireEnemyBullet(e.x, e.y, Math.cos(a) * speed, Math.sin(a) * speed, 1, "heart", 8);
-      if (b) { b.turn = turn; b.life = life; }
+      if (b) { b.turn = turn; b.life = life; b.home = home || 2.5; b.hp = 1; }
     }
   },
   /** Wrath's spiral arm. */

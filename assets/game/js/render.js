@@ -11,6 +11,8 @@ import { rebuildRockSprites } from "./world.js";
 import { ROSTER } from "./enemies/roster.js";
 import { BOSSES } from "./enemies/bosses.js";
 import { ENVY_POWERS, hasEnvy } from "./upgrades.js";
+import { drones, GUN_COL } from "./armory.js";
+import { gunPal } from "./player.js";
 
 const A = BALANCE.arena;
 let canvas = null, g = null;
@@ -174,7 +176,8 @@ export const renderer = {
     const capBase = coarse ? 1.5 : 2;
     const cap = G.quality === 0 ? 1 : G.quality === 1 ? Math.min(capBase, 1.5) : capBase;
     const budget = Math.sqrt(PIXEL_BUDGET[G.quality] / (W * H));
-    dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap, budget));
+    // graphics setting: render resolution (the browser scales the canvas back up)
+    dpr = Math.max(0.4, Math.min(window.devicePixelRatio || 1, cap, budget) * (G.gfx.resScale || 1));
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     const long = Math.max(W, H), short = Math.min(W, H);
@@ -204,7 +207,8 @@ export const renderer = {
   /** Nebula + planet + the farthest stars, composited once into one screen-sized layer
       (it used to be three full-screen draws every frame). Rebuilt on resize / menu ↔ play. */
   buildSky(cw, ch, menu, quality) {
-    const key = cw + "x" + ch + (menu ? "m" : "p") + quality;
+    const bgMode = G.gfx.background;
+    const key = cw + "x" + ch + (menu ? "m" : "p") + quality + bgMode;
     if (bg.skyKey === key) return;
     bg.skyKey = key;
     const mw = Math.round(cw * 1.06), mh = Math.round(ch * 1.06);
@@ -214,7 +218,8 @@ export const renderer = {
     x.globalAlpha = 1;
     x.fillStyle = "#030518";
     x.fillRect(0, 0, mw, mh);
-    if (quality > 0) {
+    if (bgMode === "off" && !menu) { bg.sky = c; return; }
+    if (quality > 0 && bgMode === "full") {
       const nw = Math.max(mw, mh * 1.6) * 1.1, nh = nw * 0.625;
       x.drawImage(bg.nebula, (mw - nw) / 2, (mh - nh) / 2, nw, nh);
       const T = bg.tiles[0].width;
@@ -235,7 +240,7 @@ export const renderer = {
     if (P) {
       const px = lerp(P.px, P.x, alpha), py = lerp(P.py, P.y, alpha);
       let lx = 0, ly = 0;
-      if (!P.dead) {
+      if (!P.dead && G.settings.lookahead) {
         if (input.aimMode === "mouse") {
           lx = clamp((G.aimWorld.x - px) * 0.18, -110, 110);
           ly = clamp((G.aimWorld.y - py) * 0.18, -80, 80);
@@ -271,6 +276,8 @@ export const renderer = {
     const camX = cam.x, camY = cam.y;
     const offX = cw / 2 + fx.shakeX * dpr, offY = ch / 2 + fx.shakeY * dpr;
     fx.camX = camX; fx.camY = camY; fx.offX = offX; fx.offY = offY;
+    if (G.hitMark > 0) G.hitMark -= dt;
+    if (G.killMark > 0) G.killMark -= dt;
 
     // ---------- background ----------
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -286,7 +293,9 @@ export const renderer = {
     }
     const T = bg.tiles.length ? bg.tiles[0].width : 1;
     const factors = [0.1, 0.22, 0.42];
-    for (let L = quality > 0 ? 1 : 2; L < bg.tiles.length; L++) {
+    const bgMode = G.gfx.background;
+    const firstLayer = bgMode === "full" || G.state === "menu" ? (quality > 0 ? 1 : 2) : bgMode === "simple" ? 2 : 9;
+    for (let L = firstLayer; L < bg.tiles.length; L++) {
       const f = factors[L];
       let ox = -((camX * f * cam.z * dpr) % T); if (ox > 0) ox -= T;
       let oy = -((camY * f * cam.z * dpr) % T); if (oy > 0) oy -= T;
@@ -305,12 +314,14 @@ export const renderer = {
     if (vy0 < 0) g.fillRect(Math.max(0, vx0), vy0, Math.min(A.w, vx1) - Math.max(0, vx0), -vy0);
     if (vy1 > A.h) g.fillRect(Math.max(0, vx0), A.h, Math.min(A.w, vx1) - Math.max(0, vx0), vy1 - A.h);
     // floor grid
-    g.strokeStyle = "rgba(99,244,255,0.05)";
-    g.lineWidth = 1 / cam.z;
-    g.beginPath();
-    for (let x = Math.max(0, Math.ceil(vx0 / 100) * 100); x <= Math.min(A.w, vx1); x += 100) { g.moveTo(x, Math.max(0, vy0)); g.lineTo(x, Math.min(A.h, vy1)); }
-    for (let y = Math.max(0, Math.ceil(vy0 / 100) * 100); y <= Math.min(A.h, vy1); y += 100) { g.moveTo(Math.max(0, vx0), y); g.lineTo(Math.min(A.w, vx1), y); }
-    g.stroke();
+    if (G.gfx.grid) {
+      g.strokeStyle = "rgba(99,244,255,0.05)";
+      g.lineWidth = 1 / cam.z;
+      g.beginPath();
+      for (let x = Math.max(0, Math.ceil(vx0 / 100) * 100); x <= Math.min(A.w, vx1); x += 100) { g.moveTo(x, Math.max(0, vy0)); g.lineTo(x, Math.min(A.h, vy1)); }
+      for (let y = Math.max(0, Math.ceil(vy0 / 100) * 100); y <= Math.min(A.h, vy1); y += 100) { g.moveTo(Math.max(0, vx0), y); g.lineTo(Math.min(A.w, vx1), y); }
+      g.stroke();
+    }
     // border
     g.strokeStyle = "rgba(99,244,255,0.1)";
     g.lineWidth = 12;
@@ -352,6 +363,21 @@ export const renderer = {
       g.lineDashOffset = G.time * 8;
       g.stroke();
       g.setLineDash([]);
+    }
+
+    // mines (shop gear)
+    const mn = G.mines;
+    for (let i = 0; i < mn.count; i++) {
+      const q = mn.items[i];
+      const armed = q.t > 0.35;
+      g.fillStyle = "#1a1030";
+      g.beginPath(); g.arc(q.x, q.y, 9, 0, TAU); g.fill();
+      g.strokeStyle = C.orange; g.lineWidth = 2;
+      g.stroke();
+      const blink = armed && Math.floor(G.time * (q.life - q.t < 2 ? 12 : 4)) % 2 === 0;
+      g.fillStyle = blink ? "#ffffff" : C.orange;
+      g.beginPath(); g.arc(q.x, q.y, 3.4, 0, TAU); g.fill();
+      if (armed) { g.globalAlpha = 0.12; g.beginPath(); g.arc(q.x, q.y, 36, 0, TAU); g.fill(); g.globalAlpha = 1; }
     }
 
     // spawn warnings
@@ -440,6 +466,7 @@ export const renderer = {
       let x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
       if (x < vx0 - 60 || x > vx1 + 60 || y < vy0 - 60 || y > vy1 + 60) continue;
       const art = e.art;
+      if (!art) { e.kind.draw(g, e, x, y); continue; }
       const spr = e.flash > 0 ? art.flash : e.ally > 0 ? art.ally : art.base;
       let sc = e.scale;
       if (e.spawnT > 0) { const t = 1 - e.spawnT / 0.35; sc *= Math.max(0.05, t * t); }
@@ -519,12 +546,12 @@ export const renderer = {
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
 
-    // auto-aim reticle
-    const tgt = G.autoTarget;
-    if (tgt && !tgt.dead && Pl && !Pl.dead && input.mode !== "kbm") {
+    // auto-aim reticle (and a lighter one for aim assist)
+    const tgt = G.autoTarget || G.assistTarget;
+    if (tgt && !tgt.dead && Pl && !Pl.dead && G.state !== "menu") {
       const x = lerp(tgt.px, tgt.x, alpha), y = lerp(tgt.py, tgt.y, alpha);
       const R = tgt.r * tgt.scale + 9;
-      g.strokeStyle = "rgba(99,244,255,0.75)";
+      g.strokeStyle = G.autoTarget ? "rgba(99,244,255,0.75)" : "rgba(99,244,255,0.4)";
       g.lineWidth = 2;
       for (let k = 0; k < 4; k++) {
         const a = G.time * 2 + k * (Math.PI / 2);
@@ -537,11 +564,19 @@ export const renderer = {
     for (let i = 0; i < pb.count; i++) {
       const b = pb.items[i];
       const x = lerp(b.px, b.x, alpha), y = lerp(b.py, b.y, alpha);
-      const spr = b.kind === 1 ? sprites.bulletCrit : b.kind === 3 ? sprites.bulletEnvy : sprites.bullet;
+      const spr = sprites.shots[b.kind] || sprites.bullet;
       const sp = Math.hypot(b.vx, b.vy) || 1;
-      const c = (b.vx / sp) * P, sn = (b.vy / sp) * P;
+      const k = b.special ? (b.r / 7) * (1 + Math.sin(G.time * 30) * 0.08) : b.kind === 7 ? b.r / 7.5 : 1;
+      const c = (b.vx / sp) * P * k, sn = (b.vy / sp) * P * k;
       g.setTransform(c, sn, -sn, c, offX + (x - camX) * P, offY + (y - camY) * P);
       g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+      if (b.special && b.full) {
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.5;
+        g.drawImage(spr.c, -spr.w * 0.7, -spr.h * 0.7, spr.w * 1.4, spr.h * 1.4);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "source-over";
+      }
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
 
@@ -551,6 +586,7 @@ export const renderer = {
 
     // robot shots (on top: always readable)
     const eb = G.eb;
+    const hc = G.settings.contrastShots;
     for (let i = 0; i < eb.count; i++) {
       const b = eb.items[i];
       const x = lerp(b.px, b.x, alpha), y = lerp(b.py, b.y, alpha);
@@ -561,8 +597,9 @@ export const renderer = {
         const spr = sprites.bolt;
         g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
       } else {
-        const spr = sprites.orbs[b.look] || sprites.orbs.pink;
-        const sz = spr.w * (b.r / 6) * (1 + Math.sin(G.time * 18 + i) * 0.06);
+        const set = hc ? sprites.orbsHC : sprites.orbs;
+        const spr = set[b.look] || set.pink;
+        const sz = spr.w * (b.r / 6) * (hc ? 1.12 : 1) * (1 + Math.sin(G.time * 18 + i) * 0.06);
         if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
         g.drawImage(spr.c, x - sz / 2, y - sz / 2, sz, sz);
       }
@@ -595,7 +632,7 @@ export const renderer = {
     const s = G.stats;
     const bob = Math.sin(G.time * 3) * 1.5;
     // boost afterimages
-    for (let k = Pl.trailN - 1; k >= 0; k--) {
+    for (let k = G.gfx.trails ? Pl.trailN - 1 : -1; k >= 0; k--) {
       const tx = Pl.trailX[k], ty = Pl.trailY[k];
       g.setTransform(Pl.facing * P, 0, 0, P, offX + (tx - camX) * P, offY + (ty - camY) * P);
       g.globalCompositeOperation = "lighter";
@@ -623,20 +660,39 @@ export const renderer = {
     g.globalAlpha = blink ? 0.35 : 1;
 
     // gun behind or in front depending on aim
+    const gunId = s.gunId || "blaster";
+    const gcol = GUN_COL[gunId] || C.cyan;
+    const gpal = gunPal(gunId);
     const drawGun = () => {
       const a = Pl.aimAng;
       const ca = Math.cos(a), sa = Math.sin(a);
       g.setTransform(ca * P, sa * P, -sa * P, ca * P, offX + (x - camX) * P, offY + (y + 3 + bob - camY) * P);
-      const len = 17 - Pl.recoil * 4;
+      const G2 = GUN_SHAPE[gunId] || GUN_SHAPE.blaster;
+      const len = G2.len - Pl.recoil * G2.kick;
+      const hw = G2.w / 2;
       g.fillStyle = "#c9d0f2";
-      g.fillRect(4, -2.6, len, 5.2);
+      g.fillRect(4, -hw, len, G2.w);
       g.fillStyle = "#232c5e";
-      g.fillRect(4, -2.6, 5, 5.2);
-      g.fillStyle = C.cyan;
-      g.fillRect(4 + len - 3, -2.6, 3, 5.2);
+      g.fillRect(4, -hw, 5, G2.w);
+      if (G2.mag) g.fillRect(9, hw, 4, G2.mag);
+      if (G2.coils) { g.fillStyle = gcol; for (let k = 0; k < 3; k++) g.fillRect(10 + k * 3.5, -hw - 1, 1.6, G2.w + 2); }
+      g.fillStyle = gcol;
+      g.fillRect(4 + len - 3, -hw, 3, G2.w);
+      // charged shot: a growing orb at the muzzle
+      if (Pl.charging) {
+        const c2 = Pl.charge, pulse = Pl.chargeFull ? 1 + Math.sin(G.time * 28) * 0.15 : 1;
+        const r = (5 + c2 * 13) * pulse;
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.55 + c2 * 0.45;
+        g.drawImage(sprites.dots[gpal], len + 6 - r, -r, r * 2, r * 2);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "source-over";
+        g.fillStyle = "#ffffff";
+        g.beginPath(); g.arc(len + 6, 0, 1.5 + c2 * 3.2, 0, TAU); g.fill();
+      }
       if (Pl.muzzle > 0) {
         g.globalCompositeOperation = "lighter";
-        const d = sprites.dots[P_CYAN];
+        const d = sprites.dots[gpal];
         g.drawImage(d, len + 2, -9, 18, 18);
         g.globalCompositeOperation = "source-over";
       }
@@ -657,6 +713,30 @@ export const renderer = {
       for (let k = 0; k < Pl.shield; k++) {
         const a0 = -Math.PI / 2 + (k / Math.max(1, Pl.maxShield)) * TAU + 0.08;
         g.beginPath(); g.arc(x, y + bob, 29, a0, a0 + TAU / Math.max(1, Pl.maxShield) - 0.16); g.stroke();
+      }
+    }
+    // charge meter around you
+    if (Pl.charging && !Pl.dead) {
+      g.strokeStyle = Pl.chargeFull ? "#ffffff" : gcol;
+      g.globalAlpha = Pl.chargeFull ? 0.65 + Math.sin(G.time * 24) * 0.3 : 0.85;
+      g.lineWidth = 3;
+      g.beginPath(); g.arc(x, y + bob, 31, -Math.PI / 2, -Math.PI / 2 + TAU * Pl.charge); g.stroke();
+      g.globalAlpha = 1;
+    }
+    // Bubble Shield
+    if (Pl.bubble && !Pl.dead) {
+      g.strokeStyle = "rgba(99,244,255,0.55)";
+      g.lineWidth = 2;
+      g.beginPath(); g.arc(x, y + bob, 27 + Math.sin(G.time * 3) * 1.5, 0, TAU); g.stroke();
+      g.fillStyle = "rgba(99,244,255,0.06)";
+      g.fill();
+    }
+    // buddy drones
+    if (drones.length && sprites.buddy) {
+      const spr3 = sprites.buddy;
+      for (let i = 0; i < drones.length; i++) {
+        const d = drones[i];
+        g.drawImage(spr3.c, d.x - spr3.w / 2, d.y - spr3.h / 2 + Math.sin(G.time * 4 + i) * 2, spr3.w, spr3.h);
       }
     }
     // stolen bulwark shield
@@ -702,7 +782,7 @@ export const renderer = {
       return [px, py];
     };
     const en = G.enemies;
-    for (let i = 0; i < en.count && drawn < 24; i++) {
+    for (let i = 0; i < en.count && drawn < 24 && G.settings.arrows; i++) {
       const e = en.items[i];
       if (e.dead || e.ally > 0) continue;
       const sx = (e.x - cam.x) * z, sy = (e.y - cam.y) * z;
@@ -748,6 +828,40 @@ export const renderer = {
     g.stroke();
     g.fillStyle = C.magenta;
     g.beginPath(); g.arc(x, y, 2, 0, TAU); g.fill();
+    const Pl = G.player;
+    if (Pl && Pl.charging) {
+      g.strokeStyle = Pl.chargeFull ? "#ffffff" : C.amber;
+      g.lineWidth = 2.5;
+      g.beginPath(); g.arc(x, y, 24, -Math.PI / 2, -Math.PI / 2 + TAU * Pl.charge); g.stroke();
+    }
+    // hit markers: white X on a hit, red on a kill
+    const hm = Math.max(G.hitMark, G.killMark);
+    if (hm > 0) {
+      const kill = G.killMark > 0;
+      const r0 = 7, r1 = kill ? 15 : 12;
+      g.strokeStyle = kill ? "#ff3b5c" : "#ffffff";
+      g.globalAlpha = Math.min(1, hm * 8);
+      g.lineWidth = kill ? 3 : 2;
+      g.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = Math.PI / 4 + k * (Math.PI / 2);
+        g.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0);
+        g.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
+      }
+      g.stroke();
+      g.globalAlpha = 1;
+    }
   },
+};
+
+// How each gun looks in your hands: length, thickness, recoil, extras.
+const GUN_SHAPE = {
+  blaster: { len: 17, w: 5.2, kick: 4 },
+  scatter: { len: 15, w: 7.4, kick: 7 },
+  smg:     { len: 13, w: 4.6, kick: 2, mag: 5 },
+  rail:    { len: 25, w: 4, kick: 6 },
+  nova:    { len: 16, w: 8, kick: 6 },
+  arc:     { len: 18, w: 5.2, kick: 3, coils: true },
+  heart:   { len: 15, w: 5.6, kick: 3 },
 };
 

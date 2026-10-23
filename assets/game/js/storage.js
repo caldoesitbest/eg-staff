@@ -19,6 +19,15 @@ export const SUITS = [
   { id: "void", name: "Void", wave: 25, suit: "#2a2f55", trim: "#63f4ff", visor: "#63f4ff" },
 ];
 
+// Graphics presets fill in these settings (Auto uses High and steps down on its own when frames are slow).
+export const GFX_KEYS = ["resScale", "particles", "glow", "background", "grid", "trails"];
+export const GFX_PRESETS = {
+  high:   { resScale: 1, particles: "high", glow: true, background: "full", grid: true, trails: true },
+  medium: { resScale: 0.85, particles: "medium", glow: true, background: "simple", grid: true, trails: true },
+  low:    { resScale: 0.7, particles: "low", glow: false, background: "simple", grid: true, trails: false },
+  potato: { resScale: 0.5, particles: "minimal", glow: false, background: "off", grid: false, trails: false },
+};
+
 function defaults() {
   return {
     best: { score: 0, wave: 0, combo: 0, kills: 0, rung: 0, wins: 0, fastestWin: 0 },   // rung: sin bosses beaten (0-7)
@@ -30,12 +39,28 @@ function defaults() {
       muted: false,
       shake: true,
       reducedMotion: prefersReducedMotion(),
-      autoAim: coarsePointer(),
+      autoAim: coarsePointer() ? "auto" : "off",   // "off" | "assist" | "auto"
       showFps: false,
-      quality: "auto",
+      quality: "auto",      // graphics preset: auto | high | medium | low | potato | custom
       haptics: true,
       suit: "classic",
       postScores: true,     // post runs to the online leaderboard when signed in
+      // graphics (presets fill these in; changing one makes the preset "custom")
+      resScale: 1,
+      particles: "high",    // high | medium | low | minimal
+      glow: true,
+      background: "full",   // full | simple | off
+      grid: true,
+      trails: true,
+      // display + comfort (not part of presets)
+      fpsCap: 0,            // 0 = match the screen
+      shakeAmt: 100,        // %
+      flashes: true,
+      dmgNumbers: "all",    // all | crits | off
+      arrows: true,         // off-screen robot markers
+      lookahead: true,      // camera leans toward your aim
+      contrastShots: false, // bolder robot shots
+      hitstop: "light",     // impact freeze on big hits: full | light | off
     },
     seenHowTo: false,
     rotateHintDismissed: false,
@@ -73,6 +98,11 @@ export const store = {
           settings: { ...d.settings, ...(saved.settings || {}) },
           daily: { ...d.daily, ...(saved.daily || {}) },
         };
+        // v3 saves: auto-aim became a mode, screen shake a strength
+        const st = data.settings;
+        if (st.autoAim === true) st.autoAim = "auto";
+        else if (st.autoAim === false) st.autoAim = "off";
+        if (saved.settings && saved.settings.shakeAmt === undefined && saved.settings.shake === false) st.shakeAmt = 0;
       }
     } catch (e) {
       data = defaults();

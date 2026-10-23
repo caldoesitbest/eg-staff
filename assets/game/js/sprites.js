@@ -279,7 +279,10 @@ export const sprites = {
   player: null, playerFlash: null,
   star: null, gold: null, heart: null,
   bullet: null, bulletCrit: null, bulletEnvy: null,
+  shots: [],           // player shots by bullet kind (0 blaster, 1 crit, 2 charged orb, 3 envy, 4.. one per gun)
   orbs: {},            // color → sprite
+  orbsHC: {},          // high-contrast versions (settings)
+  buddy: null,
   bolt: null,
   dots: [],            // glow dots by palette index
   orbital: null,
@@ -321,14 +324,52 @@ export const sprites = {
     this.bulletCrit = capsule(C.amber, 22, 7);
     this.bulletEnvy = capsule(C.mint, 20, 6);
     this.bolt = capsule(C.red, 34, 5);
+    const ball = (col, r, size) => make(size, P, (g) => {
+      glow(g, P, col, 14);
+      g.fillStyle = col; circle(g, 0, 0, r); g.fill();
+      noGlow(g);
+      g.fillStyle = "#fff"; circle(g, 0, 0, r * 0.55); g.fill();
+    });
+    const heartShot = make(30, P, (g) => {
+      glow(g, P, "#ff6fb5", 10); g.fillStyle = "#ff6fb5"; heartPath(g, 7); g.fill(); noGlow(g);
+      g.fillStyle = "#fff"; heartPath(g, 3.4); g.fill();
+    });
+    const arcShot = make(30, P, (g) => {
+      glow(g, P, C.blue, 12);
+      g.strokeStyle = C.blue; g.lineWidth = 2.4;
+      g.beginPath(); g.moveTo(-9, 0); g.lineTo(-4, -4); g.lineTo(0, 3); g.lineTo(4, -3); g.lineTo(9, 0); g.stroke();
+      noGlow(g);
+      g.fillStyle = "#e6ecff"; circle(g, 0, 0, 3); g.fill();
+    });
+    this.shots = [
+      this.bullet, this.bulletCrit, ball(C.cyan, 7, 34), this.bulletEnvy,
+      capsule(C.amber, 10, 5),          // scatter pellet
+      capsule(C.mint, 13, 4),           // smg bolt
+      capsule(C.violet2, 34, 5),        // rail bolt
+      ball(C.orange, 6.5, 30),          // nova grenade
+      arcShot,                          // arc bolt
+      heartShot,                        // heartseeker
+    ];
     const orb = (col) => make(28, P, (g) => {
       glow(g, P, col, 12);
       g.fillStyle = col; circle(g, 0, 0, 7); g.fill();
       noGlow(g);
       g.fillStyle = "#fff"; circle(g, 0, 0, 3.6); g.fill();
     });
-    this.orbs = { pink: orb("#ff4f9a"), amber: orb(C.amber), violet: orb(C.violet2), mint: orb(C.mint), red: orb(C.red), magenta: orb(C.magenta), green: orb(C.green),
-      sloth: orb(SIN.sloth), glutton: orb(SIN.glutton), wrath: orb(SIN.wrath), pride: orb(SIN.pride), envy: orb(SIN.envy) };
+    // high contrast: a dark rim and a white edge so robot shots pop on any background
+    const orbHC = (col) => make(32, P, (g) => {
+      g.fillStyle = "#030518"; circle(g, 0, 0, 10); g.fill();
+      glow(g, P, col, 10);
+      g.fillStyle = col; circle(g, 0, 0, 7.6); g.fill();
+      noGlow(g);
+      g.strokeStyle = "#ffffff"; g.lineWidth = 1.6; circle(g, 0, 0, 8.6); g.stroke();
+      g.fillStyle = "#fff"; circle(g, 0, 0, 3.6); g.fill();
+    });
+    const ORB_COLS = { pink: "#ff4f9a", amber: C.amber, violet: C.violet2, mint: C.mint, red: C.red, magenta: C.magenta, green: C.green,
+      sloth: SIN.sloth, glutton: SIN.glutton, wrath: SIN.wrath, pride: SIN.pride, envy: SIN.envy };
+    this.orbs = {};
+    this.orbsHC = {};
+    for (const k in ORB_COLS) { this.orbs[k] = orb(ORB_COLS[k]); this.orbsHC[k] = orbHC(ORB_COLS[k]); }
     // Greed's coins and Lust's hearts are their own shapes, still with the bright core every robot shot has.
     this.orbs.coin = make(30, P, (g) => {
       glow(g, P, SIN.greed, 12);
@@ -342,6 +383,20 @@ export const sprites = {
       g.fillStyle = SIN.lust; heartPath(g, 9); g.fill();
       noGlow(g);
       g.fillStyle = "#fff"; heartPath(g, 4.5); g.fill();
+    });
+    this.orbsHC.coin = this.orbs.coin;
+    this.orbsHC.heart = make(36, P, (g) => {
+      g.fillStyle = "#030518"; heartPath(g, 12); g.fill();
+      glow(g, P, SIN.lust, 10);
+      g.fillStyle = SIN.lust; heartPath(g, 9.4); g.fill();
+      noGlow(g);
+      g.strokeStyle = "#fff"; g.lineWidth = 1.4; heartPath(g, 10.4); g.stroke();
+      g.fillStyle = "#fff"; heartPath(g, 4.5); g.fill();
+    });
+    this.buddy = make(30, P, (g) => {
+      poly(g, 6, 8, Math.PI / 6); bodyStroke(g, P, C.cyan, 1.6);
+      eye(g, P, 2, 0, 2.4, C.cyan);
+      g.strokeStyle = C.cyan; g.lineWidth = 1.2; g.beginPath(); g.moveTo(-6, -8); g.lineTo(-10, -12); g.moveTo(6, -8); g.lineTo(10, -12); g.stroke();
     });
     this.orbital = make(30, P, (g) => {
       glow(g, P, C.cyan, 12);
