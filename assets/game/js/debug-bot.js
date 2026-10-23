@@ -11,11 +11,23 @@ export const bot = {
   autoRetry: true,
   onRetry: null,
   onPick: null,
+  onBuy: null,
+  onShopGo: null,
+  chargeT: 0,
 
   tick() {
     if (G.state === "upgrade") {
       const cards = document.querySelectorAll("#cards .card");
       if (cards.length && this.onPick) this.onPick(cards[Math.floor(Math.random() * cards.length)].dataset.id);
+      return;
+    }
+    if (G.state === "shop") {
+      // buy what it can afford, a couple of times, then go
+      for (let k = 0; k < 3; k++) {
+        const i = Math.floor(Math.random() * G.shop.offers.length);
+        if (this.onBuy) this.onBuy(i);
+      }
+      if (this.onShopGo) this.onShopGo();
       return;
     }
     if (G.state === "over") {
@@ -63,6 +75,12 @@ export const bot = {
       const d = Math.sqrt(d2) || 1;
       if (d < 140) { ax -= ((b.x - P.x) / d) * (140 - d) * 1.6; ay -= ((b.y - P.y) / d) * (140 - d) * 1.6; }
     }
+    // flank shields: circle around a Bulwark toward its back
+    if (best && best.type === "bulwark") {
+      const dx = P.x - best.x, dy = P.y - best.y, d = Math.hypot(dx, dy) || 1;
+      ax += (-dy / d) * 500; ay += (dx / d) * 500;
+      if (d > 260) { ax -= (dx / d) * 300; ay -= (dy / d) * 300; }
+    }
     ax += (1000 - P.x) * 0.25;
     ay += (650 - P.y) * 0.25;
     input.mode = "kbm";
@@ -80,5 +98,69 @@ export const bot = {
     const l = Math.hypot(ax, ay);
     if (l > 20) { input.move.x = ax / l; input.move.y = ay / l; } else { input.move.x = 0; input.move.y = 0; }
     if (near && P.boostCdT <= 0) input.queued.boost = true;
+    // charged shots: hold for about a second now and then (always on bosses)
+    if (this.chargeT > 0) { this.chargeT -= 1 / 60; input.charge = this.chargeT > 0; }
+    else if (best && (best.boss || Math.random() < 0.004)) { this.chargeT = 1.05; input.charge = true; }
+    else input.charge = false;
   },
 };
+
+/** Debug only (?debug=1&smoke=1, the Windows app's --selftest): a quick scripted pass through the
+    new systems. Reports each step to the launcher (or the console in a browser). */
+export async function smoke(h) {
+  const say = (msg) => { try { window.chrome.webview.postMessage({ type: "status", msg }); } catch (e) { console.log("[smoke] " + msg); } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    h.startRun();
+    G.debug.god = true;
+    await sleep(2500);
+    say("run started: wave " + G.wave + ", " + G.enemies.count + " robots");
+    // a full charged shot
+    input.mode = "kbm"; input.mouse.seen = true;
+    input.mouse.charge = true;
+    await sleep(1150);
+    const charged = G.player.charge;
+    input.mouse.charge = false;
+    await sleep(50);
+    let orbs = 0;
+    for (let i = 0; i < G.pb.count; i++) if (G.pb.items[i].special) orbs++;
+    say("charged shot: reached " + Math.round(charged * 100) + "%, orbs in flight " + orbs);
+    // the shop
+    G.stars = 600;
+    h.openArmory();
+    await sleep(400);
+    let bought = 0;
+    for (let i = 0; i < G.shop.offers.length; i++) { const o = G.shop.offers[i]; if (o && !o.sold) { h.shopBuy(i); if (o.sold) bought++; } }
+    say("shop: bought " + bought + ", guns " + G.guns.filter(Boolean).map((g) => g.id + g.tier).join("+") + ", gear " + Object.keys(G.items).join(","));
+    h.shopGo();
+    await sleep(2000);
+    say("next wave: " + G.wave + ", state " + G.state);
+    // Lust's new look and its fakes
+    const b = h.spawnEnemy("lust", 1000, 300, { spawnT: 0 });
+    await sleep(2600);
+    if (b) { b.hp = b.maxHp * 0.4; b.blinkCd = 0; }
+    await sleep(2200);
+    let fakes = 0;
+    for (let i = 0; i < G.enemies.count; i++) if (!G.enemies.items[i].dead && G.enemies.items[i].type === "decoy") fakes++;
+    say("lust: state " + (b ? b.state : "none") + ", fakes " + fakes);
+  } catch (e) {
+    say("smoke failed: " + (e && e.message));
+  }
+  say("smoke done");
+}
+
+/** Debug only (?cosmoke=1 with cohost / cojoin, the Windows app's co-op self-tests): once a co-op run
+    is going, plays for a while, then reports what this side sees. */
+export async function coopSmoke() {
+  const say = (msg) => { try { window.chrome.webview.postMessage({ type: "status", msg }); } catch (e) { console.log("[coop smoke] " + msg); } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 240 && !(G.net.role !== "off" && G.state === "playing"); i++) await sleep(250);
+  if (G.net.role === "off") { say("coop: never connected"); say("smoke done"); return; }
+  say("coop: " + G.net.role + ", slot " + G.net.slot + ", " + G.players.length + " players");
+  const w0 = G.wave;
+  await sleep(25000);
+  const me = G.me;
+  say("coop: wave " + w0 + " -> " + G.wave + ", state " + G.state + ", robots " + G.enemies.count + ", my hp " + me.hp + ", stars " + G.stars +
+    ", players " + G.players.map((p) => p.name + "@" + Math.round(p.x) + "," + Math.round(p.y)).join(" "));
+  say("smoke done");
+}

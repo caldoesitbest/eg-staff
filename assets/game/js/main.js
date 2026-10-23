@@ -1,9 +1,12 @@
 /* Envious Glider: Sinners vs. Machines. Boot + game states:
-   menu → playing ⇄ paused → clear → upgrade → playing … → dying → over → (retry) playing */
+   intro → menu → playing ⇄ paused → clear → upgrade (pick a card) → shop (the Armory) → playing …
+   → (wave 35: Envy down) win → endless … → dying → over → (retry) playing.  The run is the Sin Ladder:
+   Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves.
+   Co-op (coop.js + net.js): the host runs this same flow for everyone; clients follow its messages. */
 
-import { G } from "./state.js";
+import { G, usePlayer } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { store, SUITS } from "./storage.js";
+import { store, SUITS, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
 import { input } from "./input.js";
 import { audio } from "./audio.js";
@@ -11,12 +14,17 @@ import { renderer } from "./render.js";
 import { fx } from "./fx.js";
 import { ui } from "./ui.js";
 import { waves } from "./waves.js";
-import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy } from "./world.js";
-import { createPlayer } from "./player.js";
+import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer } from "./world.js";
+import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
-import { P_CYAN, P_WHITE, C } from "./sprites.js";
-import { formatScore, rand, pick, TAU } from "./util.js";
+import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
+import { formatScore, rand, pick, TAU, withSeed, hashStr } from "./util.js";
+import { online, todayUTC } from "./online.js";
+import { ladderRungs } from "./ui.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo } from "./armory.js";
+import { net } from "./net.js";
+import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
 // ---------------------------------------------------------------------------
 // boot
@@ -25,6 +33,9 @@ const params = new URLSearchParams(location.search);
 G.debug.on = params.get("debug") === "1";
 G.debug.startWave = Math.max(1, Math.min(99, parseInt(params.get("wave"), 10) || 1));
 G.debug.speed = G.debug.on ? Math.max(1, Math.min(8, parseInt(params.get("speed"), 10) || 1)) : 1;   // fast-forward for testing
+
+// The Windows app (WebView2) talks to its launcher through window.chrome.webview.
+G.desktop = !!(window.chrome && window.chrome.webview);
 
 store.load();
 G.settings = store.data.settings;
@@ -36,8 +47,19 @@ const layer = document.getElementById("touch-layer");
 
 const suitDef = () => SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0];
 
-G.quality = G.settings.quality === "low" ? 0 : 2;
-fx.setQuality(G.quality);
+const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
+G.quality = G.settings.quality in FIXED_LEVEL ? FIXED_LEVEL[G.settings.quality] : 2;
+
+/** The graphics the renderer actually uses: the preset's (Auto: by its current step) or your custom picks. */
+function computeGfx() {
+  const st = G.settings;
+  const src = st.quality === "auto" ? GFX_PRESETS[["low", "medium", "high"][G.quality]] : st;
+  const g = G.gfx;
+  g.resScale = src.resScale; g.particles = src.particles; g.glow = src.glow;
+  g.background = src.background; g.grid = src.grid; g.trails = src.trails;
+}
+computeGfx();
+fx.setQuality(2, G.gfx.particles);
 renderer.init(canvas, suitDef());
 renderer.resize();
 
@@ -48,39 +70,61 @@ let deathT = 0;
 let overShown = false;
 let lastRun = null;
 
-let lastQualitySetting = G.settings.quality;
+let gfxKey = "";
 function applySettings() {
   const s = G.settings;
-  if (s.quality === "auto" && lastQualitySetting !== "auto" && G.quality !== 2) { G.quality = 2; applyQuality(); }
-  lastQualitySetting = s.quality;
+  if (s.quality in FIXED_LEVEL) G.quality = FIXED_LEVEL[s.quality];
+  else if (s.quality === "auto" && gfxKey.indexOf("auto") !== 0) G.quality = 2;      // switching to Auto starts it at the top
   audio.setVolumes(s.sfx, s.music, s.muted);
-  fx.shakeOn = s.shake && !s.reducedMotion;
+  fx.shakeOn = s.shakeAmt > 0 && !s.reducedMotion;
+  fx.shakeScale = s.shakeAmt / 100;
+  fx.flashesOn = s.flashes;
   fx.reduced = s.reducedMotion;
   ui.setReduced(s.reducedMotion);
-  if (s.quality === "high" && G.quality !== 2) { G.quality = 2; applyQuality(); }
-  if (s.quality === "low" && G.quality !== 0) { G.quality = 0; applyQuality(); }
+  loop.setCap(s.fpsCap);
+  applyQuality();
   if (!s.showFps) ui.setFps(null);
   store.save();
 }
 function applyQuality() {
-  fx.setQuality(G.quality);
-  renderer.resize();
+  computeGfx();
+  fx.setQuality(2, G.gfx.particles);        // the preset (or Auto's current step) already picked the particle level
+  // only rebuild the canvas when something that affects it changed
+  const key = G.settings.quality + ":" + G.quality + ":" + G.gfx.resScale;
+  if (key !== gfxKey) { gfxKey = key; renderer.resize(); }
 }
 
 function setState(s) {
   G.state = s;
+  G.netMenu = false;
   ui.setState(s);
   input.enabled = s === "playing" || s === "clear";
-  if (!input.enabled) { input.mouse.down = false; input.queued.boost = false; }
+  if (!input.enabled) { input.mouse.down = false; input.mouse.charge = false; input.queued.boost = false; input.queued.swap = false; cancelCharge(); }
 }
 
 // ---------------------------------------------------------------------------
 // menu scene: the astronaut floats, rocks drift
 // ---------------------------------------------------------------------------
+/** Everyone in the run (solo: just you; co-op: the lobby), each with a fresh build. */
+function setupRunPlayers(isCoop) {
+  if (!isCoop) { G.net.role = "off"; G.net.slot = 0; G.net.n = 1; }
+  const list = isCoop ? coopRoster() : [{ slot: 0, name: online.name || "You", suit: G.settings.suit }];
+  setupPlayers(list, createPlayer);
+  const n = G.players.length;
+  for (const P of G.players) {
+    usePlayer(P);
+    resetArmory();
+    resetUpgrades();
+    P.hp = P.maxHp = G.stats.maxHp;
+    P.maxShield = G.stats.shieldCap;
+    if (n > 1) P.x = P.px = BALANCE.arena.w / 2 + (P.slot - (n - 1) / 2) * 70;
+  }
+  usePlayer(G.me);
+}
+
 function menuScene() {
   clearWorld();
-  resetUpgrades();
-  G.player = createPlayer();
+  setupRunPlayers(false);
   G.player.iframes = 0;
   G.boss = null; G.bossFx = null;
   for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
@@ -99,19 +143,22 @@ function toMenu() {
 // ---------------------------------------------------------------------------
 // runs + waves
 // ---------------------------------------------------------------------------
-function startRun() {
+function startRun(opts) {
   clearWorld();
-  resetUpgrades();
+  const isCoop = !!(opts && opts.coop);
+  G.daily = opts && opts.daily ? opts.daily : null;
+  G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
     waveHits: 0, hitsTaken: 0, flawlessWaves: 0, bossesKilled: 0, rerolls: 0, patches: 0, perfects: 0,
     hitstop: 0, slowmo: 0, slowScale: 1, freezeT: 0, vacuum: false, boss: null, bossFx: null, autoTarget: null,
+    lastSlowmo: -9, hitMark: 0, killMark: 0,
   });
-  G.player = createPlayer();
-  for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
+  setupRunPlayers(isCoop);
+  if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
   G.cam.x = G.player.x; G.cam.y = G.player.y;
   // debug: start later with a matching handful of upgrades
-  const start = G.debug.on ? G.debug.startWave : 1;
+  const start = G.debug.on && !isCoop ? G.debug.startWave : 1;
   for (let i = 1; i < start; i++) { const ids = offerCards(); applyCard(pick(ids)); }
   G.player.hp = G.player.maxHp = G.stats.maxHp;
   G.player.maxShield = G.stats.shieldCap;
@@ -124,6 +171,12 @@ function startRun() {
   audio.musicStart(1);
   audio.musicIntensity(1);
   store.data.totals.runs++;
+  if (G.daily) {
+    const d = store.data.daily;
+    if (d.date !== G.daily) { d.date = G.daily; d.score = 0; d.wave = 0; d.tries = 0; }
+    d.tries++;
+  }
+  if (G.net.role === "client") return;     // the host starts the waves
   startWave(start);
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
@@ -143,20 +196,49 @@ const HINTS = {
   11: () => "Patch Bots heal the others. Kill them first.",
 };
 
+const MARK_NAMES = ["Mk I", "Mk II", "Mk III", "Mk IV", "Mk V", "Mk VI", "Mk VII", "Mk VIII", "Mk IX", "Mk X"];
+const markName = (m) => MARK_NAMES[Math.min(m, MARK_NAMES.length - 1)] + (m >= MARK_NAMES.length ? "+" : "");
+
+/** Daily Challenge: wave mixes and card offers come from the day's seed, the same for everyone. */
+function seeded(tag, fn) {
+  return G.daily ? withSeed(hashStr(G.daily + ":" + tag), fn) : fn();
+}
+
 function startWave(n) {
-  waves.start(n);
+  seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
-  if (waves.boss) {
-    const def = BALANCE.bosses[waves.bossType];
-    ui.banner("Wave " + n + " · Boss", def.name, def.tagline, "boss", true);
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; }     // Bubble Shield refills every wave
+  usePlayer(G.me);
+  waveIntro(n);
+  hostSend({ k: "go", n });
+}
+
+/** The banner and music for the start of wave n. */
+function waveIntro(n) {
+  const lap = waves.lapOf(n);
+  if (waves.isBossWave(n)) {
+    const def = BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(n)]];
+    const rung = waves.rungOf(n);
+    ui.banner("Rung " + (rung + 1) + " of 7 · Wave " + n + (lap ? " · Lap " + (lap + 1) : ""), "@" + def.name,
+      "<b>" + def.title + "</b> · " + def.tagline, "boss", true, def.c1);
     audio.musicIntensity(2);
   } else {
-    const hint = HINTS[n] ? HINTS[n]() : n === 12 ? "From here on, some robots come <b>overcharged</b>." : "";
-    ui.banner(n === 1 ? "Hold the line" : "Incoming", "Wave " + n, hint, "", !!hint);
+    let hint = HINTS[n] && !lap ? HINTS[n]() : "";
+    if (n > 1 && waves.markOf(n) > waves.markOf(n - 1)) hint = "<b>Robots evolved: " + markName(waves.markOf(n)) + ".</b> Same robots, nastier tricks.";
+    else if (n === BALANCE.elite.from) hint = "From here on, some robots come <b>overcharged</b> with a trait.";
+    const r = ladderRungs()[waves.rungOf(n)];
+    ui.banner(n === 1 ? "Rung 1 · @Sloth" : "Rung " + (r.i + 1) + " · @" + r.name, "Wave " + n, hint, "", !!hint, r.c1);
     audio.musicIntensity(1);
   }
   audio.play("wave");
 }
+
+// Climbing: remember the highest rung you've beaten.
+G.on("bossDown", () => {
+  if (G.lap > 0) return;
+  G.rungThisRun = waves.rungOf(G.wave) + 1;
+  if (!G.debug.on && G.rungThisRun > (store.data.best.rung || 0)) { store.data.best.rung = G.rungThisRun; store.save(); }
+});
 
 G.on("waveClear", (n) => {
   if (G.state !== "playing") return;
@@ -171,23 +253,58 @@ G.on("waveClear", (n) => {
     text += " · <b>Flawless</b> +" + formatScore(BALANCE.score.flawless * n);
   }
   const before = G.stars;
-  onWaveEnd();
+  for (const P of G.players) { if (P.gone) continue; usePlayer(P); onWaveEnd(); }    // interest, everyone's own
+  usePlayer(G.me);
   if (G.stars > before) text += " · Greed interest ★+" + (G.stars - before);
   G.lastBonus = text;
   G.vacuum = true;
-  ui.banner(waves.boss ? "Boss down" : "Wave " + n, waves.boss ? "Clear!" : "Clear", text, "good");
+  // co-op: everyone who's down gets back up between waves
+  if (G.net.role === "host") for (const P of G.players) if (P.dead && !P.gone) revivePlayer(P);
+  if (waves.boss && waves.bossType === "envy" && G.lap === 0 && !G.won) {
+    G.won = true;
+    G.winTime = G.time;
+    clearT = 2.4;
+    ui.banner("The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true);
+    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest" });
+    audio.play("newBest");
+    setState("clear");
+    return;
+  }
+  const head = waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n;
+  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear" });
+  ui.banner(head, waves.boss ? "Clear!" : "Clear", text, "good");
   audio.play("clear");
   audio.musicIntensity(1);
   clearT = BALANCE.waves.breather + (waves.boss ? 1.2 : 0);
   setState("clear");
 });
 
+function showVictory() {
+  ui.clearBanner();
+  setState("win");
+  input.releaseAll();
+  if (!G.debug.on) {
+    const b = store.data.best;
+    b.wins = (b.wins || 0) + 1;
+    b.rung = 7;
+    if (!b.fastestWin || G.winTime < b.fastestWin) b.fastestWin = Math.round(G.winTime);
+    store.save(true);
+  }
+  const sum = { score: Math.floor(G.score), time: fmtTime(G.time), kills: G.kills, hits: G.hitsTaken };
+  hostSend({ k: "win", sum });
+  ui.showWin(sum);
+  audio.musicIntensity(0);
+}
+
 function openUpgrade() {
+  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
   ui.clearBanner();
   setState("upgrade");
   input.releaseAll();
-  offered = offerCards();
-  ui.showUpgrade(offered, { kicker: "Wave " + G.wave + " cleared", title: G.wave % 5 === 4 ? "Boss next. Choose well" : "Pick your sin", bonus: G.lastBonus });
+  offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
+  const nextBoss = (G.wave + 1) % BALANCE.waves.bossEvery === 0;
+  const nb = nextBoss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(G.wave + 1)]] : null;
+  ui.showUpgrade(offered, { kicker: "Wave " + G.wave + " cleared", title: nb ? "@" + nb.name + " is next" : "Pick your sin", bonus: G.lastBonus });
 }
 
 function pickCard(id) {
@@ -199,6 +316,55 @@ function pickCard(id) {
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);
   fx.text(P.x, P.y - 40, c.name.toUpperCase() + (lvl >= c.max ? " MAX" : " " + lvl), c.color, 18, 1.3);
+  openArmory();
+}
+
+// ---------------------------------------------------------------------------
+// the Armory (shop between waves)
+// ---------------------------------------------------------------------------
+function openArmory() {
+  setState("shop");
+  input.releaseAll();
+  seeded("shop" + G.wave, () => rollNewShop());
+  const next = G.wave + 1;
+  const boss = next % BALANCE.waves.bossEvery === 0;
+  const nb = boss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(next)]] : null;
+  ui.showShop({
+    kicker: "Wave " + G.wave + " cleared · the Armory",
+    next: nb ? "Next: <b>@" + nb.name + "</b>, " + nb.title + ". Stock up." : "Next: wave " + next + (waves.markOf(next) > G.mark ? " · <b>robots evolve</b>" : ""),
+    go: nb ? "Face @" + nb.name : "Wave " + next,
+  });
+}
+
+function shopBuy(i) {
+  if (G.state !== "shop") return;
+  const o = G.shop.offers[i];
+  if (!o || o.sold) return;
+  const info = offerInfo(o);
+  if (!buy(i)) { audio.play("deny"); ui.toast("Not enough stars"); return; }
+  audio.play("buy");
+  const P = G.player;
+  if (P) fx.ring(P.x, P.y, 10, 90, 0.4, info.col, 3);
+  ui.renderShop();
+}
+
+function shopReroll() {
+  if (G.state !== "shop") return;
+  if (!seeded("shopRoll" + G.wave + ":" + G.shop.rerolls, () => rerollShop())) { audio.play("deny"); return; }
+  audio.play("steal");
+  ui.renderShop();
+}
+
+function shopGo() {
+  if (G.state !== "shop") return;
+  if (G.net.role !== "off") {
+    // co-op: ready up; the next wave starts when everyone is
+    if (G.net.role === "host") hostReady(); else if (!coop.waiting) clientReady();
+    coop.waiting = true;
+    ui.setShopWaiting(waitingOn());
+    audio.play("pick");
+    return;
+  }
   ui.show(null);
   setState("playing");
   startWave(G.wave + 1);
@@ -210,7 +376,7 @@ function reroll() {
   if (G.state !== "upgrade" || G.stars < cost) return;
   G.stars -= cost;
   G.rerolls++;
-  offered = offerCards();
+  offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
   ui.renderCards(offered);
   ui.renderEconomy();
   audio.play("steal");
@@ -218,15 +384,15 @@ function reroll() {
 }
 
 function patchUp() {
-  const E = BALANCE.economy;
-  const cost = E.patch + E.patchStep * G.patches;
+  const cost = patchCost();
   const P = G.player;
-  if (G.state !== "upgrade" || G.stars < cost || P.hp >= P.maxHp) return;
+  if (G.state !== "shop" || G.stars < cost || P.hp >= P.maxHp) { audio.play("deny"); return; }
   G.stars -= cost;
   G.patches++;
-  P.hp = Math.min(P.maxHp, P.hp + E.patchHeal);
+  P.hp = Math.min(P.maxHp, P.hp + BALANCE.shop.patchHeal);
   audio.play("heart");
-  ui.renderEconomy();
+  ui.renderShopEconomy();
+  ui.renderLoadout();
   ui.renderHearts(P);
 }
 
@@ -235,6 +401,16 @@ function patchUp() {
 // ---------------------------------------------------------------------------
 function pause() {
   if (G.state !== "playing" && G.state !== "clear") return;
+  if (G.net.role !== "off") {
+    // co-op: the world keeps going (your teammates are still in it); this is just a menu
+    if (G.netMenu) return;
+    G.netMenu = true;
+    input.enabled = false;
+    input.releaseAll();
+    cancelCharge();
+    ui.showPause(buildSummary(), true);
+    return;
+  }
   prevState = G.state;
   setState("paused");
   input.releaseAll();
@@ -242,6 +418,12 @@ function pause() {
   audio.musicIntensity(0);
 }
 function resume() {
+  if (G.netMenu) {
+    G.netMenu = false;
+    ui.show(null);
+    input.enabled = G.state === "playing" || G.state === "clear";
+    return;
+  }
   if (G.state !== "paused") return;
   ui.show(null);
   setState(prevState);
@@ -251,6 +433,7 @@ function resume() {
 }
 
 G.on("playerDown", () => {
+  cancelCharge();
   setState("dying");
   deathT = 0;
   overShown = false;
@@ -269,6 +452,28 @@ const TITLES = [
   [0, ["Scrap happens", "Robots 1, Sinners 0", "Even legends warm up"]],
 ];
 
+async function postRun(sum) {
+  if (G.debug.on) return;
+  if (G.net.role !== "off") { ui.setOnline(null); return; }   // the leaderboard is solo runs
+  if (!online.available) { ui.setOnline(null); return; }
+  if (!online.user) { ui.setOnline("signin"); return; }
+  if (!store.data.settings.postScores) { ui.setOnline(null); return; }
+  ui.setOnline("posting");
+  const res = await online.submit({
+    score: sum.score, wave: sum.wave, kills: sum.kills, combo: sum.combo, seconds: G.time, won: G.won,
+    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items } },
+  });
+  if (G.state !== "over") return;
+  if (res.skipped) ui.setOnline(null);
+  else if (res.ok) ui.setOnline("posted", { rank: res.rank, daily: !!G.daily });
+  else ui.setOnline("error", res.error);
+}
+
+function finishWonRun() {
+  G.player.dead = true;
+  gameOver();
+}
+
 function gameOver() {
   overShown = true;
   const best = store.data.best;
@@ -278,7 +483,7 @@ function gameOver() {
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
     build: buildSummary(), buildTitle: buildTitle(),
   };
-  const record = !G.debug.on;           // debug runs (wave skips, god mode) don't count
+  const record = !G.debug.on && G.net.role === "off";    // debug and co-op runs don't count for your solo bests
   sum.newScore = record && sum.score > best.score && sum.score > 0;
   sum.newWave = record && sum.wave > best.wave;
   sum.newCombo = record && sum.combo > best.combo;
@@ -288,13 +493,22 @@ function gameOver() {
   if (sum.newCombo) best.combo = sum.combo;
   if (record) best.kills = Math.max(best.kills, sum.kills);
   store.data.totals.kills += sum.kills;
-  if (!record) sum.buildTitle = (sum.buildTitle || "") + " · debug run, bests not saved";
+  if (!record) sum.buildTitle = (sum.buildTitle || "") + (G.net.role !== "off" ? " · co-op run (solo bests and the leaderboard stay solo)" : " · debug run, bests not saved");
+  if (G.net.role !== "off") sum.team = G.players.filter((p) => !p.gone).map((p) => p.name).join(", ");
   const unlocked = SUITS.filter((s) => s.wave > oldWave && s.wave <= best.wave);
   if (unlocked.length) sum.unlock = unlocked.map((s) => s.name).join(" and ");
   const pool = TITLES.find((t) => sum.wave >= t[0])[1];
-  sum.title = pool[Math.floor(Math.random() * pool.length)];
+  sum.title = G.won ? (G.lap > 0 || G.wave > 35 ? "Past the top of the Ladder" : "You climbed the whole Ladder") : pool[Math.floor(Math.random() * pool.length)];
+  const rung = ladderRungs()[Math.min(6, G.rungThisRun || 0)];
+  sum.kicker = G.won ? "Sin Ladder cleared · wave " + sum.wave : (G.rungThisRun ? "Beat " + G.rungThisRun + " of 7 sins · " : "") + "Fell on wave " + sum.wave + (G.won ? "" : " · @" + rung.name + " was next");
+  if (G.daily && record) {
+    const d = store.data.daily;
+    if (d.date === G.daily && sum.score > d.score) { d.score = sum.score; d.wave = sum.wave; sum.dailyBest = true; }
+  }
   store.save(true);
+  postRun(sum);
   lastRun = sum;
+  hostSend({ k: "over", sum: { ...sum, build: [], buildTitle: "Co-op · " + (sum.team || "") } });
   setState("over");
   ui.showGameOver(sum);
   audio.play(sum.anyBest ? "newBest" : "gameOver");
@@ -321,23 +535,26 @@ function menuStep(dt) {
 
 function update(dt) {
   const s = G.state;
-  if (s === "paused" || s === "upgrade" || s === "over") return;
-  if (G.hitstop > 0) { G.hitstop -= dt; return; }
+  if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
+  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win") return;
+  if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
   if (s === "menu") { menuStep(sdt); return; }
+  if (G.net.role === "host") hostBefore(sdt);
   stepWorld(sdt);
+  if (G.net.role === "host") hostAfter();
   fx.update(sdt);
   if (s === "dying") {
     deathT += dt;
     if (deathT > 1.5 && !overShown) gameOver();
   } else if (s === "clear") {
     clearT -= dt;
-    if (clearT <= 0) openUpgrade();
+    if (clearT <= 0) { if (G.won && G.wave === 35) showVictory(); else openUpgrade(); }
   }
 }
 
-let fpsT = 0, qT = 0, slowWin = 0, fastWin = 0;
+let fpsT = 0, qT = 0, slowWin = 0, fastWin = 0, beatT = 0;
 function before(dt) {
   input.poll(dt);
 }
@@ -347,6 +564,12 @@ function render(alpha, dt) {
   audio.setListener(G.cam.x, G.cam.y);
   renderer.draw(alpha, dt);
   if (G.state !== "menu") ui.updateHud(dt);
+  // low health: a heartbeat
+  const Pl = G.player;
+  if (Pl && !Pl.dead && Pl.hp <= 2 && G.state === "playing") {
+    beatT -= dt;
+    if (beatT <= 0) { beatT = Pl.hp <= 1 ? 0.75 : 1.1; audio.play("heartbeat", undefined, undefined, Pl.hp <= 1 ? 0.9 : 0.6); }
+  } else beatT = 0;
 
   fpsT += dt;
   if (fpsT >= 0.5) {
@@ -362,8 +585,9 @@ function render(alpha, dt) {
   if (qT >= 1 && G.settings.quality === "auto" && !document.hidden) {
     qT = 0;
     const st = loop.stats;
-    if (st.frameMs > 23 && G.state === "playing") { slowWin++; fastWin = 0; }
-    else if (st.frameMs < 17.5 && st.workMs < 5) { fastWin++; slowWin = 0; }
+    const capMs = G.settings.fpsCap ? 1000 / G.settings.fpsCap : 0;      // a capped frame rate isn't "slow"
+    if (st.frameMs > Math.max(23, capMs * 1.35) && G.state === "playing") { slowWin++; fastWin = 0; }
+    else if (st.frameMs < Math.max(17.5, capMs * 1.1) && st.workMs < 5) { fastWin++; slowWin = 0; }
     else { slowWin = 0; fastWin = 0; }
     if (slowWin >= 3 && G.quality > 0) { G.quality--; slowWin = 0; applyQuality(); }
     if (fastWin >= 10 && G.quality < 2) { G.quality++; fastWin = 0; applyQuality(); }
@@ -377,7 +601,7 @@ const step = (dt) => {
     update(dt);
   }
 };
-const loop = startLoop({ before, update: step, render });
+const loop = startLoop({ before, update: step, render, timer: G.debug.on && params.get("headless") === "1" });
 
 // ---------------------------------------------------------------------------
 // input wiring
@@ -397,31 +621,67 @@ function toggleFullscreen() {
 
 ui.init({
   onPlay: () => { audio.unlock(); startRun(); },
+  onDaily: () => { audio.unlock(); startRun({ daily: todayUTC() }); },
+  onEndless: () => { ui.show(null); openUpgrade(); audio.musicIntensity(1); },
+  onFinish: finishWonRun,
+  onExit: () => { store.save(true); if (G.desktop) window.chrome.webview.postMessage({ type: "quit" }); },
   onPause: pause,
   onResume: resume,
-  onRestart: () => startRun(),
-  onQuit: toMenu,
+  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); },
+  onQuit: () => { if (G.net.role !== "off") endCoop(); toMenu(); },
+  onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
+  onLobbyHost: async (name) => {
+    store.data.coopName = name; store.save();
+    try { await net.host(name, G.settings.suit); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+  },
+  onLobbyJoin: async (code, name) => {
+    store.data.coopName = name; store.save();
+    try { await net.join(code, name, G.settings.suit); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+  },
+  onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
+  onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
   onReroll: reroll,
   onPatch: patchUp,
+  onBuy: shopBuy,
+  onLock: (i) => { toggleLock(i); audio.play("click"); ui.renderShop(); },
+  onShopReroll: shopReroll,
+  onShopGo: shopGo,
+  onSelectSlot: (i) => { if (swapGun(i)) audio.play("swap"); ui.renderShop(); },
+  onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
   onSettings: applySettings,
   onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
-  onFullscreen: toggleFullscreen,
+  onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
 });
 
-input.init({ root, layer, boostButton: document.getElementById("boost-btn") });
+input.init({ root, layer, boostButton: document.getElementById("boost-btn"), chargeButton: document.getElementById("charge-btn") });
+const AIM_NAMES = { off: "Off", assist: "Aim assist", auto: "Full auto" };
+input.onHotkey = (code) => {
+  if (code !== "KeyT") return;
+  const order = ["off", "assist", "auto"];
+  const s = G.settings;
+  s.autoAim = order[(order.indexOf(s.autoAim) + 1) % order.length];
+  store.save();
+  ui.syncSettings();
+  ui.toast("Auto-aim: " + AIM_NAMES[s.autoAim] + (s.autoAim === "auto" && input.mode === "kbm" ? " · hold left-click to aim yourself" : ""));
+};
 input.onModeChange = (m) => { G.touchActive = m === "touch"; ui.setMode(m); };
 input.onPause = () => {
   const s = G.state;
+  if ((s === "playing" || s === "clear") && G.netMenu) {
+    if (ui.screen === "settings") ui.closeSettings(); else resume();
+    return true;
+  }
   if (s === "playing" || s === "clear") { pause(); return true; }
   if (s === "paused") {
     if (ui.screen === "settings") { ui.closeSettings(); return true; }
     resume();
     return true;
   }
-  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
 };
@@ -430,7 +690,7 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
-  else if (ui.screen === "how") ui.show("menu");
+  else if (ui.screen === "how" || ui.screen === "news") ui.show("menu");
   else if (G.state === "paused") resume();
 };
 
@@ -450,8 +710,14 @@ window.addEventListener("touchend", unlock, { passive: true });
 window.addEventListener("keydown", (e) => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
   const s = G.state;
-  if (s === "upgrade") {
-    const i = ["Digit1", "Digit2", "Digit3", "Numpad1", "Numpad2", "Numpad3"].indexOf(e.code) % 3;
+  const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"].indexOf(e.code) % 4;
+  if (s === "shop") {
+    if (digit >= 0) { e.preventDefault(); if (ui.armed) shopBuy(digit); return; }
+    if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
+    const onButton = document.activeElement && document.activeElement.tagName === "BUTTON" && document.activeElement.id !== "shop-go";
+    if ((e.code === "Enter" || e.code === "Space") && !onButton) { e.preventDefault(); if (ui.armed) shopGo(); return; }
+  } else if (s === "upgrade") {
+    const i = digit;
     if (i >= 0 && offered[i]) { e.preventDefault(); if (ui.armed) pickCard(offered[i]); return; }
     if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
       const cards = Array.from(document.querySelectorAll("#cards .card"));
@@ -461,8 +727,9 @@ window.addEventListener("keydown", (e) => {
     }
   } else if (s === "over" && ui.screen === "over") {
     if (!ui.armed) return;
-    if (e.code === "KeyR") { e.preventDefault(); startRun(); }
-    else if (e.code === "Enter" && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); startRun(); }
+    const again = () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); };
+    if (e.code === "KeyR") { e.preventDefault(); again(); }
+    else if (e.code === "Enter" && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); again(); }
   } else if (s === "menu" && ui.screen === "menu") {
     if ((e.code === "Enter" || e.code === "Space") && (document.activeElement === document.body || !document.activeElement)) { e.preventDefault(); audio.unlock(); startRun(); }
   }
@@ -473,10 +740,10 @@ window.addEventListener("keydown", (e) => {
 // tab switches, resizes
 // ---------------------------------------------------------------------------
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { pause(); audio.suspend(); }
+  if (document.hidden) { if (!(G.debug.on && params.get("headless") === "1") && G.net.role === "off") pause(); audio.suspend(); }
   else { audio.resume(); loop.resetClock(); }
 });
-window.addEventListener("blur", () => { if (!G.debug.on) pause(); });
+window.addEventListener("blur", () => { if (!G.debug.on && G.net.role === "off") pause(); });
 let resizeT = 0;
 const onResize = () => {
   clearTimeout(resizeT);
@@ -491,6 +758,7 @@ if (window.ResizeObserver) new ResizeObserver(onResize).observe(root);
 // debug (?debug=1): N skip wave · B next boss · G god mode · K kill all · U upgrade · H heal · J +40 drones
 // ---------------------------------------------------------------------------
 function debugKey(e) {
+  if (G.net.role === "client") return;
   const P = G.player;
   switch (e.code) {
     case "KeyN": killAll(); waves.queue.length = 0; G.warnings.clear(); break;
@@ -505,6 +773,7 @@ function debugKey(e) {
     case "KeyU": { const ids = offerCards(); const id = pick(ids); applyCard(id); ui.toast("+" + CARD_BY_ID[id].name); break; }
     case "KeyH": if (P) { P.hp = P.maxHp; } break;
     case "KeyJ": for (let i = 0; i < 40; i++) waves.spawnGroup(pick(["drone", "swarm", "gunner", "ripper"]), 1); break;
+    case "KeyM": G.stars += 500; ui.toast("+500 stars"); break;
     default: return;
   }
   e.preventDefault();
@@ -518,21 +787,121 @@ if (G.debug.on && params.get("autoplay") === "1") {
   import("./debug-bot.js").then(({ bot }) => {
     bot.onRetry = startRun;
     bot.onPick = pickCard;
+    bot.onBuy = shopBuy;
+    bot.onShopGo = shopGo;
     autopilot = bot;
     window.__bot = bot;
     G.debug.god = params.get("god") === "1";
+    if (params.get("cohost") || params.get("cojoin")) { bot.autoRetry = false; return; }   // co-op tests start from the lobby
     startRun();
     if (params.get("god") === "1") G.debug.god = true;
   });
 }
-if (G.debug.on) {
-  window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input };
-  ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm", 5000);
+// debug co-op: ?debug=1&cohost=N opens a lobby and starts once N players are in; ?debug=1&cojoin=CODE joins it
+if (G.debug.on && params.get("cohost")) {
+  setTimeout(async () => {
+    try {
+      const code = await net.host("Host", G.settings.suit);
+      window.__coopCode = code;
+      if (G.desktop) window.chrome.webview.postMessage({ type: "status", msg: "code " + code });
+      ui.lobbyRoom(code, true);
+      ui.show("lobby");
+      const want = Math.max(2, parseInt(params.get("cohost"), 10) || 2);
+      const prev = net.on.lobby;
+      net.on.lobby = (m) => { if (prev) prev(m); if (m.length >= want && G.state === "menu") setTimeout(startHost, 600); };
+    } catch (e) { console.log("[coop] " + e.message); }
+  }, 600);
 }
+if (G.debug.on && params.get("cojoin")) {
+  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
+}
+if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
+if (G.debug.on && params.get("smoke") === "1") {
+  import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
+}
+if (G.debug.on) {
+  import("./armory.js").then((armory) => {
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop };
+  });
+  ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm · M stars", 5000);
+}
+
+// ---------------------------------------------------------------------------
+// desktop app + online
+// ---------------------------------------------------------------------------
+if (G.desktop) {
+  ui.setDesktop(true);
+  // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)
+  const report = (msg) => { try { window.chrome.webview.postMessage({ type: "log", msg: String(msg).slice(0, 2000) }); } catch (e) { /* ignore */ } };
+  window.addEventListener("error", (e) => report(e.message + " @ " + (e.filename || "").split("/").pop() + ":" + e.lineno));
+  window.addEventListener("unhandledrejection", (e) => report("promise: " + (e.reason && e.reason.message || e.reason)));
+  window.addEventListener("keydown", (e) => { if (e.code === "F11" || (e.altKey && e.code === "Enter")) { e.preventDefault(); window.chrome.webview.postMessage({ type: "fullscreen" }); } });
+  window.chrome.webview.addEventListener("message", (ev) => {
+    const m = ev.data || {};
+    if (m.type === "auth") online.refresh();
+    if (m.type === "pause") pause();
+  });
+}
+G.on("auth", () => { ui.renderAccount(); if (ui.screen === "board") ui.openBoard(ui.boardKindNow || "all"); });
+online.init();
+
+// ---------------------------------------------------------------------------
+// the studio intro ("Brought to you by EG"), then the menu
+// ---------------------------------------------------------------------------
+function playIntro() {
+  const intro = document.getElementById("intro");
+  if (!intro) return;
+  let seen = false;
+  try { seen = !G.desktop && sessionStorage.getItem("eg-intro") === "1"; } catch (e) { /* storage blocked */ }
+  if (seen || G.debug.on || G.settings.reducedMotion && !G.desktop) { intro.remove(); return; }
+  try { sessionStorage.setItem("eg-intro", "1"); } catch (e) { /* storage blocked */ }
+  intro.classList.add(G.desktop ? "long" : "short");
+  if (G.desktop) { audio.unlock(); setTimeout(() => audio.play("bossDown", undefined, undefined, 0.35), 350); }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    intro.classList.add("out");
+    setTimeout(() => intro.remove(), 600);
+    window.removeEventListener("keydown", skip, true);
+    intro.removeEventListener("pointerdown", skip);
+  };
+  const skip = (e) => { if (e && e.type === "keydown") e.stopPropagation(); finish(); };
+  window.addEventListener("keydown", skip, true);
+  intro.addEventListener("pointerdown", skip);
+  setTimeout(finish, G.desktop ? 3600 : 2300);
+}
+
+// ---------------------------------------------------------------------------
+// co-op: what a client does when the host says so
+// ---------------------------------------------------------------------------
+net.on.lobby = (members) => ui.renderLobby(members, net.role === "host");
+net.on.status = (text, kind) => ui.lobbyStatus(text, kind);
+initCoop({
+  startRun,
+  toMenu,
+  toast: (t, ms) => ui.toast(t, ms),
+  openUpgrade: (msg) => { G.wave = msg.w; G.lastBonus = msg.bonus || ""; openUpgrade(); },
+  closeBetween: (n) => {
+    if (G.state !== "playing") { ui.show(null); setState("playing"); }
+    G.wave = n;
+    waveIntro(n);
+  },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
+  gameOver: (sum) => { lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver"); },
+  showWin: (sum) => { ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
+  readyChanged: () => { if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn()); },
+  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(G.wave + 1); },
+});
+
+// damage-number digits are pre-rendered with the game font: redo them once it has loaded
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (sprites.P) sprites.buildDigits(sprites.P); });
 
 // go
 applySettings();
 toMenu();
+playIntro();
 ui.setMode(input.mode);
+if (G.desktop) window.chrome.webview.postMessage({ type: "ready" });
 if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches && !window.matchMedia("(any-pointer: fine)").matches) input.setMode("touch");
 document.documentElement.classList.add("eg-ready");

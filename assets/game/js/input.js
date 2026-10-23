@@ -16,11 +16,15 @@ export const input = {
   aimMode: "none",           // "mouse" (screen point) | "stick" (direction) | "none"
   aimX: 1, aimY: 0,          // direction for stick aiming
   fire: false,
-  mouse: { x: 0, y: 0, inside: false, down: false, seen: false },
+  charge: false,             // holding the charged-shot button (right-click, E, LT, or the touch button)
+  mouse: { x: 0, y: 0, inside: false, down: false, charge: false, seen: false },
   sticks: { move: makeStick(), aim: makeStick() },
   keys: new Set(),
   pad: { connected: false, index: -1, prevButtons: [], navCooldown: 0 },
-  queued: { boost: false },
+  queued: { boost: false, swap: false },
+  swapTo: undefined,         // a slot for the queued swap (1/2 keys), or undefined to flip
+  touchCharge: false,
+  onHotkey: null,            // (code) for in-game keys main.js handles (T: auto-aim)
   onModeChange: null,
   onPause: null,
   onMenuNav: null,            // (dir: "up"|"down"|"left"|"right") for gamepad menu navigation
@@ -39,17 +43,26 @@ export const input = {
     this.queued.boost = false;
     return b;
   },
+  consumeSwap() {
+    const b = this.queued.swap;
+    this.queued.swap = false;
+    return b;
+  },
 
   releaseAll() {
     this.keys.clear();
     this.mouse.down = false;
+    this.mouse.charge = false;
+    this.touchCharge = false;
     this.fire = false;
+    this.charge = false;
     this.queued.boost = false;
+    this.queued.swap = false;
     for (const s of [this.sticks.move, this.sticks.aim]) { s.active = false; s.id = -1; s.x = s.y = s.mag = 0; }
     this.move.x = this.move.y = 0;
   },
 
-  init({ root, layer, boostButton }) {
+  init({ root, layer, boostButton, chargeButton }) {
     const self = this;
     const updateRect = () => {
       const r = root.getBoundingClientRect();
@@ -61,7 +74,7 @@ export const input = {
     this.updateRect = updateRect;
 
     // ---------- keyboard ----------
-    const GAME_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "ShiftLeft", "ShiftRight"]);
+    const GAME_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "ShiftLeft", "ShiftRight", "KeyE", "KeyQ"]);
     window.addEventListener("keydown", (e) => {
       if (e.repeat && !GAME_KEYS.has(e.code)) return;
       const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA");
@@ -74,7 +87,10 @@ export const input = {
       if (GAME_KEYS.has(e.code)) {
         e.preventDefault();
         if (!e.repeat && (e.code === "Space" || e.code === "ShiftLeft" || e.code === "ShiftRight")) self.queued.boost = true;
+        if (!e.repeat && e.code === "KeyQ") { self.queued.swap = true; self.swapTo = undefined; }
       }
+      if (!e.repeat && (e.code === "Digit1" || e.code === "Digit2")) { self.queued.swap = true; self.swapTo = e.code === "Digit1" ? 0 : 1; }
+      if (!e.repeat && e.code === "KeyT" && self.onHotkey) self.onHotkey(e.code);
       self.keys.add(e.code);
     });
     window.addEventListener("keyup", (e) => { self.keys.delete(e.code); });
@@ -96,7 +112,8 @@ export const input = {
         self.mouse.seen = true;
         if (!self.enabled) return;
         if (e.button === 0) self.mouse.down = true;
-        if (e.button === 2) self.queued.boost = true;
+        if (e.button === 2) self.mouse.charge = true;
+        if (e.button === 1) { self.queued.swap = true; self.swapTo = undefined; }
         try { layer.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
         e.preventDefault();
         return;
@@ -146,6 +163,7 @@ export const input = {
     const end = (e) => {
       if (e.pointerType === "mouse") {
         if (e.button === 0 || e.type === "pointercancel") self.mouse.down = false;
+        if (e.button === 2 || e.type === "pointercancel") self.mouse.charge = false;
         return;
       }
       for (const s of [self.sticks.move, self.sticks.aim]) {
@@ -156,7 +174,21 @@ export const input = {
     layer.addEventListener("pointercancel", end);
     layer.addEventListener("lostpointercapture", end);
     layer.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") self.mouse.inside = false; });
-    window.addEventListener("pointerup", (e) => { if (e.pointerType === "mouse" && e.button === 0) self.mouse.down = false; });
+    window.addEventListener("pointerup", (e) => {
+      if (e.pointerType !== "mouse") return;
+      if (e.button === 0) self.mouse.down = false;
+      if (e.button === 2) self.mouse.charge = false;
+    });
+    // mouse wheel swaps guns (throttled so one flick is one swap)
+    let wheelAt = 0;
+    layer.addEventListener("wheel", (e) => {
+      if (!self.enabled) return;
+      e.preventDefault();
+      const t = performance.now();
+      if (Math.abs(e.deltaY) < 4 || t - wheelAt < 220) return;
+      wheelAt = t;
+      self.queued.swap = true; self.swapTo = undefined;
+    }, { passive: false });
 
     // ---------- boost button (touch) ----------
     if (boostButton) {
@@ -171,6 +203,21 @@ export const input = {
       boostButton.addEventListener("pointerup", up);
       boostButton.addEventListener("pointercancel", up);
       boostButton.addEventListener("pointerleave", up);
+    }
+    // ---------- charge button (touch): hold to charge, let go to fire ----------
+    if (chargeButton) {
+      chargeButton.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.pointerType !== "mouse") self.setMode("touch");
+        if (self.enabled) self.touchCharge = true;
+        chargeButton.classList.add("pressed");
+        try { chargeButton.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      });
+      const up = () => { self.touchCharge = false; chargeButton.classList.remove("pressed"); };
+      chargeButton.addEventListener("pointerup", up);
+      chargeButton.addEventListener("pointercancel", up);
+      chargeButton.addEventListener("lostpointercapture", up);
     }
 
     window.addEventListener("gamepadconnected", (e) => { self.pad.connected = true; self.pad.index = e.gamepad.index; });
@@ -190,12 +237,15 @@ export const input = {
     if (mx || my) { const l = Math.hypot(mx, my); mx /= l; my /= l; }
 
     let fire = false;
+    let charge = false;
     let aimMode = "none";
 
     if (this.mode === "kbm") {
       if (this.mouse.seen) aimMode = "mouse";
       fire = this.mouse.down;
+      charge = this.mouse.charge || k.has("KeyE");
     }
+    if (this.touchCharge) charge = true;
 
     const ms = this.sticks.move, as = this.sticks.aim;
     if (ms.active && ms.mag > 0) { mx = ms.x; my = ms.y; }
@@ -230,7 +280,9 @@ export const input = {
           const rm = Math.hypot(rx, ry);
           if (rm > 0.35) { aimMode = "stick"; this.aimX = rx / rm; this.aimY = ry / rm; fire = true; }
           if (btn(7)) { fire = true; if (aimMode === "none") aimMode = "hold"; }
-          if (pressed(0) || pressed(4) || pressed(5) || pressed(6) || pressed(10)) this.queued.boost = true;
+          if (btn(6)) charge = true;
+          if (pressed(0) || pressed(4) || pressed(5) || pressed(10)) this.queued.boost = true;
+          if (pressed(3)) { this.queued.swap = true; this.swapTo = undefined; }
           if (pressed(9) && this.onPause) this.onPause(null);
         } else {
           // Menu navigation
@@ -250,6 +302,7 @@ export const input = {
 
     this.move.x = mx; this.move.y = my;
     this.fire = this.enabled && fire;
+    this.charge = this.enabled && charge;
     this.aimMode = aimMode;
   },
 };

@@ -26,8 +26,17 @@ function groupSize(type, maxGroup) {
   return randInt(1, Math.min(maxGroup, HEAVY[type] || maxGroup));
 }
 
+// Co-op: more players, more robots (not much tougher ones).
+const crewBudget = () => 1 + 0.6 * (Math.max(1, G.net.n || 1) - 1);
+const crewAlive = () => 1 + 0.35 * (Math.max(1, G.net.n || 1) - 1);
+
+function nearestPlayerD2(x, y) {
+  let bd = 1e9;
+  for (let i = 0; i < G.players.length; i++) { const P = G.players[i]; if (P.gone) continue; bd = Math.min(bd, (x - P.x) ** 2 + (y - P.y) ** 2); }
+  return bd;
+}
+
 function edgePoint() {
-  const P = G.player;
   const min2 = W.minSpawnDist * W.minSpawnDist;
   let best = null, bestD = -1;
   for (let tries = 0; tries < 18; tries++) {
@@ -38,7 +47,7 @@ function edgePoint() {
     else if (side === 1) { x = A.w - inset; y = rand(inset, A.h - inset); }
     else if (side === 2) { x = rand(inset, A.w - inset); y = A.h - inset; }
     else { x = inset; y = rand(inset, A.h - inset); }
-    const d2 = P ? (x - P.x) ** 2 + (y - P.y) ** 2 : 1e9;
+    const d2 = nearestPlayerD2(x, y);
     if (d2 > bestD) { bestD = d2; best = [x, y]; }
     if (d2 < min2) continue;
     // prefer spawning just off-screen (the arrow + marker still warn you)
@@ -61,17 +70,32 @@ export const waves = {
 
   isBossWave(n) { return n % W.bossEvery === 0; },
 
+  /** Which rung (0..6) a wave belongs to, and how many full laps of the ladder came before it. */
+  rungOf(n) { return Math.floor(((n - 1) % 35) / W.bossEvery); },
+  lapOf(n) { return Math.floor((n - 1) / 35); },
+  markOf(n) {
+    const M = BALANCE.marks;
+    let m = 0;
+    for (const at of M.at) if (n >= at) m++;
+    const last = M.at[M.at.length - 1];
+    if (n >= last) m += Math.floor((n - last) / M.every);
+    return m;
+  },
+
   start(n) {
     G.wave = n;
     G.waveHits = 0;
+    G.lap = this.lapOf(n);
+    const mark = this.markOf(n);
+    this.newMark = mark > G.mark && n > 1;
+    G.mark = mark;
     this.queue.length = 0;
     this.active = true;
     this.done = false;
     this.boss = this.isBossWave(n);
     this.gapT = 1.0;
     if (this.boss) {
-      const order = BALANCE.bosses.order;
-      this.bossType = order[(n / W.bossEvery - 1) % order.length];
+      this.bossType = BALANCE.bosses.order[this.rungOf(n)];
       this.bossT = 1.6;
       this.maxAlive = 40;
       return;
@@ -80,16 +104,16 @@ export const waves = {
     if (n <= W.intro.length) {
       const cfg = W.intro[n - 1];
       mix = cfg.mix;
-      budget = cfg.budget;
+      budget = cfg.budget * crewBudget();
       maxGroup = cfg.group[1];
-      this.maxAlive = cfg.maxAlive;
+      this.maxAlive = Math.round(cfg.maxAlive * crewAlive());
       this.gap = cfg.gap;
     } else {
       mix = {};
       for (const t in W.unlock) if (W.unlock[t] <= n) mix[t] = W.weight[t];
-      budget = W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve);
+      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve)) * crewBudget();
       maxGroup = Math.min(W.group.cap, W.group.max + Math.floor(n / W.group.perWaves));
-      this.maxAlive = Math.min(W.maxAlive.cap, Math.round(W.maxAlive.base + n * W.maxAlive.perWave));
+      this.maxAlive = Math.min(Math.round(W.maxAlive.cap * crewAlive()), Math.round((W.maxAlive.base + n * W.maxAlive.perWave) * crewAlive()));
       const g = W.gap;
       this.gap = [Math.max(g.floorMin, g.min - n * g.perWave), Math.max(g.floorMax, g.max - n * g.perWave)];
     }

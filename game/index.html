@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Game · Envious Gluttony™</title>
-<meta name="description" content="Envious Glider: Sinners vs. Machines. Hold the line against waves of robots on the Envious Gluttony planet. Free in your browser on phone and PC.">
+<meta name="description" content="Envious Glider: Sinners vs. Machines. Climb the Sin Ladder from Sloth to Envy against waves of robots. Free in your browser on phone and PC, with a daily challenge and leaderboard.">
 <link rel="canonical" href="https://enviousgluttony.com/game/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://enviousgluttony.com/game/">
 <meta property="og:site_name" content="Envious Gluttony™">
 <meta property="og:title" content="Envious Glider: Sinners vs. Machines">
-<meta property="og:description" content="Robots are invading the planet. Boost, blast and sin your way through the waves. How far can you get?">
+<meta property="og:description" content="Seven sins. One climb. Blast your way up the Sin Ladder from Sloth to Envy, then see how far endless goes.">
 <meta property="og:image" content="https://enviousgluttony.com/assets/home/og-home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -25,10 +25,18 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=5">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=1">
+<link rel="stylesheet" href="../assets/game/game.css?v=4">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
+  <div class="intro" id="intro" aria-label="Envious Gluttony presents">
+    <div class="intro-inner">
+      <p class="intro-by">Brought to you by</p>
+      <img class="intro-logo" src="/assets/home/eg-logo.webp" alt="Envious Gluttony" width="560" height="460">
+      <p class="intro-studio"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
+    </div>
+    <p class="intro-skip">Click or press any key to skip</p>
+  </div>
   <canvas class="game-canvas" id="game-canvas" aria-label="Envious Glider play area" role="img"></canvas>
   <div class="touch-layer" id="touch-layer"></div>
 
@@ -43,12 +51,19 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
     <span>Boost</span>
   </button>
+  <button class="charge-btn" id="charge-btn" type="button" aria-label="Charged shot: hold, then let go" tabindex="-1">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M4.2 19.8 7 17M17 7l2.8-2.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Charge</span>
+  </button>
 
   <!-- HUD -->
   <div class="hud" id="hud" hidden>
     <div class="hud-left">
       <div class="hearts" id="hearts" role="img" aria-label="Health"></div>
-      <div class="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-dim" id="hud-left"></span></div>
+      <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
+      <div class="daily-chip" id="daily-chip" hidden>Daily</div>
+      <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
+      <div class="team" id="team" hidden aria-label="Teammates"></div>
       <div class="envy-chips" id="envy-chips"></div>
     </div>
     <div class="boss-bar" id="boss-bar" hidden>
@@ -76,6 +91,7 @@
     <header class="menu-top">
       <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
       <div class="menu-tools">
+        <button class="account-chip" id="account-chip" type="button" hidden></button>
         <button class="icon-btn" id="menu-fullscreen" type="button" aria-label="Fullscreen" hidden><i data-icon="maximize"></i></button>
         <button class="icon-btn" id="menu-mute" type="button" aria-label="Mute sound"><i data-icon="volume-2"></i></button>
       </div>
@@ -85,9 +101,16 @@
       <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
       <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
       <div class="menu-actions">
-        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Play</button>
-        <button class="btn btn-ghost" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
-        <button class="btn btn-ghost" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
+        <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
+        <button class="btn btn-ghost btn-coop" id="coop-btn" type="button"><i data-icon="users"></i>Co-op <small>2–4</small></button>
+      </div>
+      <div class="menu-actions menu-actions-2">
+        <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
+        <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
+        <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
+        <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
+        <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
       <dl class="bests" id="bests"></dl>
@@ -96,7 +119,12 @@
         <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
       </div>
     </div>
-    <footer class="menu-foot"><span>Same planet.</span> <span>Different breed.</span></footer>
+    <aside class="ladder-panel" aria-labelledby="ladder-title">
+      <p class="kicker"><span>The Sin Ladder</span></p>
+      <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
+      <ol class="mini-ladder" id="mini-ladder"></ol>
+    </aside>
+    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v3.0 · Armory + Co-op</span><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
   <!-- pause -->
@@ -110,6 +138,7 @@
         <button class="btn btn-ghost" id="pause-settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
         <button class="btn btn-ghost" id="pause-fullscreen" type="button" hidden><i data-icon="maximize"></i>Fullscreen</button>
         <button class="btn btn-ghost" id="quit-btn" type="button"><i data-icon="door-open"></i>Quit to menu</button>
+        <button class="btn btn-ghost" id="pause-exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <div class="build" id="pause-build"></div>
     </div>
@@ -124,10 +153,40 @@
       <div class="cards" id="cards" role="list"></div>
       <div class="up-econ">
         <button class="btn btn-ghost btn-sm" id="reroll-btn" type="button"><i data-icon="refresh-cw"></i><span id="reroll-label">Reroll</span></button>
-        <button class="btn btn-ghost btn-sm" id="patch-btn" type="button"><i data-icon="heart"></i><span id="patch-label">Patch up</span></button>
         <span class="up-stars" id="up-stars"></span>
       </div>
       <p class="up-hint" id="up-hint"></p>
+    </div>
+  </section>
+
+  <!-- shop (between waves, after the card pick) -->
+  <section class="screen screen-shop" id="screen-shop" hidden aria-labelledby="shop-title">
+    <div class="shop-wrap">
+      <header class="shop-head">
+        <div class="shop-heading">
+          <p class="kicker" id="shop-kicker">Between waves</p>
+          <h2 class="shop-title" id="shop-title">The Armory</h2>
+          <p class="up-bonus" id="shop-next"></p>
+        </div>
+        <div class="shop-wallet" title="Stars to spend"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.1 6.6.6-5 4.4 1.5 6.5L12 16.7 6.3 20.1l1.5-6.5-5-4.4 6.6-.6Z"/></svg><span id="shop-stars">0</span></div>
+      </header>
+      <div class="shop-body">
+        <div class="shop-offers" id="shop-offers" role="list" aria-label="For sale"></div>
+        <aside class="shop-side" aria-label="Your loadout">
+          <h3 class="shop-h">Guns <small id="shop-swap-hint"></small></h3>
+          <div class="shop-guns" id="shop-guns"></div>
+          <h3 class="shop-h">Gear</h3>
+          <div class="shop-gear" id="shop-gear"></div>
+          <h3 class="shop-h">Stats</h3>
+          <dl class="shop-stats" id="shop-stats"></dl>
+        </aside>
+      </div>
+      <div class="shop-actions">
+        <button class="btn btn-ghost btn-sm" id="shop-reroll" type="button"><i data-icon="refresh-cw"></i><span id="shop-reroll-label">Reroll</span></button>
+        <button class="btn btn-ghost btn-sm" id="shop-patch" type="button"><i data-icon="heart"></i><span id="shop-patch-label">Patch up</span></button>
+        <button class="btn btn-primary btn-xl" id="shop-go" type="button"><i data-icon="zap"></i><span id="shop-go-label">Next wave</span></button>
+      </div>
+      <p class="up-hint" id="shop-hint"></p>
     </div>
   </section>
 
@@ -139,6 +198,7 @@
       <div class="over-best" id="over-best" hidden></div>
       <dl class="over-stats" id="over-stats"></dl>
       <div class="build" id="over-build"></div>
+      <div class="over-online" id="over-online" hidden></div>
       <div class="over-actions">
         <button class="btn btn-primary btn-xl" id="retry-btn" type="button"><i data-icon="refresh-cw"></i>One more run</button>
         <button class="btn btn-ghost" id="over-menu-btn" type="button"><i data-icon="house"></i>Menu</button>
@@ -147,24 +207,151 @@
     </div>
   </section>
 
+  <!-- leaderboard -->
+  <section class="screen screen-board" id="screen-board" hidden aria-labelledby="board-title">
+    <div class="panel panel-wide glow-card board">
+      <h2 class="panel-title" id="board-title">Leaderboard</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab" id="tab-all" type="button" role="tab" aria-selected="true">All-time</button>
+        <button class="tab" id="tab-daily" type="button" role="tab" aria-selected="false">Today's Daily</button>
+      </div>
+      <div class="board-status" id="board-status"></div>
+      <ol class="board-list" id="board-list"></ol>
+      <div class="board-foot">
+        <button class="btn btn-primary btn-sm" id="board-signin" type="button" hidden><i data-icon="discord"></i>Sign in with Discord</button>
+        <span class="set-note" id="board-who"></span>
+        <button class="btn btn-ghost" id="board-done" type="button">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- victory -->
+  <section class="screen screen-win" id="screen-win" hidden aria-labelledby="win-title">
+    <div class="panel panel-wide glow-card win">
+      <p class="kicker">The Sin Ladder · cleared</p>
+      <h2 class="win-title" id="win-title">Envy can't be earned. You took it.</h2>
+      <ol class="mini-ladder mini-ladder-win" id="win-ladder"></ol>
+      <dl class="over-stats" id="win-stats"></dl>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="win-endless" type="button"><i data-icon="infinity"></i>Keep climbing (endless)</button>
+        <button class="btn btn-ghost" id="win-finish" type="button"><i data-icon="flag"></i>Finish the run</button>
+      </div>
+      <p class="set-note" id="win-note">Endless laps the ladder again: robots evolve and every sin comes back harder.</p>
+    </div>
+  </section>
+
   <!-- settings -->
   <section class="screen screen-settings" id="screen-settings" hidden aria-labelledby="settings-title">
-    <form class="panel glow-card settings" id="settings-form" onsubmit="return false">
+    <form class="panel panel-wide glow-card settings" id="settings-form" onsubmit="return false">
       <h2 class="panel-title" id="settings-title">Settings</h2>
-      <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
-      <label class="set-row"><span>Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-muted"><span>Mute everything</span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-shake"><span>Screen shake</span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-autoaim"><span>Auto-aim <small>(touch &amp; gamepad: aims and fires at the nearest robot while you're not aiming)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
-      <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
-      <label class="set-row"><span>Quality</span>
-        <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select>
-      </label>
+      <div class="tabs" role="tablist" aria-label="Settings sections">
+        <button class="tab" id="stab-audio" data-tab="audio" type="button" role="tab" aria-selected="true">Audio</button>
+        <button class="tab" id="stab-graphics" data-tab="graphics" type="button" role="tab" aria-selected="false">Graphics</button>
+        <button class="tab" id="stab-gameplay" data-tab="gameplay" type="button" role="tab" aria-selected="false">Gameplay</button>
+      </div>
+      <div class="set-page" data-page="audio" role="tabpanel" aria-labelledby="stab-audio">
+        <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
+        <label class="set-row"><span>Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-muted"><span>Mute everything</span></label>
+      </div>
+      <div class="set-page" data-page="graphics" role="tabpanel" aria-labelledby="stab-graphics" hidden>
+        <label class="set-row"><span>Preset <small>Auto steps down by itself if frames get slow</small></span>
+          <select id="set-quality"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="potato">Potato (fastest)</option><option value="custom">Custom</option></select>
+        </label>
+        <label class="set-row"><span>Render resolution <small>Lower is faster, a little softer</small></span>
+          <select id="set-res"><option value="1">100%</option><option value="0.85">85%</option><option value="0.7">70%</option><option value="0.5">50%</option></select>
+        </label>
+        <label class="set-row"><span>Frame rate cap <small>Saves battery and heat on laptops</small></span>
+          <select id="set-fpscap"><option value="0">Match screen</option><option value="144">144</option><option value="120">120</option><option value="60">60</option><option value="30">30</option></select>
+        </label>
+        <label class="set-row"><span>Particles</span>
+          <select id="set-particles"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="minimal">Minimal</option></select>
+        </label>
+        <label class="set-row"><span>Background</span>
+          <select id="set-background"><option value="full">Full (stars, nebula, parallax)</option><option value="simple">Simple</option><option value="off">Off (flat)</option></select>
+        </label>
+        <label class="set-row"><span>Damage numbers</span>
+          <select id="set-dmgnum"><option value="all">All</option><option value="crits">Crits only</option><option value="off">Off</option></select>
+        </label>
+        <label class="set-row set-check"><input type="checkbox" id="set-glow"><span>Glow effects <small>(boss auras, big lights)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-trails"><span>Trails <small>(boost afterimages, jetpack puffs)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-grid"><span>Floor grid</span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-flashes"><span>Screen flashes</span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-contrast"><span>Bold robot shots <small>(a dark rim makes enemy fire easier to see)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
+      </div>
+      <div class="set-page" data-page="gameplay" role="tabpanel" aria-labelledby="stab-gameplay" hidden>
+        <label class="set-row"><span>Auto-aim <small>Works on mouse too: full auto fires at the nearest robot; hold left-click to aim yourself. <kbd>T</kbd> toggles in a run</small></span>
+          <select id="set-autoaim"><option value="off">Off</option><option value="assist">Aim assist</option><option value="auto">Full auto</option></select>
+        </label>
+        <label class="set-row"><span>Screen shake</span><input type="range" id="set-shake" min="0" max="100" step="10"></label>
+        <label class="set-row"><span>Impact freeze <small>The split-second pause on big hits. Light or Off keeps huge fights flowing</small></span>
+          <select id="set-hitstop"><option value="full">Full</option><option value="light">Light</option><option value="off">Off</option></select>
+        </label>
+        <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-lookahead"><span>Camera looks ahead <small>(leans toward where you aim)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-arrows"><span>Off-screen markers <small>(arrows at the edge for robots you can't see)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
+        <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
+      </div>
       <p class="set-note" id="set-note"></p>
       <button class="btn btn-primary" id="settings-done" type="button">Done</button>
     </form>
+  </section>
+
+  <!-- co-op lobby -->
+  <section class="screen screen-lobby" id="screen-lobby" hidden aria-labelledby="lobby-title">
+    <div class="panel panel-wide glow-card lobby">
+      <p class="kicker"><span>Co-op</span><i>&#10022;</i><span>2&ndash;4 players</span></p>
+      <h2 class="panel-title" id="lobby-title">Climb together</h2>
+      <div class="lobby-start" id="lobby-start">
+        <label class="set-row"><span>Your name</span><input id="lobby-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false"></label>
+        <div class="lobby-choices">
+          <div class="lobby-choice">
+            <h3>Host</h3>
+            <p class="set-note">Make a lobby and share its code. Your game runs the robots, so the player with the best connection should host.</p>
+            <button class="btn btn-primary" id="lobby-host" type="button"><i data-icon="users"></i>Create a lobby</button>
+          </div>
+          <div class="lobby-choice">
+            <h3>Join</h3>
+            <p class="set-note">Type the 5-letter code your host sent you.</p>
+            <div class="lobby-join"><input id="lobby-code-in" type="text" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Lobby code"><button class="btn btn-ghost" id="lobby-join" type="button"><i data-icon="log-in"></i>Join</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="lobby-room" id="lobby-room" hidden>
+        <div class="lobby-codebox">
+          <span class="lobby-code-label">Lobby code</span>
+          <span class="lobby-code" id="lobby-code-show">-----</span>
+          <button class="icon-btn" id="lobby-copy" type="button" aria-label="Copy the code"><i data-icon="copy"></i></button>
+        </div>
+        <ol class="lobby-list" id="lobby-list"></ol>
+        <button class="btn btn-primary btn-xl" id="lobby-go" type="button" disabled><i data-icon="zap"></i>Waiting for players</button>
+        <p class="set-note" id="lobby-wait" hidden>You're in. The host starts the run.</p>
+      </div>
+      <p class="lobby-status" id="lobby-status" role="status"></p>
+      <p class="set-note">Everyone plays on their own screen (browser or the Windows game) and connects directly to the host. Everyone picks their own cards and shops on their own, then readies up. Standing next to a downed teammate revives them.</p>
+      <button class="btn btn-ghost" id="lobby-leave" type="button">Back</button>
+    </div>
+  </section>
+
+  <!-- what's new -->
+  <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
+    <div class="panel panel-wide glow-card news">
+      <p class="kicker"><span>Update 3</span><i>&#10022;</i><span>Armory + Co-op</span></p>
+      <h2 class="panel-title" id="news-title">What's new</h2>
+      <ul class="news-list">
+        <li><b>Co-op, 2&ndash;4 players.</b> Host a lobby, send the code, climb the Sin Ladder together (browser or the Windows game). Waves and bosses scale up, everyone builds their own loadout, and you can revive each other.</li>
+        <li><b>The Armory.</b> A shop after every wave: seven guns (Scattergun, Pulse SMG, Rail Lance, Nova Launcher, Arc Caster, Heartseeker), 19 pieces of gear from Common to Legendary. Lock what you like, reroll the rest, buy a gun again to tier it up to IV.</li>
+        <li><b>Two gun slots.</b> Swap with <kbd>Q</kbd>, the mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>, <kbd>Y</kbd> on a gamepad, or tap your gun on a phone.</li>
+        <li><b>Charged shots.</b> Hold right-click (or <kbd>E</kbd>, <kbd>LT</kbd>, the Charge button) and let go. Every gun charges differently: a plasma orb, a pellet wall, a screen-wide rail beam, a cluster bomb, a storm orb, a heart swarm. New cards: Overcharge and Capacitor.</li>
+        <li><b>Lust, reworked.</b> Shoot its kisses down. Its heart is exposed while it lures you, and boosting out of the lure stuns it. Heartbroken, it brings fakes: find the one with the beating heart.</li>
+        <li><b>Auto-aim on mouse and keyboard</b>, plus a lighter Aim assist. <kbd>T</kbd> toggles it mid-run.</li>
+        <li><b>Graphics settings.</b> Presets down to Potato, render resolution, frame-rate cap, particles, background, glow, trails, damage numbers, flashes, bold robot shots.</li>
+        <li><b>Feel.</b> Hit markers, gun-specific sounds and recoil, a charge hum, a low-health heartbeat, clearer menus.</li>
+      </ul>
+      <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
+    </div>
   </section>
 
   <!-- how to play -->
@@ -174,10 +361,15 @@
       <div class="how-grid">
         <div class="how-controls" id="how-controls"></div>
         <ul class="how-tips">
+          <li>Climb the <b>Sin Ladder</b>: a sin boss every 5 waves, from <b>@Sloth</b> to <b>@Envy</b> on wave 35. Beat Envy to win, then keep climbing in endless.</li>
           <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
+          <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Volatile (bursts when it dies), <em>green +</em> Regenerating.</li>
           <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser.</li>
-          <li>Grab <b>stars</b>. Between waves, spend them to reroll cards or patch up.</li>
+          <li>Grab <b>stars</b>. After every wave you pick a card, then hit <b>the Armory</b>: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
+          <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
+          <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
           <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
+          <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
         </ul>
       </div>
@@ -198,25 +390,37 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=1",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=1",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=1",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=1",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=1",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=1",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=1",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=1",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=1",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=1",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=1",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=1",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=1",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=1",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=1",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=1",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=1",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=1",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=1"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=4",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=4",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=4",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=4",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=4",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=4",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=4",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=4",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=4",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=4",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=4",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=4",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=4",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=4",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=4",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=4",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=4",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=4",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=4",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=4",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=4",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=4",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=4",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=4",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=4",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=4",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=4",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=4",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=4",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=4",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=4"
   }
 }
 </script>
@@ -225,6 +429,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=8" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=1"></script>
+<script type="module" src="../assets/game/js/main.js?v=4"></script>
 </body>
 </html>

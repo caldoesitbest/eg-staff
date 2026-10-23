@@ -56,35 +56,60 @@ export const CARDS = [
     levels: ["Shots curve toward robots", "Stronger homing"] },
   { id: "rear", name: "Rear Guard", kind: "gear", max: U.rear.max, icon: "arrow-left", color: C.cyan,
     levels: ["Also fire one shot backwards"] },
+  { id: "overcharge", name: "Overcharge", kind: "gear", max: U.overcharge.max, icon: "sparkle", color: C.amber,
+    tag: "Charged shots (right-click)",
+    levels: ["Charged shots +50% damage, charge 20% faster", "+100% damage, 35% faster", "+150% damage, 50% faster. Full charges burst twice as wide"] },
+  { id: "capacitor", name: "Capacitor", kind: "gear", max: U.capacitor.max, icon: "hourglass", color: C.amber,
+    tag: "Charged shots (right-click)",
+    levels: ["Keep firing your gun while you charge", "Perfect boosts fully charge your next shot"] },
 ];
 export const CARD_BY_ID = Object.fromEntries(CARDS.map((c) => [c.id, c]));
 
 const lvl = (id) => G.up[id] || 0;
 const at = (arr, id) => (lvl(id) ? arr[lvl(id) - 1] : 0);
 
+const I = BALANCE.items;
+const it = (id) => (G.items && G.items[id]) || 0;
+
 export function computeStats() {
-  const B = BALANCE.player, D = BALANCE.drops;
+  const B = BALANCE.player, D = BALANCE.drops, T = BALANCE.gunTiers, CH = BALANCE.charge;
   const s = G.stats || {};
-  s.damage = B.gun.damage * (1 + at(U.wrath.damage, "wrath"));
-  s.rate = B.gun.rate * (1 + at(U.wrath.rate, "wrath"));
-  s.projectiles = 1 + lvl("multishot");
-  s.fan = B.gun.fan;
-  s.pierce = lvl("pierce");
-  s.bulletSpeed = B.gun.speed * (1 + U.velocity.speed * lvl("velocity"));
-  s.bulletLife = B.gun.life * (1 + U.velocity.range * lvl("velocity"));
+  const slot = (G.guns && (G.guns[G.gunSlot] || G.guns[0])) || { id: "blaster", tier: 1 };
+  const gun = BALANCE.guns[slot.id] || BALANCE.guns.blaster;
+  const tier = Math.max(0, Math.min(3, slot.tier - 1));
+  s.gunId = slot.id;
+  s.gunTier = tier + 1;
+  s.gun = gun;
+  const dmgBonus = 1 + at(U.wrath.damage, "wrath") + it("hollow") * I.hollow.dmg + it("glass") * I.glass.dmg;
+  s.baseDamage = B.gun.damage * dmgBonus;           // without the gun's own multiplier (drones, thorns, mines)
+  s.damage = s.baseDamage * gun.dmg * T.dmg[tier];
+  s.rate = B.gun.rate * gun.rate * T.rate[tier] * (1 + at(U.wrath.rate, "wrath") + it("battery") * I.battery.rate);
+  s.projectiles = gun.pellets + lvl("multishot");
+  s.fan = gun.fan;
+  s.spread = gun.spread;
+  s.knock = B.gun.knock * gun.knock;
+  s.pierce = lvl("pierce") + (gun.pierce || 0);
+  s.bulletSpeed = B.gun.speed * gun.speed * (1 + U.velocity.speed * lvl("velocity"));
+  s.bulletLife = B.gun.life * gun.life * (1 + U.velocity.range * lvl("velocity") + it("scope") * I.scope.range);
   s.bounces = lvl("ricochet");
-  s.homing = lvl("homing") ? U.homing.turn[lvl("homing") - 1] : 0;
+  s.cardHoming = lvl("homing") ? U.homing.turn[lvl("homing") - 1] : 0;
+  s.homing = s.cardHoming + (gun.homing || 0);
+  s.explode = gun.explode || 0;
+  s.splash = gun.splash || 0;
+  s.chain = gun.chain || 0;
+  s.chainRange = gun.chainRange || 0;
+  s.chainDmg = gun.chainDmg || 0;
   s.rear = lvl("rear") > 0;
-  s.crit = at(U.pride.crit, "pride");
+  s.crit = at(U.pride.crit, "pride") + it("scope") * I.scope.crit;
   s.critMul = lvl("pride") ? U.pride.critMul[lvl("pride") - 1] : 2;
   s.streakPer = at(U.pride.streak, "pride");
   s.streakCap = at(U.pride.streakCap, "pride");
   s.critPierce = lvl("pride") >= 4;
   s.moveSpeed = B.speed * (1 + U.thrusters.speed * lvl("thrusters"));
   s.boostSpeed = B.boost.speed * (1 + U.boost.distance * Math.min(2, lvl("boost")));
-  s.boostCd = B.boost.cooldown * (1 - U.boost.cooldown * Math.min(2, lvl("boost")));
+  s.boostCd = B.boost.cooldown * (1 - U.boost.cooldown * Math.min(2, lvl("boost"))) * (1 - it("fuel") * I.fuel.boostCd);
   s.boostRam = lvl("boost") >= 3 ? U.boost.ramDmg : 0;
-  s.magnet = D.magnet * (1 + at(U.greed.magnet, "greed"));
+  s.magnet = D.magnet * (1 + at(U.greed.magnet, "greed") + it("magnet") * I.magnet.magnet);
   s.starMul = 1 + at(U.greed.drops, "greed");
   s.starValue = lvl("greed") ? U.greed.value[lvl("greed") - 1] : 1;
   s.interest = at(U.greed.interest, "greed");
@@ -103,9 +128,35 @@ export function computeStats() {
   s.lustTime = at(U.lust.time, "lust");
   s.lustBurst = at(U.lust.burst, "lust");
   s.orbitals = lvl("orbit");
-  s.maxHp = B.hp + U.suit.hp * lvl("suit");
+  s.maxHp = Math.max(2, B.hp + U.suit.hp * lvl("suit") + it("nanoweave") * I.nanoweave.hp + it("glass") * I.glass.hp);
+  // charged shot
+  s.chargeTime = CH.time / (1 + at(U.overcharge.speed, "overcharge")) * (1 - it("coolant") * I.coolant.chargeTime);
+  s.chargeMul = (1 + at(U.overcharge.dmg, "overcharge")) * (1 + it("capbank") * I.capbank.chargeDmg);
+  s.chargeWide = lvl("overcharge") >= 3;
+  s.chargeFire = lvl("capacitor") >= 1;
+  s.perfectCharge = lvl("capacitor") >= 2;
+  s.chargeTwice = it("overdrive") > 0;
+  // gear
+  s.thorns = it("thorns");
+  s.mines = it("mines");
+  s.turrets = it("turret");
+  s.fang = it("fang") ? I.fang.every[it("fang") - 1] : 0;
+  s.bubble = it("bubble") > 0;
+  s.cards = it("clover") ? 4 : 3;
   G.stats = s;
   return s;
+}
+
+/** Rough damage per second your build can put on one big target (used to size boss fights). */
+export function estimateDps() {
+  const s = G.stats;
+  const hit = s.damage * (1 + s.crit * (s.critMul - 1));
+  let dps = hit * s.rate * Math.min(s.projectiles, 3.5) * 0.8;     // not every shot of a wide fan lands
+  if (s.wrathBoom) dps *= 1.15;
+  if (s.explode) dps *= 1 + s.splash * 0.3;
+  dps += s.turrets * BALANCE.items.turret.rate * BALANCE.items.turret.dmg * s.baseDamage;
+  dps += s.orbitals * BALANCE.upgrades.orbit.dmg * 2;
+  return dps;
 }
 
 export function resetUpgrades() {
@@ -131,7 +182,7 @@ export function applyCard(id) {
 }
 
 /** Three distinct cards. Paths you already started are a bit more likely, so builds come together. */
-export function offerCards(n = 3) {
+export function offerCards(n = (G.stats && G.stats.cards) || 3) {
   const avail = CARDS.filter((c) => lvl(c.id) < c.max);
   const picks = [];
   const weight = (c) => {
@@ -229,8 +280,9 @@ export function onKill(e) {
 
 export function onHit(e) {
   const s = G.stats;
-  if (s.lustChance && !e.boss && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
+  if (s.lustChance && !e.boss && e.type !== "gem" && e.type !== "decoy" && e.ally <= 0 && !e.dead && chance(s.lustChance)) {
     e.ally = s.lustTime;
+    e.allyBy = G.player;
     e.allyMax = s.lustTime;
     e.state = 0; e.t = 0;
     fx.text(e.x, e.y - e.r - 8, "♥", C.magenta, 20, 0.8);
@@ -241,12 +293,12 @@ export function onHit(e) {
 
 export function onWaveEnd() {
   const s = G.stats;
-  if (s.interest > 0 && G.stars > 0) {
-    const gain = Math.min(U.greed.interestCap, Math.floor(G.stars * s.interest));
-    if (gain > 0) {
-      G.stars += gain;
-      G.emit("interest", gain);
-    }
+  let gain = 0;
+  if (s.interest > 0 && G.stars > 0) gain += Math.min(U.greed.interestCap, Math.floor(G.stars * s.interest));
+  if (it("piggy") && G.stars > 0) gain += Math.min(I.piggy.cap, Math.floor(G.stars * I.piggy.interest));
+  if (gain > 0) {
+    G.stars += gain;
+    G.emit("interest", gain);
   }
 }
 
