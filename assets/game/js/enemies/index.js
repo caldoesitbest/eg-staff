@@ -71,7 +71,8 @@ export function spawnEnemy(type, x, y, opts) {
   const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
   // Boss health is fixed by the boss, the chapter, the endless lap and the team size. It never looks
   // at your build: a strong build is supposed to shorten the fight.
-  e.maxHp = e.hp = def.hp * hpMul * crewMul * (elite ? E.hp : 1);
+  const rushMul = (boss || type === "gem") && G.mode === "rush" ? BALANCE.rush.bossHp : 1;      // Boss Rush: you have fewer cards
+  e.maxHp = e.hp = def.hp * hpMul * crewMul * rushMul * (elite ? E.hp : 1);
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
   e.contact = def.contact === undefined ? 1 : def.contact;

@@ -78,6 +78,9 @@ export const G = {
   personal: false,           // co-op host: effects for your own screen only (not sent to teammates)
   netLeft: 0,                // co-op client: robots left this wave (from the host)
   difficulty: "normal",      // this run's difficulty (balance.difficulty)
+  dcur: null,                // the difficulty in force: the preset with any Boss Rush modifiers multiplied in (setDifficulty)
+  mode: "ladder",            // "ladder" (the Sin Ladder, then endless) | "rush" (Boss Rush)
+  rush: null,                // Boss Rush progress: { i, mods, t0, fightT0, splits, hits, picks } (main.js)
   curEnemy: null, hurtSrc: "",   // what's hurting you right now (for the hit arc and "what got you")
   runStats: null,            // { dmg, big, byGun, spent } for the summary screen
   stats: null,               // computed from upgrades (upgrades.js)
@@ -145,5 +148,22 @@ export function syncCtx() {
 export const coop = () => G.net.role !== "off";
 export const isMe = (P) => P === G.me;
 
-/** This run's difficulty settings (balance.difficulty): Normal unless the run says otherwise. */
-export const diff = () => BALANCE.difficulty[G.difficulty] || BALANCE.difficulty.normal;
+/** This run's difficulty settings (balance.difficulty, with Boss Rush modifiers): Normal unless the run says otherwise. */
+export const diff = () => G.dcur || BALANCE.difficulty[G.difficulty] || BALANCE.difficulty.normal;
+
+/** Sets this run's difficulty: the preset, times every Boss Rush modifier that's on. */
+export function setDifficulty(name, mods) {
+  G.difficulty = BALANCE.difficulty[name] ? name : "normal";
+  const d = { ...BALANCE.difficulty[G.difficulty], minions: 1 };
+  const M = BALANCE.rush.mods;
+  let bonus = 0;
+  for (const id of mods || []) {
+    const m = M[id];
+    if (!m) continue;
+    for (const k of ["heal", "shot", "boss", "elite", "minions"]) if (m[k] !== undefined) d[k] *= m[k];
+    bonus += m.score;
+  }
+  d.score *= 1 + bonus;
+  G.dcur = d;
+  return d;
+}

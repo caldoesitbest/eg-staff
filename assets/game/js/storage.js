@@ -2,6 +2,8 @@
    runs (without saving) when storage is blocked, full or in a private window. */
 
 const KEY = "eg-glider-v1";
+// Save format version. 1: up to 4.1. 2 (4.2): Boss Rush records, achievements, cosmetics, lifetime stats.
+const SAVE_VER = 2;
 
 function prefersReducedMotion() {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
@@ -72,7 +74,21 @@ function defaults() {
     },
     seenHowTo: false,
     rotateHintDismissed: false,
+    ver: SAVE_VER,
+    // Boss Rush: clears, and per difficulty your best run ({ time, score, hits, mods, splits }) and best split per boss
+    rush: { clears: 0, best: {}, splits: {}, mods: [] },
   };
+}
+
+/** Brings an older save up to this version (only ever adds things: nothing you earned is lost). */
+function migrate(d, saved) {
+  const from = saved.ver || 1;
+  if (from < 2) {
+    // 4.2: Boss Rush opens for anyone who already beat Envy; nothing else to convert
+    d.rush = { clears: 0, best: {}, splits: {}, mods: [] };
+  }
+  d.ver = SAVE_VER;
+  return d;
 }
 
 let data = defaults();
@@ -105,7 +121,9 @@ export const store = {
           totals: { ...d.totals, ...(saved.totals || {}) },
           settings: { ...d.settings, ...(saved.settings || {}) },
           daily: { ...d.daily, ...(saved.daily || {}) },
+          rush: { ...d.rush, ...(saved.rush || {}) },
         };
+        migrate(data, saved);
         // v3 saves: auto-aim became a mode, screen shake a strength
         const st = data.settings;
         if (st.autoAim === true) st.autoAim = "auto";
@@ -130,4 +148,6 @@ export const store = {
   },
 
   suitUnlocked(s) { return (data.best.wave || 0) >= s.wave; },
+  /** Boss Rush opens once you've beaten Envy on the Ladder. */
+  rushUnlocked() { return (data.best.wins || 0) > 0 || (data.rush && data.rush.clears > 0); },
 };

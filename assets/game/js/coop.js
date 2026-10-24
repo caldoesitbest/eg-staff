@@ -605,6 +605,7 @@ function onMessage(from, msg) {
     case "ready": coop.readySlots = msg.slots; if (H.readyChanged) H.readyChanged(); break;
     case "over": H.gameOver(msg.sum); break;
     case "win": H.showWin(msg.sum); break;
+    case "rushdone": H.rushDone(msg.sum); break;
     case "bye": net.lost(from); break;
   }
 }
@@ -679,8 +680,11 @@ export function startHost() {
   coop.ready.clear();
   coop.readySlots = [];
   net.closeChannel();
-  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty }, true);
-  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty });
+  // the host's pick of mode (Boss Rush needs the host to have unlocked it) and difficulty goes to everyone
+  const rush = coop.mode === "rush";
+  const mods = rush ? coop.mods || [] : [];
+  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty, rush, mods }, true);
+  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty, rush, mods });
 }
 
 function startClient(msg) {
@@ -694,7 +698,7 @@ function startClient(msg) {
   coop.waiting = false;
   prevEnemy.clear(); prevRock.clear();
   net.closeChannel();
-  coop.hooks.startRun({ coop: true, difficulty: msg.diff });     // everyone plays the host's difficulty
+  coop.hooks.startRun({ coop: true, difficulty: msg.diff, rush: !!msg.rush, mods: msg.mods || [] });     // everyone plays the host's mode and difficulty
 }
 
 /** Players for a run: [{slot, name, suit}] → G.players with a build each; G.me is yours. */

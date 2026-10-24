@@ -63,6 +63,7 @@
       <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
       <div class="daily-chip" id="daily-chip" hidden>Daily</div>
       <div class="daily-chip diff-chip" id="diff-chip" hidden></div>
+      <div class="daily-chip rush-chip" id="rush-chip" hidden><span id="rush-time">0:00.0</span></div>
       <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
       <div class="fusion-chip" id="fusion-chip" hidden aria-label="Your Sin Fusion"></div>
       <div class="team" id="team" hidden aria-label="Teammates"></div>
@@ -106,6 +107,7 @@
         <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
         <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
         <button class="btn btn-ghost btn-coop" id="coop-btn" type="button"><i data-icon="users"></i>Co-op <small>2–4</small></button>
+        <button class="btn btn-ghost btn-rush" id="rush-btn" type="button"><i data-icon="flame"></i><span id="rush-label">Boss Rush</span></button>
       </div>
       <div class="diff-pick" role="radiogroup" aria-label="Difficulty" aria-describedby="diff-note">
         <span class="diff-label">Difficulty</span>
@@ -227,6 +229,46 @@
         <button class="btn btn-ghost" id="over-menu-btn" type="button"><i data-icon="house"></i>Menu</button>
       </div>
       <p class="up-hint" id="over-hint"></p>
+    </div>
+  </section>
+
+  <!-- Boss Rush: set up a run -->
+  <section class="screen screen-rush" id="screen-rush" hidden aria-labelledby="rush-title">
+    <div class="panel panel-wide glow-card rush">
+      <p class="kicker"><span>Boss Rush</span><i>&#10022;</i><span>Seven sins, back to back</span></p>
+      <h2 class="panel-title" id="rush-title">Boss Rush</h2>
+      <p class="set-note">Sloth to Envy with no waves in between. Draft a build, then after each boss pick a few more cards and visit the Armory. Your clock only runs while you fight. Scored on its own board.</p>
+      <ol class="rush-order" id="rush-order"></ol>
+      <div class="diff-pick" role="radiogroup" aria-label="Difficulty">
+        <span class="diff-label">Difficulty</span>
+        <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
+        <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
+        <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
+      </div>
+      <h3 class="set-h">Modifiers <small id="rush-mods-note"></small></h3>
+      <div class="rush-mods" id="rush-mods"></div>
+      <dl class="over-stats rush-best" id="rush-best"></dl>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="rush-start" type="button"><i data-icon="flame"></i>Start the Rush</button>
+        <button class="btn btn-ghost" id="rush-back" type="button">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Boss Rush: results -->
+  <section class="screen screen-rushdone" id="screen-rushdone" hidden aria-labelledby="rushdone-title">
+    <div class="panel panel-wide glow-card rushdone">
+      <p class="kicker" id="rushdone-kicker">Boss Rush</p>
+      <div class="rush-rank" id="rush-rank">S</div>
+      <h2 class="over-title" id="rushdone-title">Seven sins. One sitting.</h2>
+      <div class="over-best" id="rushdone-best" hidden></div>
+      <dl class="over-stats" id="rushdone-stats"></dl>
+      <table class="rush-splits" id="rush-splits"><thead><tr><th>Boss</th><th>Split</th><th>vs best</th><th>Hits</th></tr></thead><tbody></tbody></table>
+      <div class="build" id="rushdone-build"></div>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="rushdone-again" type="button"><i data-icon="refresh-cw"></i>Run it back</button>
+        <button class="btn btn-ghost" id="rushdone-menu" type="button"><i data-icon="house"></i>Menu</button>
+      </div>
     </div>
   </section>
 
@@ -365,6 +407,9 @@
           <button class="icon-btn" id="lobby-copy" type="button" aria-label="Copy the code"><i data-icon="copy"></i></button>
         </div>
         <ol class="lobby-list" id="lobby-list"></ol>
+        <label class="set-row lobby-mode" id="lobby-mode-row" hidden><span>Mode <small>Boss Rush uses your saved modifiers</small></span>
+          <select id="lobby-mode"><option value="ladder">The Sin Ladder</option><option value="rush">Boss Rush</option></select>
+        </label>
         <button class="btn btn-primary btn-xl" id="lobby-go" type="button" disabled><i data-icon="zap"></i>Waiting for players</button>
         <p class="set-note" id="lobby-wait" hidden>You're in. The host starts the run.</p>
       </div>

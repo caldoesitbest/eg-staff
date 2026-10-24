@@ -4,7 +4,7 @@
    Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves.
    Co-op (coop.js + net.js): the host runs this same flow for everyone; clients follow its messages. */
 
-import { G, usePlayer } from "./state.js";
+import { G, usePlayer, setDifficulty, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { store, SUITS, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
@@ -161,9 +161,14 @@ function startRun(opts) {
   clearWorld();
   const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
+  G.mode = opts && opts.rush && !G.daily ? "rush" : "ladder";
   // the Daily Challenge is always Normal (everyone plays the same run); co-op uses the host's pick
   const want = (opts && opts.difficulty) || G.settings.difficulty;
-  G.difficulty = !G.daily && BALANCE.difficulty[want] ? want : "normal";
+  const mods = G.mode === "rush" ? ((opts && opts.mods) || []).filter((m) => BALANCE.rush.mods[m]) : [];
+  setDifficulty(G.daily ? "normal" : want, mods);
+  G.lastBonus = "";
+  // Boss Rush: i = bosses beaten, t0 = when the first boss arrived (the clock), pb = best splits so far
+  G.rush = G.mode === "rush" ? { i: 0, mods, t0: -1, fightT0: 0, h0: 0, splits: [], picks: 0, inBreak: false, pb: { ...(store.data.rush.splits[G.difficulty] || {}) } } : null;
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
@@ -175,8 +180,9 @@ function startRun(opts) {
   setupRunPlayers(isCoop);
   if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
   G.cam.x = G.player.x; G.cam.y = G.player.y;
+  if (G.mode === "rush") { for (const P of G.players) { usePlayer(P); G.stars = BALANCE.rush.stars; } usePlayer(G.me); }
   // debug: start later with a matching handful of upgrades
-  const start = G.debug.on && !isCoop ? G.debug.startWave : 1;
+  const start = G.debug.on && !isCoop && G.mode !== "rush" ? G.debug.startWave : 1;
   for (let i = 1; i < start; i++) { const ids = offerCards(); applyCard(pick(ids)); }
   G.player.hp = G.player.maxHp = G.stats.maxHp;
   G.player.maxShield = G.stats.shieldCap;
@@ -195,6 +201,7 @@ function startRun(opts) {
     d.tries++;
   }
   if (G.net.role === "client") return;     // the host starts the waves
+  if (G.mode === "rush") { openUpgrade(); return; }     // Boss Rush opens with a draft
   startWave(start);
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
@@ -222,7 +229,11 @@ function seeded(tag, fn) {
   return G.daily ? withSeed(hashStr(G.daily + ":" + tag), fn) : fn();
 }
 
+/** The wave after this one (Boss Rush: the next boss's wave). */
+const nextWave = () => (G.mode === "rush" ? (G.rush.i + 1) * BALANCE.waves.bossEvery : G.wave + 1);
+
 function startWave(n) {
+  if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
   for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; fusionWave(P); }     // Bubble Shield refills every wave; Gluttony's (and fusions') per-wave caps reset
@@ -233,6 +244,14 @@ function startWave(n) {
 
 /** The banner and music for the start of wave n. */
 function waveIntro(n) {
+  if (G.mode === "rush") {
+    const rung = waves.rungOf(n), def = BALANCE.bosses[BALANCE.bosses.order[rung]];
+    const pb = G.rush.pb[BALANCE.bosses.order[rung]];
+    ui.banner("Boss Rush · " + (rung + 1) + " of 7", "@" + def.name, "<b>" + def.title + "</b>" + (pb ? " · best split " + fmtSplit(pb) : ""), "boss", true, def.c1);
+    audio.musicIntensity(2);
+    audio.play("wave");
+    return;
+  }
   const lap = waves.lapOf(n);
   if (waves.isBossWave(n)) {
     const def = BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(n)]];
@@ -263,6 +282,7 @@ G.on("bossDown", () => {
 
 G.on("waveClear", (n) => {
   if (G.state !== "playing") return;
+  if (G.mode === "rush") { rushBossDown(); return; }
   popAllAllies();
   const bonus = BALANCE.score.waveClear * n;
   const flawless = G.waveHits === 0;
@@ -300,6 +320,101 @@ G.on("waveClear", (n) => {
   setState("clear");
 });
 
+// ---------------------------------------------------------------------------
+// Boss Rush
+// ---------------------------------------------------------------------------
+G.on("bossFight", () => { if (G.mode === "rush" && G.rush) { G.rush.fightT0 = G.time; G.rush.h0 = G.hitsTaken; } });
+
+/** 83.4 → "1:23.4" */
+function fmtSplit(t) {
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1);
+}
+/** The Armory opens after every boss (every other one on Sealed Armory). */
+const rushArmoryOpen = () => !G.rush.mods.includes("sealed") || G.rush.i % 2 === 0;
+
+function rushBossDown() {
+  popAllAllies();
+  const R = G.rush, RB = BALANCE.rush, type = waves.bossType, def = BALANCE.bosses[type];
+  const t = Math.max(0, G.time - R.fightT0), hits = G.hitsTaken - R.h0;
+  R.splits.push({ type, t, hits });
+  R.i++;
+  if (!hits) G.score += RB.hitless * diff().score;
+  // between bosses: a little health back (none on Starved), the Armory's stipend, everyone back up
+  for (const P of G.players) {
+    if (P.gone) continue;
+    usePlayer(P);
+    if (P.dead && G.net.role === "host") revivePlayer(P);
+    if (!R.mods.includes("starved")) P.hp = Math.min(P.maxHp, P.hp + RB.heal);
+    G.stars += RB.stipend;
+  }
+  usePlayer(G.me);
+  G.vacuum = true;
+  const pb = R.pb[type], d = pb ? t - pb : 0;
+  const sub = "Split <b>" + fmtSplit(t) + "</b>" + (pb ? " · <b class='" + (d <= 0 ? "good" : "bad") + "'>" + (d <= 0 ? "−" : "+") + fmtSplit(Math.abs(d)) + "</b> vs best" : "") +
+    " · " + (hits ? hits + (hits === 1 ? " hit" : " hits") : "<b>no hits</b>");
+  G.lastBonus = "@" + def.name + " fell in " + fmtSplit(t);
+  const done = R.i >= 7;
+  const b = ["Boss Rush · " + R.i + " of 7", "@" + def.name + " down", sub, "good", true];
+  ui.banner(...b, def.c1);
+  hostSend({ k: "clear", b, snd: done ? "newBest" : "clear" });
+  audio.play(done ? "newBest" : "clear");
+  audio.musicIntensity(1);
+  clearT = BALANCE.waves.breather + 1.4;
+  setState("clear");
+}
+
+/** Boss Rush rank: S/A/B/C/D by fighting time (more room on Hard and Nightmare); every 10 hits costs a grade. */
+function rushRank(time, hits) {
+  const RK = BALANCE.rush.rank, slow = RK.slower[G.difficulty] || 1;
+  let g = RK.par.findIndex((p) => time <= p * slow);
+  if (g < 0) g = 4;
+  return "SABCD"[Math.min(4, g + Math.floor(hits / RK.hits))];
+}
+
+/** The Rush is over: all seven down, or you fell. Records your bests (solo runs only) and shows the results. */
+function finishRush(cleared) {
+  overShown = true;
+  const R = G.rush, RB = BALANCE.rush;
+  const fight = R.splits.reduce((a, s) => a + s.t, 0);
+  if (cleared) G.score += Math.max(0, RB.timeScore.base - fight * RB.timeScore.perSec) * diff().score;
+  const sum = {
+    rush: true, cleared, score: Math.floor(G.score), time: fight, hits: G.hitsTaken, beaten: R.i, kills: G.kills,
+    splits: R.splits.map((s) => ({ type: s.type, t: s.t, hits: s.hits, pb: R.pb[s.type] || 0 })),
+    mods: R.mods.slice(), difficulty: G.difficulty, rank: cleared ? rushRank(fight, G.hitsTaken) : "",
+    next: cleared ? "" : BALANCE.bosses.order[R.i] || "", killedBy: cleared ? "" : sourceName(G.me && G.me.killedBy),
+    build: buildSummary(), buildTitle: buildTitle(),
+  };
+  const record = !G.debug.on && G.net.role === "off";
+  if (record) {
+    const rs = store.data.rush;
+    const best = (rs.splits[G.difficulty] = rs.splits[G.difficulty] || {});
+    for (const s of R.splits) if (!best[s.type] || s.t < best[s.type]) best[s.type] = Math.round(s.t * 100) / 100;
+    if (cleared) {
+      rs.clears++;
+      const prev = rs.best[G.difficulty];
+      sum.prevTime = prev ? prev.time : 0;
+      sum.newTime = !prev || fight < prev.time;
+      sum.newScore = !prev || sum.score > prev.score;
+      if (sum.newTime || sum.newScore) {
+        rs.best[G.difficulty] = {
+          time: sum.newTime ? Math.round(fight * 10) / 10 : prev.time, score: sum.newScore ? sum.score : prev.score,
+          hits: sum.newTime ? sum.hits : prev.hits, rank: sum.newTime ? sum.rank : prev.rank, mods: sum.newTime ? sum.mods : prev.mods,
+        };
+      }
+    }
+  }
+  sum.solo = record;
+  store.data.totals.kills += G.kills;
+  store.save(true);
+  G.emit("rushDone", sum);
+  lastRun = sum;
+  hostSend({ k: "rushdone", sum: { ...sum, build: [] } });
+  setState("over");
+  ui.showRushDone(sum);
+  audio.play(cleared ? "newBest" : "gameOver");
+}
+
 function showVictory() {
   ui.clearBanner();
   setState("win");
@@ -320,8 +435,14 @@ function showVictory() {
 function openUpgrade() {
   if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
   ui.clearBanner();
+  if (G.mode === "rush" && !G.rush.inBreak) {
+    // Boss Rush: a draft to open with, then a couple of cards after each boss
+    G.rush.inBreak = true;
+    G.rush.i = Math.round(G.wave / BALANCE.waves.bossEvery);
+    G.rush.picks = G.wave === 0 ? BALANCE.rush.draft : BALANCE.rush.picks;
+  }
   // a sin boss just fell and a gun is at Tier IV: it can evolve (one evolution per boss)
-  if (waves.isBossWave(G.wave) && evoCandidate() >= 0) { openEvolve(); return; }
+  if (G.wave > 0 && waves.isBossWave(G.wave) && evoCandidate() >= 0) { openEvolve(); return; }
   openCards();
 }
 
@@ -363,6 +484,17 @@ function openCards() {
   setState("upgrade");
   input.releaseAll();
   offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
+  if (G.mode === "rush") {
+    const R = G.rush, nb = BALANCE.bosses[BALANCE.bosses.order[R.i]];
+    ui.showUpgrade(offered, {
+      kicker: R.i === 0 ? "Boss Rush · opening draft" : "Boss Rush · " + R.i + " of 7 down",
+      title: nb ? "@" + nb.name + " is next" : "Choose your power",
+      bonus: (R.picks > 1 ? R.picks + " picks left" : "Last pick") + (G.lastBonus ? " · " + G.lastBonus : ""),
+      armory: rushArmoryOpen() ? "the Armory is next" : "the Armory is sealed this time",
+    });
+    if (!offered.length) { ui.toast("Every Sin and Augment maxed"); R.picks = 1; afterCards(); }
+    return;
+  }
   const nextBoss = (G.wave + 1) % BALANCE.waves.bossEvery === 0;
   const nb = nextBoss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(G.wave + 1)]] : null;
   const armoryNext = armorySoldOut() ? "the Armory is sold out" : armoryAfter(G.wave) ? "the Armory is next" : "the Armory opens after wave " + nextArmoryWave(G.wave);
@@ -373,9 +505,10 @@ function openCards() {
 
 /** After the card: the Armory (if it opens this wave and has anything left for you), else the next wave. */
 function afterCards() {
+  if (G.mode === "rush" && G.rush.picks > 1) { G.rush.picks--; openCards(); return; }
   const P = G.player;
   const skipShop = armorySoldOut() && (!P || P.hp >= P.maxHp);      // still opens to patch you up
-  if (armoryAfter(G.wave) && !skipShop) { openArmory(); return; }
+  if ((G.mode === "rush" ? rushArmoryOpen() : armoryAfter(G.wave)) && !skipShop) { openArmory(); return; }
   if (G.net.role !== "off") {
     if (G.net.role === "host") hostReady(); else if (!coop.waiting) clientReady();
     coop.waiting = true;
@@ -384,7 +517,7 @@ function afterCards() {
   }
   ui.show(null);
   setState("playing");
-  startWave(G.wave + 1);
+  startWave(nextWave());
 }
 
 function pickCard(id) {
@@ -415,6 +548,11 @@ function openArmory() {
   input.releaseAll();
   const bounty = G.wave % BALANCE.waves.bossEvery === 0;
   seeded("shop" + G.wave, () => rollNewShop(bounty));
+  if (G.mode === "rush") {
+    const nb = BALANCE.bosses[BALANCE.bosses.order[G.rush.i]];
+    ui.showShop({ kicker: G.rush.i === 0 ? "Boss Rush · stock up" : "Boss Rush · the Armory pays a bounty", next: "Next: <b>@" + nb.name + "</b>, " + nb.title + ".", go: "Face @" + nb.name });
+    return;
+  }
   const next = G.wave + 1;
   const boss = next % BALANCE.waves.bossEvery === 0;
   const nb = boss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(next)]] : null;
@@ -458,7 +596,7 @@ function shopGo() {
   }
   ui.show(null);
   setState("playing");
-  startWave(G.wave + 1);
+  startWave(nextWave());
 }
 
 function reroll() {
@@ -578,6 +716,7 @@ function finishWonRun() {
 }
 
 function gameOver() {
+  if (G.mode === "rush") { finishRush(false); return; }
   overShown = true;
   const best = store.data.best;
   const oldWave = best.wave;
@@ -664,7 +803,10 @@ function update(dt) {
     if (deathT > 1.5 && !overShown) gameOver();
   } else if (s === "clear") {
     clearT -= dt;
-    if (clearT <= 0) { if (G.won && G.wave === 35) showVictory(); else openUpgrade(); }
+    if (clearT <= 0) {
+      if (G.mode === "rush") { if (G.rush.i >= 7) finishRush(true); else openUpgrade(); }
+      else if (G.won && G.wave === 35) showVictory(); else openUpgrade();
+    }
   }
 }
 
@@ -780,12 +922,15 @@ function toggleFullscreen() {
 ui.init({
   onPlay: () => { audio.unlock(); startRun(); },
   onDaily: () => { audio.unlock(); startRun({ daily: todayUTC() }); },
+  onRush: () => { if (store.rushUnlocked() || G.debug.on) ui.openRush(); else ui.toast("Beat @Envy on the Sin Ladder to open Boss Rush", 2600); },
+  onRushStart: (mods) => { store.data.rush.mods = mods; store.save(); audio.unlock(); startRun({ rush: true, mods }); },
+  onRushAgain: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun({ rush: true, mods: (lastRun && lastRun.mods) || [] }); },
   onEndless: () => { ui.show(null); openUpgrade(); audio.musicIntensity(1); },
   onFinish: finishWonRun,
   onExit: () => { store.save(true); if (G.desktop) window.chrome.webview.postMessage({ type: "quit" }); },
   onPause: pause,
   onResume: resume,
-  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); },
+  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.mode === "rush" ? { rush: true, mods: G.rush.mods } : G.daily ? { daily: todayUTC() } : null); },
   onQuit: () => { if (G.net.role !== "off") endCoop(); toMenu(); },
   onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
   onLobbyHost: async (name) => {
@@ -796,6 +941,7 @@ ui.init({
     store.data.coopName = name; store.save();
     try { await net.join(code, name, G.settings.suit); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
+  onLobbyMode: (mode) => { coop.mode = mode; coop.mods = store.data.rush.mods || []; },
   onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
   onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
@@ -887,6 +1033,8 @@ window.addEventListener("keydown", (e) => {
       const next = at < 0 ? 0 : (at + (e.code === "ArrowRight" ? 1 : cards.length - 1)) % cards.length;
       if (cards[next]) { e.preventDefault(); cards[next].focus(); }
     }
+  } else if (s === "over" && ui.screen === "rushdone") {
+    if (ui.armed && e.code === "KeyR") { e.preventDefault(); if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun({ rush: true, mods: (lastRun && lastRun.mods) || [] }); }
   } else if (s === "over" && ui.screen === "over") {
     if (!ui.armed) return;
     const again = () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); };
@@ -954,8 +1102,19 @@ if (G.debug.on && params.get("autoplay") === "1") {
     bot.onShopGo = shopGo;
     autopilot = bot;
     window.__bot = bot;
+    bot.rushRuns = [];
+    G.on("rushDone", (sum) => bot.rushRuns.push({ cleared: sum.cleared, beaten: sum.beaten, time: Math.round(sum.time), hits: sum.hits, rank: sum.rank, score: sum.score,
+      splits: sum.splits.map((x) => x.type + ":" + Math.round(x.t) + "s/" + x.hits + "h").join(" "), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier + (g.evo || "")).join("+"), cards: Object.keys(G.up).length }));
     G.debug.god = params.get("god") === "1";
     if (params.get("cohost") || params.get("cojoin")) { bot.autoRetry = false; return; }   // co-op tests start from the lobby
+    if (params.get("rush") === "1") {
+      const mods = (params.get("mods") || "").split(",").filter(Boolean);
+      bot.onRetry = () => startRun({ rush: true, mods });
+      bot.onRushAgain = bot.onRetry;
+      startRun({ rush: true, mods });
+      if (params.get("god") === "1") G.debug.god = true;
+      return;
+    }
     startRun();
     if (params.get("god") === "1") G.debug.god = true;
   });
@@ -1054,8 +1213,10 @@ initCoop({
   closeBetween: (n) => {
     if (G.state !== "playing") { ui.show(null); setState("playing"); }
     G.wave = n;
+    if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
     waveIntro(n);
   },
+  rushDone: (sum) => { lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
   waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
@@ -1069,7 +1230,7 @@ initCoop({
     if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn());
     if (G.state === "upgrade" && coop.waiting) ui.setCardsWaiting(waitingOn());
   },
-  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(G.wave + 1); },
+  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(nextWave()); },
 });
 
 // damage-number digits are pre-rendered with the game font: redo them once it has loaded

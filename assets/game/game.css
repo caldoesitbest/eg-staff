@@ -1356,3 +1356,54 @@ body.eg-game::before { display: none; }
 .game.reduced .card.fusion { animation: none; }
 .game.reduced .fusion-spark { animation: none; }
 @media (prefers-reduced-motion: reduce) { .card.fusion, .fusion-spark { animation: none; } }
+
+/* ---------- Boss Rush ---------- */
+.btn-rush { border-color: rgba(255, 148, 72, 0.55); }
+.btn-rush.locked { opacity: 0.55; border-style: dashed; }
+.rush-chip { color: #ffb37a; border-color: rgba(255, 148, 72, 0.5); font-variant-numeric: tabular-nums; }
+.rush-chip[hidden] { display: none; }
+.rush-order { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin: 4px 0 2px; padding: 0; list-style: none; }
+.rush-boss { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 1px solid color-mix(in srgb, var(--c1, #63f4ff) 45%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--c1, #63f4ff) 8%, transparent); text-align: center; }
+.rush-boss img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 3px 8px var(--c1, #63f4ff)); }
+.rush-boss b { font: 700 0.78rem var(--g-num); letter-spacing: 0.06em; color: var(--c1, #63f4ff); }
+.rush-boss span { font: 700 0.78rem var(--g-num); color: #c9d2f0; font-variant-numeric: tabular-nums; }
+.rush-mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.rush-mod {
+  display: grid; gap: 3px; align-content: start; padding: 10px 12px;
+  border: 1px solid rgba(150, 170, 255, 0.25); border-radius: 12px; background: rgba(3, 5, 24, 0.5);
+  color: #c9d2f0; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.rush-mod b { font: 700 0.92rem var(--g-num); letter-spacing: 0.06em; text-transform: uppercase; color: #f4f6ff; }
+.rush-mod span { font-size: 0.8rem; line-height: 1.35; }
+.rush-mod small { font: 700 0.72rem var(--g-num); color: #ffb37a; }
+.rush-mod[aria-checked="true"] { border-color: #ff9448; background: rgba(255, 148, 72, 0.14); box-shadow: 0 0 14px -6px #ff9448; }
+.rush-mod[aria-checked="true"] b::before { content: "\2713  "; color: #ff9448; }
+.rush-mod:disabled { opacity: 0.4; cursor: not-allowed; }
+.rush-best { margin-top: 4px; }
+.rush-rank {
+  display: grid; place-items: center; width: 92px; height: 92px; margin: 4px auto 10px;
+  border-radius: 50%; border: 3px solid currentColor;
+  font: 400 3.6rem/1 var(--g-tag); color: var(--g-cream);
+  text-shadow: 0 0 18px currentColor; box-shadow: 0 0 30px -6px currentColor, inset 0 0 22px -8px currentColor;
+  animation: rank-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1.4) backwards 0.15s;
+}
+.rush-rank.rank-S { color: #ffd45c; }
+.rush-rank.rank-A { color: #73ffce; }
+.rush-rank.rank-B { color: #63f4ff; }
+.rush-rank.rank-C { color: #a57bff; }
+.rush-rank.rank-D, .rush-rank.rank-x { color: #ff7d95; }
+@keyframes rank-in { from { opacity: 0; transform: scale(2.2) rotate(-12deg); } }
+.rush-splits { width: 100%; border-collapse: collapse; font: 600 0.9rem var(--g-num); font-variant-numeric: tabular-nums; }
+.rush-splits th { padding: 4px 8px; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: #7f8bb0; text-align: center; }
+.rush-splits td { padding: 5px 8px; border-top: 1px solid rgba(150, 170, 255, 0.12); color: #c9d2f0; text-align: center; }
+.rush-splits th:first-child, .rush-splits td:first-child { text-align: left; }
+.rush-splits td:first-child { color: var(--c1, #f4f6ff); font-weight: 700; }
+.rush-splits td.good, .banner b.good { color: #73ffce; }
+.rush-splits td.bad, .banner b.bad { color: #ff7d95; }
+.lobby-mode[hidden] { display: none; }
+@media (max-width: 760px) {
+  .rush-order { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .rush-boss img { width: 30px; height: 30px; }
+}
+.game.reduced .rush-rank { animation: none; }

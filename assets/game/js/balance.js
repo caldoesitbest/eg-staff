@@ -129,6 +129,26 @@ export const BALANCE = {
     nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.74, heal: 0.5, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4
   },
 
+  // Boss Rush (unlocked by beating Envy): the seven sin bosses back to back. You open with a draft
+  // (cards + the Armory), then get a short break after each boss: a couple of cards and the Armory.
+  // Bosses fight as they would on their rung of the Ladder, a little lighter because you have fewer cards.
+  rush: {
+    draft: 4, picks: 3,                  // cards to open with / after each boss
+    stars: 130, stipend: 55,             // stars to open with / added after each boss
+    heal: 4,                             // health back after each boss (½💜 units: two hearts)
+    bossHp: 0.8,                         // x the boss's Ladder health
+    rank: { par: [240, 330, 450, 600], hits: 8, slower: { hard: 1.15, nightmare: 1.3 } },   // S/A/B/C within these many seconds of fighting; every 8 hits costs a grade
+    timeScore: { base: 30000, perSec: 25 },        // score for speed: base - seconds x perSec (never below 0)
+    hitless: 1500,                                 // per boss beaten without a hit
+    mods: {
+      starved:  { name: "Starved", text: "No healing between bosses, and a third of the usual healing in fights", score: 0.2, heal: 0.35 },
+      hell:     { name: "Bullet Hell", text: "Every robot and boss shot flies 20% faster", score: 0.15, shot: 1.2 },
+      sealed:   { name: "Sealed Armory", text: "The Armory only opens after every other boss", score: 0.15 },
+      entourage:{ name: "Entourage", text: "Bosses bring twice the minions, and more of them are elite", score: 0.2, minions: 2, elite: 2 },
+      fury:     { name: "Fury", text: "Bosses attack 15% faster from the start", score: 0.2, boss: 0.85 },
+    },
+  },
+
   // Robots evolve as you climb: Mk I → Mk II → Mk III, then another Mark every 12 waves in endless.
   // Each robot type reads its Mark (0, 1, 2, ...) to unlock nastier behaviour (see enemies/roster.js).
   marks: { at: [12, 24, 36], every: 12 },
