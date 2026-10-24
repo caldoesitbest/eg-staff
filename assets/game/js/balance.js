@@ -202,12 +202,76 @@ export const BALANCE = {
   },
   gunTiers: { dmg: [1, 1.25, 1.55, 1.9], rate: [1, 1.05, 1.1, 1.18], upgradeCost: [0, 0.8, 1.1, 1.5] },   // upgrade price = gun price x this
 
+  // Weapon evolutions: a Tier IV gun can evolve once the next sin boss falls (one evolution per boss).
+  // Every gun has two paths; choosing one locks the other for that gun for the rest of the run.
+  // Damage numbers are multiples of the shot that triggered them unless noted.
+  evolution: {
+    blaster: {
+      a: { name: "Starbreaker", col: "#ffe9a8", tag: "Precision",
+           pierce: 1,                                                            // +1 pierce
+           trail: { every: 26, r: 13, life: 0.35, dmg: 0.3, cd: 0.25 },          // a bolt that has pierced a robot leaves a burning trail
+           implode: { min: 0.5, r: 170, force: 900, time: 0.45, blast: 125, dmg: 0.9, life: 0.55 } },   // charged orb: flies half as far, implodes, then bursts (x the orb)
+      b: { name: "Phantom Repeater", col: "#c5a8ff", tag: "Accuracy",
+           perHit: 0.025, cap: 18, decay: 10, idle: 1.4,                         // +2.5% fire rate per hit in a row (up to 18 = +45%); misses halve it
+           ghostEvery: 5, ghost: 0.6, ghostHoming: 7 },                          // every 5th hit fires a homing spectral bolt (60% damage)
+    },
+    scatter: {
+      a: { name: "Supernova", col: "#ffb35c", tag: "Point blank",
+           close: 0.13, boom: { r: 56, dmg: 2.2, cd: 0.3 },                      // a pellet landing in its first 0.13s bursts (x the pellet)
+           wave: { r: 360, arc: 1.25, time: 0.38, dmg: 1.6, knock: 520 } },      // charged: a cone shockwave (x the charge) that erases robot shots
+      b: { name: "Shredder", col: "#ff6b6b", tag: "Crowds",
+           crit: 0.1, bounce: { range: 230, dmg: 0.7 },                          // +10% crit; a pellet ricochets once to the nearest robot
+           frag: { n: 3, range: 210, dmg: 0.4 } },                               // a crit throws 3 fragments at nearby robots
+    },
+    smg: {
+      a: { name: "Overdrive", col: "#ff7a3d", tag: "Sustained fire",
+           fill: 70, drain: 25, idle: 0.5,                                       // 70 shots fill the meter; it drains when you stop
+           time: 3.5, rate: 1.8, spread: 0.45, heat: 2.2, heatRate: 0.6,         // overdrive: x1.8 fire rate, tighter, +1 pierce; then it overheats
+           chargeFill: 0.35 },                                                   // a charged burst adds 35% to the meter
+      b: { name: "Neurotoxin", col: "#9dff5c", tag: "Corruption",
+           max: 8, time: 3, every: 1, charged: 2,                                // stacks (cap 8), 3s each; charged bolts add 2
+           dot: 0.14, pulse: { r: 52, perStack: 6, dmg: 0.32 } },                // per stack per second: 14% to itself, 32% to robots around it
+    },
+    rail: {
+      a: { name: "Annihilator", col: "#ff5ce1", tag: "Penetration",
+           ramp: 1.25, rampCap: 2.5, max: 5, impact: { r: 95, dmg: 0.5 },        // each robot the beam passes hits 25% harder (x2.5 max); 5 = annihilation
+           boltPierce: 1, boltRamp: 0.15 },                                      // bolts: +1 pierce and +15% per robot pierced
+      b: { name: "Singularity", col: "#7b8cff", tag: "Positioning",
+           pull: { width: 190, time: 0.42, force: 700 }, near: 1.35,             // charged: the beam's path pulls robots in first, then fires (x1.35)
+           boltPierce: 1, snag: { r: 120, force: 320 } },                        // bolts tug robots near the hit toward it
+    },
+    nova: {
+      a: { name: "Cataclysm", col: "#ff4a3d", tag: "Chain blasts",
+           bomblets: 3, bomb: { r: 42, dmg: 0.45, life: [0.22, 0.4] },           // a grenade's burst throws 3 bomblets (they don't throw more)
+           cluster: { n: 8, ring: 95, delay: 0.5, final: 210, finalDelay: 0.68, dmg: 1.15 } },   // charged: a ring of 8 goes off together, then the core
+      b: { name: "Gravity Well", col: "#b06bff", tag: "Control",
+           well: { r: 95, life: 1.3, force: 260, max: 10 },                      // a burst leaves a gravity well
+           vuln: 1.25, vulnTime: 1.6,                                            // robots in it take 25% more damage
+           big: { r: 180, life: 2.6, force: 380 } },                             // charged: one huge well
+    },
+    arc: {
+      a: { name: "Thunderlord", col: "#8fe9ff", tag: "Chain lightning",
+           chain: 1, ramp: 1.25, crit: 0.08, fork: 2 },                          // +1 jump, each jump 25% stronger; +8% crit; a crit forks 2 more jumps
+      b: { name: "Tempest", col: "#5b6bff", tag: "Storms",
+           storm: { r: 200, life: 4.2, every: 0.32, dmg: 0.22, max: 2, orbLife: 1 },   // charged: the storm orb leaves a storm (x the orb per strike)
+           static: { every: 1.5, range: 270, dmg: 1.2 } },                       // lightning strikes the nearest robot every 1.5s (x a bolt)
+    },
+    heart: {
+      a: { name: "Blood Moon", col: "#ff3b6b", tag: "Marks",
+           mark: 4, darts: 3, dartDmg: 0.6, maxDarts: 24 },                      // hits mark for 4s; a marked robot's death looses 3 darts (they don't mark)
+      b: { name: "Soulbound", col: "#ffd1f0", tag: "Tracking",
+           perHit: 0.12, cap: 8, speed: 0.035, idle: 2,                          // hits in a row: +12% homing, +3.5% speed each (up to 8)
+           swarm: 10, swarmHoming: 9 },                                          // charged: 10 hearts, each bound to a different dangerous target
+    },
+  },
+
   // The shop between waves. Rarity: 0 common, 1 rare, 2 epic, 3 legendary.
   shop: {
     slots: 4,
     priceGrowth: 0.09,       // prices x (1 + this x (wave - 1))
     reroll: { base: 4, perWave: 0.8, step: 3 },
     gunChance: 0.3,          // chance each slot is a gun (from wave 2)
+    heldWeight: 3,           // a gun you carry is this many times likelier to be the gun offered (so it can reach Tier IV)
     rarity: { rare: [2, 0.04, 0.35], epic: [5, 0.016, 0.2], legendary: [10, 0.006, 0.08] },   // [from wave, + per wave, max]
     patch: 18, patchStep: 14, patchHeal: 2,
     openAfter: [2, 4, 5],    // the Armory opens after these waves of each 5-wave chapter (5 = the boss: a bounty)

@@ -8,6 +8,7 @@ import { fx } from "./fx.js";
 import { audio } from "./audio.js";
 import { C, P_MAGENTA, P_HEART, P_MINT, P_GREEN } from "./sprites.js";
 import { queueBlast, dropPickup, healPlayer } from "./world.js";
+import { evoStats, evoCode } from "./evolve.js";
 
 const U = BALANCE.upgrades;
 const emoji = (name) => "/assets/home/emoji/" + name + ".webp";
@@ -146,6 +147,7 @@ export function computeStats() {
   s.fang = it("fang") ? I.fang.every[it("fang") - 1] : 0;
   s.bubble = it("bubble") > 0;
   s.cards = it("clover") ? 4 : 3;
+  evoStats(s, evoCode(slot.id, slot.evo));        // an evolved gun's own changes (evolve.js)
   G.stats = s;
   return s;
 }
@@ -159,6 +161,7 @@ export function estimateDps() {
   if (s.explode) dps *= 1 + s.splash * 0.3;
   dps += s.turrets * BALANCE.items.turret.rate * BALANCE.items.turret.dmg * s.baseDamage;
   dps += s.orbitals * BALANCE.upgrades.orbit.dmg * 2;
+  if (s.ev) dps *= 1.2;          // evolutions add a fifth or so on a single target (more on crowds)
   return dps;
 }
 

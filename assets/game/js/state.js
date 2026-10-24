@@ -13,6 +13,11 @@ function makeEnemy() {
     state: 0, t: 0, t2: 0, t3: 0, cd: 0, a: 0, b: 0, c: 0, tx: 0, ty: 0,
     flash: 0, spawnT: 0, ally: 0, allyMax: 1, slowMul: 1, dmgMul: 1, orbCd: 0, invuln: false, warnPlayed: false,
     mark: 0, traits: 0, shield: 0, shieldMax: 0, haste: 1, numAcc: 0, numCd: 0, parent: null, parentId: 0, slot: 0,
+    // weapon evolutions: Neurotoxin stacks, Gravity Well vulnerability, Blood Moon marks, per-effect cooldowns
+    tox: 0, toxT: 0, toxTick: 0, toxDmg: 0, toxBy: null, vuln: 0, moon: 0, moonBy: null, trailCd: 0, boomCd: 0,
+    chill: 0, shatterCd: 0, passive: false,
+    // elite mutations (mutations.js)
+    mut: 0, mutT: 0, mutCd: 0, mutN: 0, phased: false, mutHeal: 0,
   };
 }
 function makePBullet() {
@@ -21,6 +26,7 @@ function makePBullet() {
     pierce: 0, hits: new Int32Array(8), nh: 0, bounces: 0, crit: false, homing: 0, kind: 0, explode: 0, split: false, knock: 0,
     tgt: null, tgtId: 0, tgtT: 0,
     explodeDmg: 0, chain: 0, special: 0, full: false, zapT: 0, plain: false,   // gun effects + charged shots
+    ev: 0, vol: 0, life0: 1, dmg0: 0, amt: 0, trail: false, trailD: 0, bounced: false, frag: false, kin: 0, forked: false, lock: false, pierced: 0,
   };
 }
 function makeEBullet() {
@@ -39,6 +45,11 @@ function makeAsteroid() {
 function makePuddle() { return { dead: true, x: 0, y: 0, r: 30, life: 0, max: 1 }; }
 function makeMine() { return { dead: true, x: 0, y: 0, t: 0, life: 1 }; }
 function makeBlast() { return { dead: true, x: 0, y: 0, r: 0, dmg: 0, friendly: true, hurtsPlayer: false, enemyDmg: 0, col: "#fff", pal: 0 }; }
+// Zones: short-lived areas (evolution trails, implosions, wells, storms, shockwaves; mutation blasts). zones.js
+function makeZone() {
+  return { dead: true, type: 0, x: 0, y: 0, x2: 0, y2: 0, a: 0, r: 0, r0: 0, t: 0, life: 1, dmg: 0, tick: 0, n: 0, by: null, src: "",
+    hits: new Int32Array(64), nh: 0, big: false, k: 0, col: "#fff", pal: 0 };
+}
 
 export const G = {
   state: "boot",             // boot | menu | playing | paused | clear | upgrade | shop | dying | over | win
@@ -89,6 +100,7 @@ export const G = {
   puddles: new Pool(makePuddle, 60),
   blasts: new Pool(makeBlast, 80),
   mines: new Pool(makeMine, 24),
+  zones: new Pool(makeZone, 160),
   hash: new SpatialHash(BALANCE.arena.w, BALANCE.arena.h, 64, MAX_ENEMIES),
 
   cam: { x: 1000, y: 650, px: 1000, py: 650, z: 1, P: 1, dpr: 1, cssW: 1, cssH: 1, viewW: 1, viewH: 1, leadX: 0, leadY: 0 },

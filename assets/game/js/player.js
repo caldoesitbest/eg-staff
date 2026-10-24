@@ -14,6 +14,7 @@ import { P_CYAN, P_WHITE, P_DVIOLET, P_VIOLET, P_AMBER, P_ORANGE, P_BLUE, P_HEAR
 import { firePlayerBullet, fireBeam, addPuddle, newBoostSerial, haptic, hitStop } from "./world.js";
 import { hasEnvy, ENVY_POWERS } from "./upgrades.js";
 import { swapGun, GUN_COL } from "./armory.js";
+import { evoRate, evoSpread, evoFired, evoShot, evoCharged, evoOrb, evoPal, evoCol, newVolley } from "./evolve.js";
 
 const A = BALANCE.arena;
 const B = BALANCE.player;
@@ -36,6 +37,8 @@ export function createPlayer(slot = 0) {
     streak: 0, feast: 0, envy: [],
     charge: 0, charging: false, chargeCd: 0, chargeFull: false, chargeBank: false, echoT: 0, echoAng: 0, echoAmt: 0,
     bubble: false, fangN: 0,
+    // weapon evolutions (evolve.js): Phantom streak, Soulbound streak, Overdrive meter / heat, Tempest, Blood Moon darts
+    rep: 0, repIdle: 0, repN: 0, soul: 0, soulIdle: 0, od: 0, odT: 0, heat: 0, odIdle: 0, staticT: 0, bloodN: 0,
   };
 }
 
@@ -134,26 +137,37 @@ function startBoost(P, s, inp) {
   G.emit("boost");
 }
 
+const shotBuf = [];
 function fire(P, s) {
   const base = P.aimAng;
   const c = Math.cos(base), sn = Math.sin(base);
   const mx = P.x + c * 20, my = P.y + 3 + sn * 20;
   const n = s.projectiles;
-  const spread = s.spread;
+  const spread = s.spread * (s.ev ? evoSpread(P, s) : 1);
   const pellets = s.gun.pellets > 1;
   if (G.net.role !== "client") {
+    const made = shotBuf;
+    made.length = 0;
     for (let i = 0; i < n; i++) {
       const off = (i - (n - 1) / 2) * s.fan;
       const b = firePlayerBullet(mx, my, base + off + rand(-spread, spread), undefined, s.multiDmg);
       if (b && pellets) { const k = rand(0.85, 1.12); b.vx *= k; b.vy *= k; }   // a shotgun's pellets don't fly in a perfect line
+      if (b) made.push(b);
     }
-    if (s.rear) firePlayerBullet(P.x - c * 12, P.y + 3 - sn * 12, base + Math.PI + rand(-spread, spread));
+    if (s.rear) { const b = firePlayerBullet(P.x - c * 12, P.y + 3 - sn * 12, base + Math.PI + rand(-spread, spread)); if (b) made.push(b); }
     if (hasEnvy("gunner")) {
       const a = ENVY_POWERS.gunner.angle;
-      firePlayerBullet(mx, my, base + a, 3);
-      firePlayerBullet(mx, my, base - a, 3);
+      const l = firePlayerBullet(mx, my, base + a, 3), r = firePlayerBullet(mx, my, base - a, 3);
+      if (l) made.push(l);
+      if (r) made.push(r);
+    }
+    // one pull of the trigger: it misses only if none of these hit (evolve.js accuracy streaks)
+    if (made.length) {
+      const v = newVolley(P, made.length);
+      for (let i = 0; i < made.length; i++) { made[i].vol = v; if (s.ev) evoShot(P, s, made[i]); }
     }
   }
+  if (s.ev) evoFired(P, s);
   const kick = s.gunId === "scatter" ? 34 : s.gunId === "rail" ? 26 : s.gunId === "nova" ? 18 : 10;
   P.recoil = 1;
   P.muzzle = 0.05;
@@ -175,13 +189,16 @@ function fireCharged(P, s, amt, ang, mul = 1) {
   const c = Math.cos(ang), sn = Math.sin(ang);
   const mx = P.x + c * 22, my = P.y + 3 + sn * 22;
   const id = s.gunId;
-  const pal = gunPal(id), col = GUN_COL[id] || C.cyan;
+  const pal = s.ev ? evoPal(s.ev) : gunPal(id), col = s.ev ? evoCol(s.ev) : GUN_COL[id] || C.cyan;
   let knock = 60 + 160 * k;
+  const evolved = s.ev ? evoCharged(P, s, amt, ang, dmg, mx, my, k) : false;     // some evolutions fire their own version
   if (G.net.role === "client") {
     // co-op client: the host fires the real shot; this is just the feel of it
     audio.play(id === "rail" ? "beam" : "chargeShot", P.x, P.y);
+  } else if (evolved) {
+    if (id === "rail" || id === "scatter") knock += 120;
   } else if (id === "rail") {
-    fireBeam(mx, my, ang, 1500, 14 + 16 * k + (s.chargeWide ? 10 : 0), dmg * 1.15);
+    fireBeam(mx, my, ang, 1500, 14 + 16 * k + (s.chargeWide ? 10 : 0), dmg * 1.15, s.ev ? col : undefined);
     knock += 120;
     audio.play("beam", P.x, P.y);
   } else if (id === "scatter" || id === "smg" || id === "heart") {
@@ -217,6 +234,8 @@ function fireCharged(P, s, amt, ang, mul = 1) {
       b.chain = 0;
       b.special = id === "nova" ? 3 : id === "arc" ? 2 : 1;
       b.full = full;
+      b.amt = amt; b.dmg0 = b.dmg;
+      if (s.ev) evoOrb(s, b);
       b.kind = id === "nova" ? 7 : id === "arc" ? 8 : 2;
       if (id === "nova") b.r *= 0.8;
     }
@@ -414,7 +433,7 @@ export function updatePlayer(dt, P = G.player) {
   P.wantFire = wantFire;
   if (P.fireCd > 0) P.fireCd -= dt;
   if (wantFire && P.fireCd <= 0) {
-    const rate = s.rate * (hasEnvy("swarm") ? 1 + ENVY_POWERS.swarm.rate : 1) * (P.charging ? 0.6 : 1);
+    const rate = s.rate * (hasEnvy("swarm") ? 1 + ENVY_POWERS.swarm.rate : 1) * (P.charging ? 0.6 : 1) * (s.ev ? evoRate(P, s) : 1);
     fire(P, s);
     P.fireCd += 1 / rate;
     if (P.fireCd < 0) P.fireCd = 0;

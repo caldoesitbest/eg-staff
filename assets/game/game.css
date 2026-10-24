@@ -1225,3 +1225,85 @@ body.eg-game::before { display: none; }
   .screen.in .panel { animation: none; }
   .card::after { display: none; }
 }
+
+/* =====================================================================
+   v4.2 Ascension Unleashed: weapon evolutions, sin fusions, Boss Rush, mutations, profile
+   ===================================================================== */
+
+/* ---------- weapon evolution ---------- */
+.screen-evo { background: radial-gradient(ellipse at 50% 38%, rgba(48, 22, 96, 0.6), rgba(3, 5, 24, 0.92) 70%); }
+.evo-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; width: min(820px, 100%); }
+.evo-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+  padding: 24px 20px 20px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--evo-col, #63f4ff) 22%, transparent), transparent 62%) padding-box,
+    linear-gradient(#0b1029, #0b1029) padding-box,
+    linear-gradient(150deg, var(--evo-col, #63f4ff), #ffffff 18%, var(--evo-col, #63f4ff) 34%, rgba(142, 68, 255, 0.4) 70%, var(--evo-col, #63f4ff)) border-box;
+  color: #f4f6ff;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 24px 64px -30px var(--evo-col, #63f4ff);
+  transition: transform 0.14s ease, box-shadow 0.18s ease;
+  animation: card-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1.2) backwards;
+}
+.evo-card:nth-child(2) { animation-delay: 0.08s; }
+.evo-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.12) 48%, transparent 60%);
+  transform: translateX(-120%);
+  animation: evo-sheen 3.2s ease-in-out 0.6s infinite;
+  pointer-events: none;
+}
+@keyframes evo-sheen { 0% { transform: translateX(-120%); } 45%, 100% { transform: translateX(120%); } }
+.evo-card:hover, .evo-card:focus-visible { transform: translateY(-5px); box-shadow: 0 28px 70px -22px var(--evo-col, #63f4ff); }
+.evo-card:focus-visible { outline: 2px solid var(--evo-col, #63f4ff); outline-offset: 3px; }
+.evo-card.chosen { animation: evo-chosen 0.6s ease forwards; }
+.evo-cards:has(.chosen) .evo-card:not(.chosen) { opacity: 0.25; filter: grayscale(0.8); transition: opacity 0.3s ease, filter 0.3s ease; }
+@keyframes evo-chosen { 30% { transform: scale(1.05); box-shadow: 0 0 80px -6px var(--evo-col, #63f4ff); } 100% { transform: scale(1.02); box-shadow: 0 0 60px -10px var(--evo-col, #63f4ff); } }
+.evo-path { font: 700 0.72rem var(--g-num); letter-spacing: 0.16em; text-transform: uppercase; color: var(--evo-col, #63f4ff); }
+.evo-art { position: relative; display: grid; place-items: center; width: 150px; height: 74px; filter: drop-shadow(0 0 18px var(--evo-col, #63f4ff)); }
+.evo-art .gun-art { width: 132px; height: 66px; color: var(--evo-col, #63f4ff); }
+.evo-spark {
+  position: absolute;
+  top: 2px;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  animation: evo-twinkle 1.6s ease-in-out infinite;
+}
+@keyframes evo-twinkle { 0%, 100% { transform: scale(0.6) rotate(0deg); opacity: 0.6; } 50% { transform: scale(1.15) rotate(45deg); opacity: 1; } }
+.evo-name { font-family: var(--g-tag); font-size: clamp(1.7rem, 3.6vw, 2.4rem); line-height: 1; color: var(--g-cream); text-shadow: 0 0 16px var(--evo-col, #63f4ff); transform: rotate(-2deg); }
+.evo-lines { display: grid; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; color: #c9d2f0; font-size: 0.9rem; line-height: 1.4; }
+.evo-lines li { position: relative; padding-left: 16px; text-align: left; }
+.evo-lines li::before { content: ""; position: absolute; left: 2px; top: 0.55em; width: 7px; height: 7px; background: var(--evo-col, #63f4ff); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.gun-chip.evolved { box-shadow: 0 0 14px -4px var(--gun-col, #63f4ff); }
+.gun-chip.evolved .gun-main b::before { content: "\2726 "; color: #fff; }
+.slot.evolved { background: linear-gradient(160deg, color-mix(in srgb, var(--gun-col, #63f4ff) 14%, transparent), transparent 70%); }
+.slot-evo { color: var(--gun-col, #63f4ff); font-size: 0.7rem; line-height: 4px; margin-left: 2px; }
+@media (max-width: 760px) {
+  .evo-cards { grid-template-columns: 1fr; gap: 10px; }
+  .evo-card { padding: 14px 14px 14px; gap: 6px; }
+  .evo-art { height: 50px; }
+  .evo-art .gun-art { width: 96px; height: 48px; }
+}
+@media (max-height: 520px) {
+  .evo-card { padding: 12px; gap: 5px; }
+  .evo-art { height: 44px; }
+  .evo-art .gun-art { width: 86px; height: 43px; }
+  .evo-lines { font-size: 0.8rem; }
+}
+.game.reduced .evo-card::after, .game.reduced .evo-spark { animation: none; }
+@media (prefers-reduced-motion: reduce) { .evo-card::after, .evo-spark { animation: none; } }

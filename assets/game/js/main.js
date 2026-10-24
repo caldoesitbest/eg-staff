@@ -22,7 +22,7 @@ import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
 import { formatScore, rand, pick, TAU, withSeed, hashStr, seedRng } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
-import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut } from "./armory.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName } from "./armory.js";
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
@@ -319,6 +319,46 @@ function showVictory() {
 function openUpgrade() {
   if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
   ui.clearBanner();
+  // a sin boss just fell and a gun is at Tier IV: it can evolve (one evolution per boss)
+  if (waves.isBossWave(G.wave) && evoCandidate() >= 0) { openEvolve(); return; }
+  openCards();
+}
+
+// ---------------------------------------------------------------------------
+// weapon evolution (evolve.js): two paths, pick one or decide after the next boss
+// ---------------------------------------------------------------------------
+let evoSlot = -1, evoBusy = false;
+function openEvolve() {
+  evoSlot = evoCandidate();
+  evoBusy = false;
+  setState("evolve");
+  input.releaseAll();
+  ui.showEvo(evoSlot);
+  audio.play("evoReady");
+}
+function pickEvolution(path) {
+  if (G.state !== "evolve" || evoBusy || evoSlot < 0) return;
+  if (!evolveGun(evoSlot, path)) return;
+  evoBusy = true;
+  const g = G.guns[evoSlot], P = G.player, col = gunCol(g);
+  if (G.gunSlot !== evoSlot) swapGun(evoSlot);
+  audio.play("evolve");
+  const card = document.querySelector('#evo-cards .evo-card[data-path="' + path + '"]');
+  if (card) card.classList.add("chosen");
+  if (P) {
+    fx.ring(P.x, P.y, 10, 160, 0.6, col, 5);
+    fx.burst(P.x, P.y, 30, P_CYAN, 300, 0.8, 2);
+    fx.text(P.x, P.y - 44, gunName(g).toUpperCase(), col, 22, 1.6);
+  }
+  setTimeout(() => { if (G.state === "evolve") openCards(); }, 650);
+}
+function laterEvolution() {
+  if (G.state !== "evolve" || evoBusy) return;
+  audio.play("click");
+  openCards();
+}
+
+function openCards() {
   setState("upgrade");
   input.releaseAll();
   offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
@@ -385,6 +425,8 @@ function shopBuy(i) {
   audio.play("buy");
   const P = G.player;
   if (P) fx.ring(P.x, P.y, 10, 90, 0.4, info.col, 3);
+  const held = o.kind === "gun" && G.guns.find((g) => g && g.id === o.id);
+  if (held && held.tier === 4 && !held.evo) { ui.toast(BALANCE.guns[o.id].name + " is Tier IV: beat the next boss to evolve it", 3200); audio.play("evoReady"); }
   ui.renderShop();
 }
 
@@ -599,7 +641,7 @@ function menuStep(dt) {
 function update(dt) {
   const s = G.state;
   if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
-  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win") return;
+  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win" || s === "evolve") return;
   if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
@@ -633,7 +675,7 @@ function musicDirector() {
   const live = !!(b && b.state !== -1);
   if (live && !lastBossLive) audio.impact();
   lastBossLive = live;
-  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win") {
+  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win" || s === "evolve") {
     audio.musicTheme(s === "win" ? "envy" : sin, "chapter");
     audio.musicIntensity(0);
     return;
@@ -748,6 +790,8 @@ ui.init({
   onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
   onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
+  onEvo: pickEvolution,
+  onEvoLater: laterEvolution,
   onReroll: reroll,
   onPatch: patchUp,
   onBuy: shopBuy,
@@ -823,6 +867,8 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
     const onButton = document.activeElement && document.activeElement.tagName === "BUTTON" && document.activeElement.id !== "shop-go";
     if ((e.code === "Enter" || e.code === "Space") && !onButton) { e.preventDefault(); if (ui.armed) shopGo(); return; }
+  } else if (s === "evolve") {
+    if (digit === 0 || digit === 1) { e.preventDefault(); if (ui.armed) pickEvolution(digit === 0 ? "a" : "b"); return; }
   } else if (s === "upgrade") {
     const i = digit;
     if (i >= 0 && offered[i]) { e.preventDefault(); if (ui.armed) pickCard(offered[i]); return; }
@@ -894,6 +940,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
   import("./debug-bot.js").then(({ bot }) => {
     bot.onRetry = startRun;
     bot.onPick = pickCard;
+    bot.onEvo = pickEvolution;
     bot.onBuy = shopBuy;
     bot.onShopGo = shopGo;
     autopilot = bot;
@@ -931,7 +978,10 @@ if (G.debug.on && params.get("smoke") === "1") {
 }
 if (G.debug.on) {
   import("./armory.js").then((armory) => {
-    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop };
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop,
+      openUpgrade, openEvolve, pickEvolution,
+      stage: (gun, path, opts) => import("./debug-bot.js").then((m) => m.stage({ spawnEnemy, waves }, gun, path, opts)),
+      zoneAt: (t, f) => import("./debug-bot.js").then((m) => m.zoneAt(t, f)) };
   });
   ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm · M stars", 5000);
 }

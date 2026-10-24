@@ -2,6 +2,7 @@
    so the hot loop only does drawImage. Rebuilt when the zoom/pixel ratio changes. */
 
 import { TAU } from "./util.js";
+import { BALANCE } from "./balance.js";
 
 export const C = {
   bg: "#030518", bg2: "#04050f",
@@ -18,6 +19,8 @@ export const SIN = {
 };
 export const PAL = [C.cyan, C.violet2, C.magenta, C.mint, C.amber, C.danger, C.white, C.orange, C.red, C.green, C.violet, C.heart, C.blue,
   SIN.sloth, SIN.glutton, SIN.greed, SIN.lust, SIN.wrath, SIN.pride, SIN.envy];
+// Weapon evolutions bring their own colours (evolve.js looks them up by colour).
+for (const gun in BALANCE.evolution) for (const path of ["a", "b"]) { const c = BALANCE.evolution[gun][path].col; if (PAL.indexOf(c) < 0) PAL.push(c); }
 export const P_CYAN = 0, P_VIOLET = 1, P_MAGENTA = 2, P_MINT = 3, P_AMBER = 4, P_DANGER = 5, P_WHITE = 6,
   P_ORANGE = 7, P_RED = 8, P_GREEN = 9, P_DVIOLET = 10, P_HEART = 11, P_BLUE = 12,
   P_SLOTH = 13, P_GLUT = 14, P_GREED = 15, P_LUST = 16, P_WRATH = 17, P_PRIDE = 18, P_ENVY = 19;
@@ -330,17 +333,20 @@ export const sprites = {
       noGlow(g);
       g.fillStyle = "#fff"; circle(g, 0, 0, r * 0.55); g.fill();
     });
-    const heartShot = make(30, P, (g) => {
-      glow(g, P, "#ff6fb5", 10); g.fillStyle = "#ff6fb5"; heartPath(g, 7); g.fill(); noGlow(g);
-      g.fillStyle = "#fff"; heartPath(g, 3.4); g.fill();
+    const hearty = (col, s) => make(30, P, (g) => {
+      glow(g, P, col, 10); g.fillStyle = col; heartPath(g, s); g.fill(); noGlow(g);
+      g.fillStyle = "#fff"; heartPath(g, s * 0.49); g.fill();
     });
-    const arcShot = make(30, P, (g) => {
-      glow(g, P, C.blue, 12);
-      g.strokeStyle = C.blue; g.lineWidth = 2.4;
+    const zappy = (col) => make(30, P, (g) => {
+      glow(g, P, col, 12);
+      g.strokeStyle = col; g.lineWidth = 2.4;
       g.beginPath(); g.moveTo(-9, 0); g.lineTo(-4, -4); g.lineTo(0, 3); g.lineTo(4, -3); g.lineTo(9, 0); g.stroke();
       noGlow(g);
       g.fillStyle = "#e6ecff"; circle(g, 0, 0, 3); g.fill();
     });
+    const heartShot = hearty("#ff6fb5", 7);
+    const arcShot = zappy(C.blue);
+    const EV = BALANCE.evolution;
     this.shots = [
       this.bullet, this.bulletCrit, ball(C.cyan, 7, 34), this.bulletEnvy,
       capsule(C.amber, 10, 5),          // scatter pellet
@@ -349,6 +355,16 @@ export const sprites = {
       ball(C.orange, 6.5, 30),          // nova grenade
       arcShot,                          // arc bolt
       heartShot,                        // heartseeker
+      // 10-23: evolved guns (evolve.js: 9 + evolution code)
+      capsule(EV.blaster.a.col, 22, 6.2), capsule(EV.blaster.b.col, 19, 5.6),
+      capsule(EV.scatter.a.col, 11, 5.6), capsule(EV.scatter.b.col, 10, 4.6),
+      capsule(EV.smg.a.col, 15, 4.6), capsule(EV.smg.b.col, 13, 4.6),
+      capsule(EV.rail.a.col, 38, 5.6), capsule(EV.rail.b.col, 36, 5.2),
+      ball(EV.nova.a.col, 7, 32), ball(EV.nova.b.col, 7, 32),
+      zappy(EV.arc.a.col), zappy(EV.arc.b.col),
+      hearty(EV.heart.a.col, 7.4), hearty(EV.heart.b.col, 7.4),
+      // 24-27: spectral bolt, blood dart, shrapnel, bomblet
+      capsule(EV.blaster.b.col, 17, 7.5), capsule(EV.heart.a.col, 12, 4), capsule("#ffa3a3", 7, 3.4), ball(EV.nova.a.col, 4, 22),
     ];
     const orb = (col) => make(28, P, (g) => {
       glow(g, P, col, 12);

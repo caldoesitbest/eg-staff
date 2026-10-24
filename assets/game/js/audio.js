@@ -273,6 +273,29 @@ const SOUNDS = {
     const t = now();
     [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(d, "square", f, f, t + i * 0.07, 0.2, 0.06));
   }],
+  // ---- weapon evolutions ----
+  evoReady: [1, (d) => {           // a gun is ready to evolve: a shimmer that rises
+    const t = now();
+    [392, 494, 587, 784].forEach((f, i) => tone(d, "triangle", f, f * 1.01, t + i * 0.09, 0.5, 0.07, 0.02));
+    noise(d, t, 0.9, 0.06, "highpass", 5000, 11000);
+  }],
+  evolve: [1, (d) => {             // evolved: a low hit, a bright major chord, a sparkle
+    const t = now();
+    tone(d, "sine", 98, 49, t, 0.9, 0.5);
+    noise(d, t, 0.6, 0.35, "lowpass", 4000, 200, 0.6);
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(d, "sawtooth", f, f, t + 0.08 + i * 0.03, 0.9, 0.035, 0.03));
+    [1568, 2093, 2637].forEach((f, i) => tone(d, "triangle", f, f, t + 0.3 + i * 0.07, 0.4, 0.05));
+  }],
+  evoBurst: [0.2, (d) => {         // Overdrive kicks in, Supernova's shockwave
+    const t = now();
+    tone(d, "sawtooth", 220, 880, t, 0.25, 0.12, 0.01);
+    noise(d, t, 0.3, 0.3, "bandpass", 1200, 5000, 0.9);
+  }],
+  evoCharge: [0.15, (d) => {       // implosions, wells, storms, the Singularity's pull
+    const t = now();
+    tone(d, "sine", 660, 90, t, 0.45, 0.25, 0.01);
+    noise(d, t, 0.45, 0.25, "bandpass", 3000, 300, 1.2);
+  }],
   // ---- guns ----
   shotgun: [0.08, (d) => {
     const t = now();

@@ -167,6 +167,20 @@
     </div>
   </section>
 
+  <!-- weapon evolution (after a sin boss falls, when a gun is at Tier IV) -->
+  <section class="screen screen-evo" id="screen-evo" hidden aria-labelledby="evo-title">
+    <div class="up-wrap evo-wrap">
+      <p class="kicker" id="evo-kicker">Weapon evolution</p>
+      <h2 class="up-title" id="evo-title">Evolve your gun</h2>
+      <p class="up-bonus" id="evo-sub"></p>
+      <div class="evo-cards" id="evo-cards" role="list"></div>
+      <div class="up-econ">
+        <button class="btn btn-ghost btn-sm" id="evo-later" type="button"><i data-icon="clock"></i>Decide after the next boss</button>
+      </div>
+      <p class="up-hint" id="evo-hint"></p>
+    </div>
+  </section>
+
   <!-- shop (between waves, after the card pick) -->
   <section class="screen screen-shop" id="screen-shop" hidden aria-labelledby="shop-title">
     <div class="shop-wrap">
@@ -419,6 +433,7 @@
     "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=6",
     "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=6",
     "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=6",
+    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=8",
     "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=6",
     "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=6",
     "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=6",
@@ -447,7 +462,8 @@
     "/assets/game/js/util.js": "/assets/game/js/util.js?v=6",
     "/assets/game/js/version.js": "/assets/game/js/version.js?v=6",
     "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=6",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=6"
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=6",
+    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=8"
   }
 }
 </script>

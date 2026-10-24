@@ -6,7 +6,8 @@ import { BALANCE } from "./balance.js";
 import { input } from "./input.js";
 import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
 import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
-import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, GUN_COL, TIER_NAMES } from "./armory.js";
+import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
+import { evoChoices } from "./evolve.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
@@ -88,6 +89,7 @@ export const ui = {
     click("shop-reroll", () => handlers.onShopReroll());
     click("shop-patch", () => handlers.onPatch());
     click("shop-go", () => { if (armed()) handlers.onShopGo(); });
+    click("evo-later", () => { if (armed()) handlers.onEvoLater(); });
     click("news-btn", () => this.show("news"));
     click("coop-btn", () => handlers.onCoop());
     click("lobby-host", () => { const n = this.lobbyName(); if (n) handlers.onLobbyHost(n); });
@@ -183,7 +185,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -192,10 +194,10 @@ export const ui = {
       else if (!on) node.hidden = true;
     }
     screen = name;
-    if (name === "upgrade" || name === "over" || name === "win" || name === "shop") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : 800);
+    if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
     if (name === "how") this.renderHow();
     if (name === "menu") this.refreshMenu();
-    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
+    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
   },
@@ -205,9 +207,9 @@ export const ui = {
 
   setState(state) {
     const g = this.els.game;
-    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win");
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win", "state-evolve");
     g.classList.add("state-" + state);
-    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win");
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win" || state === "evolve");
     this.updateRotateHint();
   },
 
@@ -593,12 +595,13 @@ export const ui = {
     if (slowTick) this.renderTeam();
 
     // guns
-    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier : "") + "|" + G.gunSlot;
+    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier + (G.guns[0].evo || "") : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier + (G.guns[1].evo || "") : "") + "|" + G.gunSlot;
     if (gk !== last.gun) {
       last.gun = gk;
       const a = G.guns[G.gunSlot] || G.guns[0], b = G.guns[1 - G.gunSlot];
       E["gun-main"].replaceChildren(gunArt(a.id), el("b", "", gunName(a)));
-      E["gun-chip"].style.setProperty("--gun-col", GUN_COL[a.id]);
+      E["gun-chip"].style.setProperty("--gun-col", gunCol(a));
+      E["gun-chip"].classList.toggle("evolved", !!a.evo);
       E["gun-alt"].replaceChildren();
       if (b) E["gun-alt"].append(gunArt(b.id), el("span", "", input.mode === "kbm" ? "Q" : input.mode === "gamepad" ? "Y" : "tap"));
       E["gun-alt"].hidden = !b;
@@ -749,6 +752,42 @@ export const ui = {
     if (!n) return;
     const keys = (G.stats.cards || 3) > 3 ? "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd>" : "<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>";
     n.innerHTML = input.mode === "kbm" ? "Press " + keys + " to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
+  },
+
+  // ---------------- weapon evolution ----------------
+  /** Two paths for the gun in slot i: pick one (it's locked in for this gun) or decide after the next boss. */
+  showEvo(i) {
+    const g = G.guns[i];
+    if (!g) return;
+    const base = BALANCE.guns[g.id];
+    $("evo-kicker").textContent = "Weapon evolution · " + base.name + " IV";
+    $("evo-title").textContent = "Evolve your " + base.name;
+    $("evo-sub").innerHTML = "Pick a path. It's locked in for this gun for the rest of the run.";
+    const box = $("evo-cards");
+    box.replaceChildren();
+    evoChoices(g.id).forEach((c, k) => {
+      const b = el("button", "evo-card");
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      b.dataset.path = c.path;
+      b.style.setProperty("--evo-col", c.col);
+      b.append(el("span", "card-key", String(k + 1)));
+      b.append(el("span", "evo-path", "Path " + c.path.toUpperCase() + " · " + c.tag));
+      const art = el("span", "evo-art");
+      art.append(gunArt(g.id), el("i", "evo-spark"));
+      b.append(art);
+      b.append(el("span", "evo-name", c.name));
+      const ul = el("ul", "evo-lines");
+      for (const line of c.lines) ul.append(el("li", "", line));
+      b.append(ul);
+      b.setAttribute("aria-label", "Path " + c.path.toUpperCase() + ": " + c.name + ". " + c.lines.join(" "));
+      b.addEventListener("click", () => { if (armed()) handlers.onEvo(c.path); });
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+      box.append(b);
+    });
+    const n = $("evo-hint");
+    if (n) n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd> or <kbd>2</kbd> to evolve" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to evolve" : "Tap a path to evolve";
+    this.show("evo");
   },
 
   // ---------------- co-op ----------------
@@ -918,10 +957,13 @@ export const ui = {
       const b = el("button", "slot" + (i === G.gunSlot ? " active" : "") + (g ? "" : " empty"));
       b.type = "button";
       if (g) {
-        b.style.setProperty("--gun-col", GUN_COL[g.id]);
+        b.style.setProperty("--gun-col", gunCol(g));
+        b.classList.toggle("evolved", !!g.evo);
         b.append(gunArt(g.id), el("span", "slot-name", gunName(g)));
         const pips = el("span", "slot-pips");
         for (let k = 0; k < 4; k++) pips.append(el("i", k < g.tier ? "on" : ""));
+        if (g.evo) pips.append(el("b", "slot-evo", "✦"));
+        else if (g.tier >= 4) pips.title = "Tier IV: beat the next boss to evolve it";
         b.append(pips);
         b.title = i === G.gunSlot ? "Equipped. New guns replace this one when both slots are full" : "Click to equip";
       } else b.append(el("span", "slot-name", "Empty slot"));
@@ -1075,8 +1117,8 @@ function renderArsenal(box) {
   for (const g of G.guns) {
     if (!g) continue;
     const chip = el("span", "build-chip gun");
-    chip.style.setProperty("--chip-col", GUN_COL[g.id]);
-    chip.append(gunArt(g.id), document.createTextNode(gunName(g)));
+    chip.style.setProperty("--chip-col", gunCol(g));
+    chip.append(gunArt(g.id), document.createTextNode((g.evo ? "✦ " : "") + gunName(g)));
     box.append(chip);
   }
   for (const it of ownedItems()) {

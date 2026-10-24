@@ -10,6 +10,7 @@ import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
+import { evoRobot } from "../evolve.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -84,6 +85,9 @@ export function spawnEnemy(type, x, y, opts) {
   e.ramStamp = 0; e.target = null; e.tgtP = null; e.tgtT = 0; e.allyBy = null;
   e.mark = boss ? (G.lap || 0) : G.mark;
   e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
+  e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
+  e.chill = 0; e.shatterCd = 0; e.passive = false;
+  e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   return e;
@@ -222,6 +226,8 @@ export function updateEnemies(dt) {
     if (e.flash > 0) e.flash -= dt;
     if (e.pop > 0) e.pop -= dt;
     if (e.orbCd > 0) e.orbCd -= dt;
+    evoRobot(e, dt);                 // Neurotoxin, Gravity Well, Blood Moon timers
+    if (e.dead) continue;
     if (e.boss) bossMoments(e, dt);
     else if (e.maxHp >= 60 && e.hp < e.maxHp * 0.35 && e.ally <= 0 && Math.random() < dt * 5) {
       // a badly hurt big robot sheds sparks: you can see it's nearly done

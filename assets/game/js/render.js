@@ -17,6 +17,11 @@ import { SUITS } from "./storage.js";
 import { SLOT_COL } from "./coop.js";
 import { waves } from "./waves.js";
 import { reviveRange } from "./world.js";
+import { drawZonesUnder, drawZonesOver } from "./zones.js";
+import { E, evoCol, evoPal } from "./evolve.js";
+
+const EVB = BALANCE.evolution;
+const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col;
 
 // Teammates' astronauts, in their own suits (built on demand, rebuilt when the zoom changes).
 const suitCache = new Map();
@@ -227,6 +232,46 @@ function buildVignette() {
 
 // ---------- helpers ----------
 const lerp = (a, b, t) => a + (b - a) * t;
+
+/** A four-pointed sparkle (evolved guns). */
+function sparkle(g, x, y, r) {
+  const q = r * 0.28;
+  g.beginPath();
+  g.moveTo(x, y - r); g.lineTo(x + q, y - q); g.lineTo(x + r, y); g.lineTo(x + q, y + q);
+  g.lineTo(x, y + r); g.lineTo(x - q, y + q); g.lineTo(x - r, y); g.lineTo(x - q, y - q);
+  g.closePath();
+  g.fill();
+}
+
+/** What weapon evolutions left on a robot: corruption (Neurotoxin), vulnerable (Gravity Well), a Blood Moon mark. */
+function drawStatus(g, e, x, y, R) {
+  if (e.tox > 0) {
+    // a ring that fills with stacks, and bubbles rising off it
+    g.strokeStyle = TOX_COL; g.globalAlpha = 0.8; g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, R + 4, -Math.PI / 2, -Math.PI / 2 + TAU * (e.tox / EVB.smg.b.max)); g.stroke();
+    g.fillStyle = TOX_COL;
+    for (let k = 0; k < 2; k++) {
+      const ph = (G.time * 1.3 + e.id * 0.37 + k * 0.5) % 1;
+      g.globalAlpha = 0.85 * (1 - ph);
+      g.beginPath(); g.arc(x + Math.sin(e.id + k * 2.1) * R * 0.5, y - R * 0.2 - ph * R * 1.1, 1.6 + e.tox * 0.25, 0, TAU); g.fill();
+    }
+  }
+  if (e.vuln > 0) {
+    // two violet chevrons pointing down: it takes more damage right now
+    g.strokeStyle = VULN_COL; g.globalAlpha = 0.9; g.lineWidth = 2;
+    const top = y - R - 14 + Math.sin(G.time * 8) * 1.5;
+    g.beginPath();
+    for (let k = 0; k < 2; k++) { g.moveTo(x - 5, top + k * 4); g.lineTo(x, top + 4 + k * 4); g.lineTo(x + 5, top + k * 4); }
+    g.stroke();
+  }
+  if (e.moon > 0) {
+    // a red crescent hanging over it
+    const cx = x + R * 0.7, cy = y - R - 8;
+    g.fillStyle = MOON_COL; g.globalAlpha = 0.95;
+    g.beginPath(); g.arc(cx, cy, 5.5, 0, TAU); g.arc(cx + 2.6, cy - 1.4, 4.6, 0, TAU, true); g.fill("evenodd");
+  }
+  g.globalAlpha = 1;
+}
 function lerpAng(a, b, t) {
   let d = b - a;
   while (d > Math.PI) d -= TAU;
@@ -615,6 +660,7 @@ export const renderer = {
       if (e.dead || e.ally > 0 || !e.kind.drawUnder) continue;
       e.kind.drawUnder(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha));
     }
+    if (G.zones.count) drawZonesUnder(g);
 
     fx.drawBelow(g);
 
@@ -642,7 +688,7 @@ export const renderer = {
         g.globalAlpha = 1;
         g.globalCompositeOperation = "source-over";
       }
-      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80)) {
+      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0) {
         g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
         if (e.kind.drawOver) e.kind.drawOver(g, e, x, y);
         const R = e.r * e.scale;
@@ -687,6 +733,7 @@ export const renderer = {
           g.beginPath(); g.arc(x, y, R + 5, -Math.PI / 2, -Math.PI / 2 + TAU * (e.ally / e.allyMax)); g.stroke();
           g.globalAlpha = 1;
         }
+        if (e.tox > 0 || e.vuln > 0 || e.moon > 0) drawStatus(g, e, x, y, R);
         if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite)) {
           const bw = Math.max(26, R * 1.8), bx = x - bw / 2, by = y - R - 12;
           g.fillStyle = "rgba(3,5,24,0.8)";
@@ -704,8 +751,11 @@ export const renderer = {
       if (e.dead || !e.boss) continue;
       const k = e.pop > 0 ? e.pop / 0.12 : 0;
       e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
+      g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+      if (e.tox > 0 || e.vuln > 0 || e.moon > 0) drawStatus(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), e.r * e.scale);
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+    if (G.zones.count) drawZonesOver(g);
 
     // auto-aim reticle (and a lighter one for aim assist)
     const tgt = G.autoTarget || G.assistTarget;
@@ -928,8 +978,9 @@ export const renderer = {
 
     // gun behind or in front depending on aim
     const gunId = (me ? s.gunId : Pl.gunId) || "blaster";
-    const gcol = GUN_COL[gunId] || C.cyan;
-    const gpal = gunPal(gunId);
+    const ev = (me ? s.ev : Pl.gunEv) || 0;
+    const gcol = ev ? evoCol(ev) : GUN_COL[gunId] || C.cyan;
+    const gpal = ev ? evoPal(ev) : gunPal(gunId);
     const drawGun = () => {
       const a = Pl.aimAng;
       const ca = Math.cos(a), sa = Math.sin(a);
@@ -943,6 +994,20 @@ export const renderer = {
       g.fillRect(4, -hw, 5, G2.w);
       if (G2.mag) g.fillRect(9, hw, 4, G2.mag);
       if (G2.coils) { g.fillStyle = gcol; for (let k = 0; k < 3; k++) g.fillRect(10 + k * 3.5, -hw - 1, 1.6, G2.w + 2); }
+      if (ev) {
+        // evolved: the barrel glows in its evolution's colour, with a stripe down it and a star at the grip
+        if (G.gfx.glow) {
+          g.globalCompositeOperation = "lighter";
+          g.globalAlpha = 0.32 + Math.sin(G.time * 4 + Pl.slot) * 0.1;
+          g.drawImage(sprites.dots[gpal], 1, -hw - 9, len + 10, G2.w + 18);
+          g.globalCompositeOperation = "source-over";
+          g.globalAlpha = blink ? 0.35 : 1;
+        }
+        g.fillStyle = gcol;
+        g.fillRect(10, -G2.w * 0.14, Math.max(2, len - 12), G2.w * 0.28);
+        g.fillStyle = "#ffffff";
+        sparkle(g, 6, -hw - 3, 2.6 + Math.sin(G.time * 6 + Pl.slot) * 0.8);
+      }
       g.fillStyle = gcol;
       g.fillRect(4 + len - 3, -hw, 3, G2.w);
       // charged shot: a growing orb at the muzzle
@@ -1019,6 +1084,22 @@ export const renderer = {
       for (let k = 0; k < Pl.shield; k++) {
         const a0 = -Math.PI / 2 + (k / Math.max(1, Pl.maxShield)) * TAU + 0.08;
         g.beginPath(); g.arc(x, y + bob, 29, a0, a0 + TAU / Math.max(1, Pl.maxShield) - 0.16); g.stroke();
+      }
+    }
+    // evolution meters: Overdrive (then its heat), Phantom Repeater and Soulbound streaks
+    if (me && !Pl.dead && ev) {
+      let f = 0, col = gcol, hot = false;
+      if (ev === E.OVERDRIVE) {
+        const O = EVB.smg.a;
+        if (Pl.odT > 0) { f = Pl.odT / O.time; hot = true; } else if (Pl.heat > 0) { f = Pl.heat / O.heat; col = "#ff4a3d"; } else f = Pl.od / O.fill;
+      } else if (ev === E.PHANTOM) f = Pl.rep / EVB.blaster.b.cap;
+      else if (ev === E.SOUL) f = Pl.soul / EVB.heart.b.cap;
+      if (f > 0.01) {
+        g.strokeStyle = col;
+        g.globalAlpha = hot ? 0.7 + Math.sin(G.time * 30) * 0.25 : 0.55;
+        g.lineWidth = hot ? 3.5 : 2;
+        g.beginPath(); g.arc(x, y + bob, 36, Math.PI / 2 - TAU * 0.22 * f, Math.PI / 2 + TAU * 0.22 * f); g.stroke();
+        g.globalAlpha = 1;
       }
     }
     // charge meter around you
