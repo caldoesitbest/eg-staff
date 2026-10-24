@@ -11,6 +11,7 @@ import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
 import { evoRobot } from "../evolve.js";
+import { bloodRamp, allyHit, allyPop } from "../fusion.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -86,7 +87,7 @@ export function spawnEnemy(type, x, y, opts) {
   e.mark = boss ? (G.lap || 0) : G.mark;
   e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
   e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
-  e.chill = 0; e.shatterCd = 0; e.passive = false;
+  e.chill = 0; e.chillMul = 1; e.shatterCd = 0; e.passive = false; e.lastCrit = false;
   e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
@@ -161,7 +162,8 @@ export function hostileCount() {
 function popAlly(e) {
   if (e.allyBy && e.allyBy !== G.player) usePlayer(e.allyBy);
   const s = G.stats;
-  queueBlast(e.x, e.y, (s.lustBurst || 40) + e.r, 22 + G.wave * 3, true, false, 0, C.magenta, P_HEART);
+  const blood = allyPop(e);          // Bloodlust: a blood nova; Parasitic Heart: a shield pip
+  queueBlast(e.x, e.y, ((s.lustBurst || 40) + e.r) * (blood ? blood.radius : 1), (22 + G.wave * 3) * (blood ? blood.blast : 1), true, false, 0, blood ? C.red : C.magenta, P_HEART);
   fx.burst(e.x, e.y, 10, P_HEART, 200, 0.6, 1.6);
   killEnemy(e, true);
 }
@@ -189,13 +191,15 @@ function updateAlly(e, dt, realDt) {
   }
   const P = e.allyBy || G.me;
   if (e.target) {
-    const d = seek(e, e.target.x, e.target.y, Math.max(140, e.speed * 1.3), 5, dt);
+    const ramp = bloodRamp(e);          // Bloodlust: more vicious the longer the charm lasts
+    const d = seek(e, e.target.x, e.target.y, Math.max(140, e.speed * 1.3) * (1 + ramp * 0.4), 5, dt);
     e.cd -= dt;
     if (d < e.r * e.scale + e.target.r * e.target.scale + 4 && e.cd <= 0) {
-      e.cd = 0.35;
+      e.cd = 0.35 / (1 + ramp * 0.6);
       const o = e.target;
       const dx = o.x - e.x, dy = o.y - e.y, dd = Math.hypot(dx, dy) || 1;
-      damageEnemy(o, 10 + e.maxHp * 0.3 + G.wave * 1.5, false, dx / dd, dy / dd, 200);
+      damageEnemy(o, (10 + e.maxHp * 0.3 + G.wave * 1.5) * (1 + ramp), false, dx / dd, dy / dd, 200);
+      allyHit(e);
       fx.burst(o.x, o.y, 4, P_HEART, 140, 0.3, 1.2);
       audio.play("hit", o.x, o.y, 0.5);
     }
@@ -248,6 +252,7 @@ export function updateEnemies(dt) {
         if ((e.x - q.x) ** 2 + (e.y - q.y) ** 2 < q.r * q.r) { m *= trailSlow; break; }
       }
     }
+    if (e.chill > 0) m *= e.boss ? Math.max(0.7, e.chillMul) : e.chillMul;
     if (e.boss) m = Math.max(m, 0.5);       // bosses resist slows a bit
     e.slowMul = m;
     const edt = dt * m;

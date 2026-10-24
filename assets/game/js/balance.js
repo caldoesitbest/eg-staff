@@ -401,6 +401,19 @@ export const BALANCE = {
     capacitor:  { max: 2 },
   },
 
+  // Sin Fusions: two sins at level `need` or higher unlock a fusion card. One per run (a second in endless,
+  // after you win). Once you qualify it shows up in half your card hands (always the first time).
+  fusions: {
+    need: 3, chance: 0.5, max: 1, maxEndless: 2,
+    covetous:  { a: "greed", b: "envy", stars: 2, extend: 0.5, extendCap: 1 },          // kills while holding a stolen power drop 2 stars; each adds 0.5s (up to +100% of its time)
+    bloodlust: { a: "wrath", b: "lust", ramp: 0.15, rampCap: 1, blast: 2, radius: 1.3, ring: 8, ringDmg: 0.5 },   // charmed robots: +15%/s (up to +100%); their pop: x2 blast, x1.3 wider, 8 shots
+    feast:     { a: "gluttony", b: "pride", critFeast: 3, capBonus: 2, gorgeMax: 3, gorge: 1, blast: 60 },          // crit kills count 3 to Gluttony, +2 heals a wave; overheal stores a gorge (+100% on a crit)
+    judgment:  { a: "sloth", b: "pride", shatter: { r: 75, dmg: 0.5, cd: 0.5, chill: 0.8, slow: 0.35 }, ready: 3, critMul: 1.5 },   // crits on slowed robots shatter; a perfect boost readies Judgment
+    frenzy:    { a: "greed", b: "wrath", per: 0.01, cap: 25, idle: 1.5, decay: 2, burst: { time: 4, dmg: 0.4, cd: 10, blast: 50, blastDmg: 0.6 } },   // each star +1% damage and fire rate (up to 25); 25 = Golden Frenzy
+    parasite:  { a: "lust", b: "gluttony", per: 12, heals: 2, shields: 3 },              // 12 ally hits heal ½💜 (2 a wave); a charm ending gives a shield pip (3 a wave)
+    stolen:    { a: "envy", b: "sloth", chill: 1.5, slow: 0.7, perfect: 2, extends: 3 },  // stolen powers make your hits slow robots 30%; perfect boosts add 2s (3 times per power)
+  },
+
   // What Envy steals from each robot (lasts upgrades.envy.time seconds).
   envyPowers: {
     drone:    { name: "Overdrive", text: "+25% move speed", speed: 0.25 },

@@ -16,6 +16,7 @@ import { updateBossFx } from "./enemies/bosses.js";
 import { SHOT_KIND, GUN_R, updateGear } from "./armory.js";
 import { E, evoHit, evoEnd, evoKill, evoRicochet, evoTick, evoPal, chainRamp, beamRamp, annihilate, soulTarget, volleyHit, shotGone, evoShotKind } from "./evolve.js";
 import { updateZones, addZone, Z } from "./zones.js";
+import { fusionStar, fusionOverheal, fusionDmg, fusionShot, fusionPerfect, fusionHit, fusionTick } from "./fusion.js";
 
 const A = BALANCE.arena;
 const D = BALANCE.drops;
@@ -101,7 +102,7 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
     e.ky += dirY * k;
   }
   showDamage(e, dmg, crit);
-  if (e.hp <= 0) { killEnemy(e); return true; }
+  if (e.hp <= 0) { e.lastCrit = !!crit; killEnemy(e); return true; }
   if (e.ally <= 0) onHit(e);
   return false;
 }
@@ -241,6 +242,7 @@ export function perfectBoost() {
   G.perfects = (G.perfects || 0) + 1;
   P.perfSeq = (P.perfSeq || 0) + 1;
   if (G.stats.perfectCharge) { if (P.charging) P.charge = 1; else P.chargeBank = true; }
+  fusionPerfect(P);
   fx.text(P.x, P.y - 38, "PERFECT!", C.cyan, 18, 0.9);
   // a crisp cyan-violet burst: two rings and a spray, no screen flash
   fx.ring(P.x, P.y, 6, 70, 0.28, C.violet2, 4);
@@ -261,7 +263,7 @@ export function healPlayer(amount, allowShield) {
   } else if (allowShield && P.maxShield > 0 && P.shield < P.maxShield) {
     P.shield = Math.min(P.maxShield, P.shield + amount);
     fx.text(P.x, P.y - 34, "+SHIELD", C.cyan, 14, 0.9);
-  } else return;
+  } else { fusionOverheal(P); return; }
   audio.play("heal", P.x, P.y);
   G.emit("heal");
 }
@@ -335,7 +337,7 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.x = b.px = x; b.y = b.py = y;
   b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed;
   b.r = (plain ? PG.radius : GUN_R[s.gunId] || PG.radius) * (crit ? 1.25 : 1);
-  b.dmg = (plain ? absDmg : s.damage * dmgMul) * (crit ? s.critMul : 1);
+  b.dmg = (plain ? absDmg : s.damage * dmgMul * fusionDmg(G.player)) * (crit ? s.critMul : 1);
   b.life = plain ? PG.life * 1.1 : s.bulletLife;
   b.pierce = pierce + (crit && s.critPierce ? 2 : 0);
   b.nh = 0;
@@ -356,6 +358,8 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   // weapon evolutions (evolve.js); shots an evolution spawns mark themselves as kin
   b.ev = plain ? 0 : s.ev; b.vol = 0; b.life0 = b.life; b.dmg0 = b.dmg; b.amt = 0;
   b.trail = false; b.trailD = 0; b.bounced = false; b.frag = false; b.kin = 0; b.forked = false; b.lock = false; b.pierced = 0;
+  b.gorged = false;
+  if (!plain) fusionShot(G.player, b, s);        // Sin Fusions: gorged crits, Judgment
   return b;
 }
 
@@ -792,6 +796,7 @@ function updatePlayerBullets(dt) {
       volleyHit(b.vol);
       b.pierced++;
       if (b.ev && !b.kin) evoHit(b, e, killed);
+      if (G.player.fusions.length) fusionHit(G.player, b, e);
       if (b.chain) {
         chainFrom(e, b);
         // Thunderlord: a crit forks the lightning
@@ -993,10 +998,11 @@ function collect(q) {
   G.stars += q.value;
   G.starsTotal += q.value;
   addScore(BALANCE.score.star * q.value);
+  if (P.fusions.length) fusionStar(P, q.kind);
   G.starChain = G.starChainT > 0 ? Math.min(12, G.starChain + 1) : 0;
   G.starChainT = 0.45;
   audio.play("star", q.x, q.y, 0.6, { pitch: G.starChain });
-  fx.burst(q.x, q.y, 3, q.kind === 1 ? P_AMBER : P_CYAN, 90, 0.3, 1);
+  fx.burst(q.x, q.y, 3, q.kind === 1 ? P_AMBER : q.kind === 3 ? P_MINT : P_CYAN, 90, 0.3, 1);
 }
 
 function updatePickups(dt) {
@@ -1135,6 +1141,7 @@ export function stepWorld(dt) {
     P.slowMul = 1;             // bosses lower it again this tick if you're in an aura
     if (!P.dead) tickEnvy(dt);
     evoTick(P, G.stats, dt);
+    fusionTick(P, dt);
   }
   usePlayer(G.me);
   waves.update(dt);

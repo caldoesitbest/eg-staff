@@ -9,10 +9,10 @@ import { BALANCE } from "./balance.js";
 // ?bot=dps|tank|cc|weak: what the autopilot builds toward (balance tests). Anything else: random picks.
 // Earlier in a list = wanted more. "weak" takes the least useful cards and never shops.
 const PROFILES = {
-  dps:  ["wrath", "pride", "multishot", "pierce", "overcharge", "velocity", "homing", "glass", "hollow", "battery", "scope", "capbank", "overdrive", "crown", "clover",
+  dps:  ["frenzy", "feast", "judgment", "wrath", "pride", "multishot", "pierce", "overcharge", "velocity", "homing", "glass", "hollow", "battery", "scope", "capbank", "overdrive", "crown", "clover",
          "rail", "heart", "nova", "scatter", "smg", "arc"],
-  tank: ["gluttony", "suit", "nanoweave", "wrath", "bubble", "multishot", "fang", "thorns", "boost", "hollow", "battery", "orbit", "thrusters", "fuel", "turret", "scatter", "smg"],
-  cc:   ["sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
+  tank: ["feast", "parasite", "gluttony", "suit", "nanoweave", "wrath", "bubble", "multishot", "fang", "thorns", "boost", "hollow", "battery", "orbit", "thrusters", "fuel", "turret", "scatter", "smg"],
+  cc:   ["stolen", "bloodlust", "judgment", "covetous", "sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
   weak: ["greed", "rear", "magnet", "coupon", "piggy", "velocity", "ricochet"],
 };
 const rank = (list, id) => { const i = list.indexOf(id); return i < 0 ? 99 : i; };

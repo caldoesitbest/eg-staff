@@ -280,7 +280,7 @@ export const sprites = {
   P: 0,
   robots: {},          // type → { base, flash, ally }
   player: null, playerFlash: null,
-  star: null, gold: null, heart: null,
+  star: null, gold: null, heart: null, covet: null,
   bullet: null, bulletCrit: null, bulletEnvy: null,
   shots: [],           // player shots by bullet kind (0 blaster, 1 crit, 2 charged orb, 3 envy, 4.. one per gun)
   orbs: {},            // color → sprite
@@ -312,6 +312,10 @@ export const sprites = {
     this.gold = make(28, P, (g) => {
       glow(g, P, C.amber, 10); g.fillStyle = C.amber; starPath(g, 9, 4); g.fill(); noGlow(g);
       g.fillStyle = "#fff7e0"; starPath(g, 4.5, 2); g.fill();
+    });
+    this.covet = make(28, P, (g) => {        // a Covetous King star: stolen mint, a gold heart
+      glow(g, P, C.mint, 10); g.fillStyle = C.mint; starPath(g, 9, 4); g.fill(); noGlow(g);
+      g.fillStyle = C.amber; starPath(g, 4.5, 2); g.fill();
     });
     this.heart = make(34, P, (g) => {
       glow(g, P, C.heart, 12); g.fillStyle = C.heart; heartPath(g, 11); g.fill(); noGlow(g);

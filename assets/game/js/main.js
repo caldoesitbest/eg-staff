@@ -24,6 +24,7 @@ import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
 import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName } from "./armory.js";
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
+import { fusionActivated, fusionWave } from "./fusion.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
@@ -224,7 +225,7 @@ function seeded(tag, fn) {
 function startWave(n) {
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
-  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; }     // Bubble Shield refills every wave; Gluttony's heals reset
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; fusionWave(P); }     // Bubble Shield refills every wave; Gluttony's (and fusions') per-wave caps reset
   usePlayer(G.me);
   waveIntro(n);
   hostSend({ k: "go", n });
@@ -391,6 +392,14 @@ function pickCard(id) {
   const lvl = applyCard(id);
   const c = CARD_BY_ID[id];
   const P = G.player;
+  if (c.kind === "fusion") {
+    // a Sin Fusion: its own moment
+    fusionActivated(P, id, c.name);
+    G.emit("fusion", id);
+    ui.toast("Sin Fusion: " + c.name, 2600);
+    afterCards();
+    return;
+  }
   audio.play("pick");
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);

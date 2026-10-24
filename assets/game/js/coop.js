@@ -121,7 +121,8 @@ function playerRow(P) {
     P.dead ? 1 : 0, r1(P.boostT * 10) / 10, Math.round(P.iframes * 100) / 100, P.charging ? 1 : 0, Math.round(P.charge * 100) / 100,
     g ? GUNS.indexOf(g.id) : 0, g ? g.tier : 1, ctx ? ctx.stars : 0, Math.round(P.reviveT * 100) / 100, r1(P.impX), r1(P.impY), Math.round(P.slowMul * 100) / 100,
     P.hurtSeq, P.orbN, P.slowR, P.turrets, Math.round(P.recoil * 10) / 10, P.perfSeq || 0, P.bubble ? 1 : 0, envy, P.gone ? 1 : 0, Math.round(P.grace * 100) / 100,
-    Math.round((P.hurtAng || 0) * 100) / 100, P.killedBy || "", g ? evoCode(g.id, g.evo) : 0, Math.round((P.rep || 0) * 10) / 10, Math.round((P.soul || 0) * 10) / 10];
+    Math.round((P.hurtAng || 0) * 100) / 100, P.killedBy || "", g ? evoCode(g.id, g.evo) : 0, Math.round((P.rep || 0) * 10) / 10, Math.round((P.soul || 0) * 10) / 10,
+    P.gorge || 0, Math.round((P.frenzy || 0) * 10) / 10, Math.round((P.goldT || 0) * 10) / 10, Math.round((P.judgeT || 0) * 10) / 10];
 }
 
 /** Host: everything a client needs to draw this moment. */
@@ -154,7 +155,7 @@ function encodeSnapshot() {
     w16(q100(e.t)); w16(q100(e.t2)); w16(q100(e.t3)); w16(Math.max(-32768, Math.min(32767, Math.round(e.a * 1000))));
     w16(q100(e.b)); w16(q100(e.c));
     w8(u8((e.spawnT / 0.35) * 255)); w8(u8(e.allyMax > 0 ? (e.ally / e.allyMax) * 255 : 0)); w8(u8(e.shieldMax > 0 ? (e.shield / e.shieldMax) * 255 : 0));
-    w8(Math.min(15, e.tox) | (e.vuln > 0 ? 16 : 0) | (e.moon > 0 ? 32 : 0) | (e.phased ? 64 : 0)); w8(e.mut || 0);
+    w8(Math.min(15, e.tox) | (e.vuln > 0 ? 16 : 0) | (e.moon > 0 ? 32 : 0) | (e.phased ? 64 : 0) | (e.chill > 0 ? 128 : 0)); w8(e.mut || 0);
   }
   dv.setUint16(nAt, n);
   // robot shots
@@ -294,7 +295,7 @@ function applySnapshot(data) {
     e.traits = traits; e.mark = mark; e.state = state; e.t = t; e.t2 = t2; e.t3 = t3; e.a = a; e.b = b; e.c = c;
     e.spawnT = spawnT; e.shieldMax = shF > 0 ? 1 : 0; e.shield = shF;
     e.vx = e.vy = 0; e.slowMul = 1; e.alpha = 1; e.beat = G.time * 8;
-    e.tox = st & 15; e.vuln = st & 16 ? 1 : 0; e.moon = st & 32 ? 1 : 0; e.phased = !!(st & 64); e.mut = mut;
+    e.tox = st & 15; e.vuln = st & 16 ? 1 : 0; e.moon = st & 32 ? 1 : 0; e.phased = !!(st & 64); e.chill = st & 128 ? 1 : 0; e.mut = mut;
     seen.add(id);
   }
   for (const id of prevEnemy.keys()) if (!seen.has(id)) prevEnemy.delete(id);
@@ -432,6 +433,7 @@ function applyPlayer(row) {
     }
     P.killedBy = row[34] || "";
     P.rep = row[36] || 0; P.soul = row[37] || 0;
+    P.gorge = row[38] || 0; P.frenzy = row[39] || 0; P.goldT = row[40] || 0; P.judgeT = row[41] || 0;
     if (row[28] > (P.perfSeen || 0)) {
       if (P.perfSeen !== undefined) P.boostCdT *= 1 - BALANCE.player.boost.perfectRefund;
       P.perfSeen = row[28];
@@ -451,6 +453,7 @@ function applyPlayer(row) {
   P.gunId = GUNS[row[16]] || "blaster"; P.gunTier = row[17];
   P.orbN = row[24]; P.slowR = row[25]; P.turrets = row[26]; P.recoil = row[27]; P.bubble = !!row[29]; P.grace = row[32];
   P.gunEv = row[35] || 0;
+  P.gorge = row[38] || 0; P.frenzy = row[39] || 0; P.goldT = row[40] || 0; P.judgeT = row[41] || 0;
 }
 
 function hurtFeedback(P) {

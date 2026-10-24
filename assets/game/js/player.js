@@ -15,6 +15,7 @@ import { firePlayerBullet, fireBeam, addPuddle, newBoostSerial, haptic, hitStop 
 import { hasEnvy, ENVY_POWERS } from "./upgrades.js";
 import { swapGun, GUN_COL } from "./armory.js";
 import { evoRate, evoSpread, evoFired, evoShot, evoCharged, evoOrb, evoPal, evoCol, newVolley } from "./evolve.js";
+import { fusionReset, fusionRate, fusionBeforeFire, fusionAfterFire } from "./fusion.js";
 
 const A = BALANCE.arena;
 const B = BALANCE.player;
@@ -22,7 +23,7 @@ const TRAIL = 6;
 
 export function createPlayer(slot = 0) {
   const s = G.stats || { maxHp: B.hp, shieldCap: 0 };
-  return {
+  const P = {
     slot, name: "", suit: "classic", ctx: null, input: null,
     orbPos: new Float32Array(8), drones: [], slowMul: 1, orbN: 0, slowR: 0, turrets: 0,
     reviveT: 0, impX: 0, impY: 0, hurtSeq: 0, v0x: 0, v0y: 0,
@@ -40,6 +41,8 @@ export function createPlayer(slot = 0) {
     // weapon evolutions (evolve.js): Phantom streak, Soulbound streak, Overdrive meter / heat, Tempest, Blood Moon darts
     rep: 0, repIdle: 0, repN: 0, soul: 0, soulIdle: 0, od: 0, odT: 0, heat: 0, odIdle: 0, staticT: 0, bloodN: 0,
   };
+  fusionReset(P);          // Sin Fusion state (fusion.js)
+  return P;
 }
 
 const CH = BALANCE.charge;
@@ -145,6 +148,7 @@ function fire(P, s) {
   const n = s.projectiles;
   const spread = s.spread * (s.ev ? evoSpread(P, s) : 1);
   const pellets = s.gun.pellets > 1;
+  fusionBeforeFire(P);
   if (G.net.role !== "client") {
     const made = shotBuf;
     made.length = 0;
@@ -168,6 +172,7 @@ function fire(P, s) {
     }
   }
   if (s.ev) evoFired(P, s);
+  fusionAfterFire(P);
   const kick = s.gunId === "scatter" ? 34 : s.gunId === "rail" ? 26 : s.gunId === "nova" ? 18 : 10;
   P.recoil = 1;
   P.muzzle = 0.05;
@@ -433,7 +438,7 @@ export function updatePlayer(dt, P = G.player) {
   P.wantFire = wantFire;
   if (P.fireCd > 0) P.fireCd -= dt;
   if (wantFire && P.fireCd <= 0) {
-    const rate = s.rate * (hasEnvy("swarm") ? 1 + ENVY_POWERS.swarm.rate : 1) * (P.charging ? 0.6 : 1) * (s.ev ? evoRate(P, s) : 1);
+    const rate = s.rate * (hasEnvy("swarm") ? 1 + ENVY_POWERS.swarm.rate : 1) * (P.charging ? 0.6 : 1) * (s.ev ? evoRate(P, s) : 1) * fusionRate(P);
     fire(P, s);
     P.fireCd += 1 / rate;
     if (P.fireCd < 0) P.fireCd = 0;

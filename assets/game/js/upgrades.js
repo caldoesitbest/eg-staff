@@ -6,9 +6,10 @@ import { BALANCE } from "./balance.js";
 import { rng, chance } from "./util.js";
 import { fx } from "./fx.js";
 import { audio } from "./audio.js";
-import { C, P_MAGENTA, P_HEART, P_MINT, P_GREEN } from "./sprites.js";
+import { C, SIN, P_MAGENTA, P_HEART, P_MINT, P_GREEN } from "./sprites.js";
 import { queueBlast, dropPickup, healPlayer } from "./world.js";
 import { evoStats, evoCode } from "./evolve.js";
+import { fusionKill, feastCapBonus, FUSION_IDS } from "./fusion.js";
 
 const U = BALANCE.upgrades;
 const emoji = (name) => "/assets/home/emoji/" + name + ".webp";
@@ -63,6 +64,22 @@ export const CARDS = [
   { id: "capacitor", name: "Capacitor", kind: "gear", max: U.capacitor.max, icon: "hourglass", color: C.amber,
     tag: "Charged shots (right-click)",
     levels: ["Keep firing your gun while you charge", "Perfect boosts fully charge your next shot"] },
+
+  // Sin Fusions (fusion.js): two sins at level 3 unlock one. Taking it uses that card pick.
+  { id: "covetous", name: "Covetous King", kind: "fusion", max: 1, need: ["greed", "envy"], imgs: [emoji("greed"), emoji("envy")], color: SIN.greed, color2: SIN.envy,
+    levels: ["Kills while you hold a stolen power drop 2 bonus stars. Each one you grab stretches your stolen powers by ½s (up to double their time)."] },
+  { id: "bloodlust", name: "Bloodlust", kind: "fusion", max: 1, need: ["wrath", "lust"], imgs: [emoji("wrath"), emoji("lust")], color: SIN.wrath, color2: SIN.lust,
+    levels: ["Charmed robots grow more vicious the longer they serve (up to double damage and speed). When a charm ends they erupt: a bigger blast and a ring of 8 blood shots."] },
+  { id: "feast", name: "Immortal Feast", kind: "fusion", max: 1, need: ["gluttony", "pride"], imgs: [emoji("gluttony"), emoji("pride")], color: SIN.glutton, color2: SIN.pride,
+    levels: ["Crit kills count 3 toward Gluttony's heal, and it heals 2 more times a wave. A heal at full health gorges you: your next crit (3 stored) hits twice as hard and bursts."] },
+  { id: "judgment", name: "Frozen Judgment", kind: "fusion", max: 1, need: ["sloth", "pride"], imgs: [emoji("sloth"), emoji("pride")], color: SIN.sloth, color2: SIN.pride,
+    levels: ["Crits on slowed robots shatter, hurting and freezing the robots around them. A perfect boost readies Judgment: your next shot is a piercing crit, 50% harder."] },
+  { id: "frenzy", name: "Golden Frenzy", kind: "fusion", max: 1, need: ["greed", "wrath"], imgs: [emoji("greed"), emoji("wrath")], color: SIN.greed, color2: SIN.wrath,
+    levels: ["Every star you grab: +1% damage and fire rate (up to +25%, fading if you stop). Hit 25 for Golden Frenzy: 4s of +40% damage, and kills burst in gold (every 10s at most)."] },
+  { id: "parasite", name: "Parasitic Heart", kind: "fusion", max: 1, need: ["lust", "gluttony"], imgs: [emoji("lust"), emoji("gluttony")], color: SIN.lust, color2: SIN.glutton,
+    levels: ["Charmed robots feed you: every 12 hits they land heals ½💜 (2 a wave). Each charm that ends gives you a shield pip (3 a wave)."] },
+  { id: "stolen", name: "Stolen Time", kind: "fusion", max: 1, need: ["envy", "sloth"], imgs: [emoji("envy"), emoji("sloth")], color: SIN.envy, color2: SIN.sloth,
+    levels: ["While you hold a stolen power, your hits slow robots by 30%. Perfect boosts add 2s to your stolen powers (3 times each)."] },
 ];
 export const CARD_BY_ID = Object.fromEntries(CARDS.map((c) => [c.id, c]));
 
@@ -116,8 +133,10 @@ export function computeStats() {
   s.starValue = lvl("greed") ? U.greed.value[lvl("greed") - 1] : 1;
   s.interest = at(U.greed.interest, "greed");
   s.jackpot = lvl("greed") >= 4 ? U.greed.jackpot : 0;
+  s.fusions = FUSION_IDS.filter((id) => lvl(id) > 0);
+  if (G.player) G.player.fusions = s.fusions;        // fusion.js reads it off the player (co-op: anyone's)
   s.feast = at(U.gluttony.feast, "gluttony");
-  s.feastCap = at(U.gluttony.cap, "gluttony");
+  s.feastCap = at(U.gluttony.cap, "gluttony") + (s.feast ? feastCapBonus(G.player) : 0);
   s.shieldCap = at(U.gluttony.shield, "gluttony");
   s.wrathBoom = lvl("wrath") >= 4;
   s.slowRadius = at(U.sloth.radius, "sloth");
@@ -187,10 +206,25 @@ export function applyCard(id) {
   return G.up[id];
 }
 
-/** Three distinct cards. Paths you already started are a bit more likely, so builds come together. */
+const FU = BALANCE.fusions;
+/** Fusion cards you qualify for right now (both sins at level 3+, and a fusion slot left this run). */
+export function fusionsOpen() {
+  const owned = CARDS.filter((c) => c.kind === "fusion" && lvl(c.id) > 0).length;
+  if (owned >= (G.won || G.lap > 0 ? FU.maxEndless : FU.max)) return [];
+  return CARDS.filter((c) => c.kind === "fusion" && !lvl(c.id) && lvl(c.need[0]) >= FU.need && lvl(c.need[1]) >= FU.need);
+}
+
+/** Three distinct cards. Paths you already started are a bit more likely, so builds come together.
+    Once you qualify for a Sin Fusion it takes one of the slots in half your hands (always the first time). */
 export function offerCards(n = (G.stats && G.stats.cards) || 3) {
-  const avail = CARDS.filter((c) => lvl(c.id) < c.max);
+  const avail = CARDS.filter((c) => c.kind !== "fusion" && lvl(c.id) < c.max);
   const picks = [];
+  const fz = fusionsOpen();
+  const P = G.player;
+  if (fz.length && (!P || !P.fuseShown || chance(FU.chance))) {
+    picks.push(fz[Math.floor(rng() * fz.length)]);
+    if (P) P.fuseShown = true;
+  }
   const weight = (c) => {
     let w = c.kind === "sin" ? 1.05 : 0.9;
     if (lvl(c.id) > 0) w *= 1.4;
@@ -199,7 +233,7 @@ export function offerCards(n = (G.stats && G.stats.cards) || 3) {
   };
   // At least one sin in every hand while any are left.
   const sins = avail.filter((c) => c.kind === "sin");
-  if (sins.length) picks.push(weightedPick(sins, weight));
+  if (sins.length && picks.length < n) picks.push(weightedPick(sins, weight));
   while (picks.length < n) {
     const left = avail.filter((c) => picks.indexOf(c) === -1);
     if (!left.length) break;
@@ -221,10 +255,12 @@ function weightedPick(list, wf) {
 /** A short line naming the build, for the game-over screen. */
 export function buildSummary() {
   const owned = CARDS.filter((c) => lvl(c.id) > 0).sort((a, b) => lvl(b.id) - lvl(a.id));
-  return owned.map((c) => ({ id: c.id, name: c.name, level: lvl(c.id), max: c.max, kind: c.kind, img: c.img, icon: c.icon, color: c.color }));
+  return owned.map((c) => ({ id: c.id, name: c.name, level: lvl(c.id), max: c.max, kind: c.kind, img: c.img, imgs: c.imgs, icon: c.icon, color: c.color, color2: c.color2 }));
 }
 
 export function buildTitle() {
+  const fusion = CARDS.find((c) => c.kind === "fusion" && lvl(c.id) > 0);
+  if (fusion) return fusion.name;
   const sins = CARDS.filter((c) => c.kind === "sin" && lvl(c.id) > 0).sort((a, b) => lvl(b.id) - lvl(a.id));
   if (!sins.length) return "Pure of heart";
   if (sins.length === 1) return "Disciple of " + sins[0].name;
@@ -262,8 +298,9 @@ export function onKill(e) {
   const s = G.stats, P = G.player;
   if (!P || e.ally > 0) return;
 
+  const counts = fusionKill(P, e, e.lastCrit);       // Sin Fusions; Immortal Feast's crit kills count 3
   if (s.feast && (P.feastN || 0) < s.feastCap) {
-    P.feast++;
+    P.feast += counts;
     if (P.feast >= Math.ceil(s.feast / diff().heal)) {
       P.feast = 0;
       P.feastN = (P.feastN || 0) + 1;

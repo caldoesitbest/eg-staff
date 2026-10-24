@@ -15,7 +15,7 @@ function makeEnemy() {
     mark: 0, traits: 0, shield: 0, shieldMax: 0, haste: 1, numAcc: 0, numCd: 0, parent: null, parentId: 0, slot: 0,
     // weapon evolutions: Neurotoxin stacks, Gravity Well vulnerability, Blood Moon marks, per-effect cooldowns
     tox: 0, toxT: 0, toxTick: 0, toxDmg: 0, toxBy: null, vuln: 0, moon: 0, moonBy: null, trailCd: 0, boomCd: 0,
-    chill: 0, shatterCd: 0, passive: false,
+    chill: 0, chillMul: 1, shatterCd: 0, passive: false, lastCrit: false,
     // elite mutations (mutations.js)
     mut: 0, mutT: 0, mutCd: 0, mutN: 0, phased: false, mutHeal: 0,
   };

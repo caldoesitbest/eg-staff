@@ -286,6 +286,14 @@ const SOUNDS = {
     [523, 659, 784, 1047, 1319].forEach((f, i) => tone(d, "sawtooth", f, f, t + 0.08 + i * 0.03, 0.9, 0.035, 0.03));
     [1568, 2093, 2637].forEach((f, i) => tone(d, "triangle", f, f, t + 0.3 + i * 0.07, 0.4, 0.05));
   }],
+  fusion: [1, (d) => {              // a Sin Fusion: two chords colliding into one
+    const t = now();
+    [262, 330, 392].forEach((f) => tone(d, "sawtooth", f, f * 1.5, t, 0.5, 0.04, 0.05));
+    [311, 370, 466].forEach((f) => tone(d, "sawtooth", f, f * 1.26, t, 0.5, 0.04, 0.05));
+    tone(d, "sine", 65, 33, t + 0.45, 1.1, 0.6);
+    noise(d, t + 0.45, 0.8, 0.4, "lowpass", 5000, 150, 0.6);
+    [523, 784, 1047, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + 0.5 + i * 0.05, 0.7, 0.06));
+  }],
   evoBurst: [0.2, (d) => {         // Overdrive kicks in, Supernova's shockwave
     const t = now();
     tone(d, "sawtooth", 220, 880, t, 0.25, 0.12, 0.01);

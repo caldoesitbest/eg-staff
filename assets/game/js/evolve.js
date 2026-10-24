@@ -469,6 +469,8 @@ export function evoRobot(e, dt) {
   if (e.boomCd > 0) e.boomCd -= dt;
   if (e.vuln > 0) e.vuln -= dt;
   if (e.moon > 0) e.moon -= dt;
+  if (e.shatterCd > 0) e.shatterCd -= dt;
+  if (e.chill > 0) { e.chill -= dt; if (e.chill <= 0) e.chillMul = 1; }
   if (e.tox > 0) {
     e.toxT -= dt;
     if (e.toxT <= 0) { e.tox = 0; e.toxTick = 0; return; }

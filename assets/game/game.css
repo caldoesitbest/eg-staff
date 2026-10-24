@@ -1307,3 +1307,52 @@ body.eg-game::before { display: none; }
 }
 .game.reduced .evo-card::after, .game.reduced .evo-spark { animation: none; }
 @media (prefers-reduced-motion: reduce) { .evo-card::after, .evo-spark { animation: none; } }
+
+/* ---------- Sin Fusions ---------- */
+.card.fusion {
+  background:
+    radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--card-col, #ffd45c) 26%, transparent), transparent 60%) padding-box,
+    radial-gradient(ellipse at 70% 0%, color-mix(in srgb, var(--card-col2, #6d7bff) 26%, transparent), transparent 60%) padding-box,
+    linear-gradient(#0b1029, #0b1029) padding-box,
+    linear-gradient(120deg, var(--card-col, #ffd45c), #ffffff 30%, var(--card-col2, #6d7bff) 60%, var(--card-col, #ffd45c)) border-box;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 260% 100%;
+  animation: card-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1.2) backwards, fusion-border 4s linear infinite;
+  box-shadow: 0 0 34px -10px var(--card-col, #ffd45c), 0 0 34px -10px var(--card-col2, #6d7bff);
+}
+@keyframes fusion-border { from { background-position: 0 0, 0 0, 0 0, 0% 0; } to { background-position: 0 0, 0 0, 0 0, 260% 0; } }
+.card-tag.fusion { background: linear-gradient(90deg, var(--card-col, #ffd45c), var(--card-col2, #6d7bff)); color: #05061a; }
+.fusion-art { position: relative; display: flex; align-items: center; justify-content: center; width: 112px; }
+.fusion-art img { width: 60px; height: 60px; object-fit: contain; }
+.fusion-art img:first-child { margin-right: -14px; transform: rotate(-8deg); filter: drop-shadow(0 4px 12px var(--card-col, #ffd45c)); }
+.fusion-art img:nth-child(2) { margin-left: -14px; transform: rotate(8deg); filter: drop-shadow(0 4px 12px var(--card-col2, #6d7bff)); }
+.fusion-spark {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 22px; height: 22px;
+  margin: -11px 0 0 -11px;
+  background: #fff;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  filter: drop-shadow(0 0 6px #fff);
+  animation: evo-twinkle 1.4s ease-in-out infinite;
+}
+.fusion-need { font: 700 0.72rem var(--g-num); letter-spacing: 0.14em; text-transform: uppercase; background: linear-gradient(90deg, var(--card-col, #ffd45c), var(--card-col2, #6d7bff)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fusion-chip { display: flex; flex-wrap: wrap; gap: 6px; }
+.fusion-chip[hidden] { display: none; }
+.fusion-one {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 9px 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(rgba(3, 5, 24, 0.75), rgba(3, 5, 24, 0.75)) padding-box, linear-gradient(90deg, var(--c1, #ffd45c), var(--c2, #6d7bff)) border-box;
+  font: 700 0.72rem var(--g-num); letter-spacing: 0.08em; text-transform: uppercase; color: #f4f6ff;
+}
+.fusion-one img { width: 18px; height: 18px; object-fit: contain; }
+.fusion-one img + img { margin-left: -6px; }
+.fusion-one b { margin-left: 4px; font-weight: 700; }
+.fusion-chip.pulse .fusion-one { animation: fusion-pulse 0.5s ease-out; }
+@keyframes fusion-pulse { 0% { box-shadow: 0 0 0 0 var(--c1, #ffd45c); transform: scale(1.08); } 100% { box-shadow: 0 0 0 10px transparent; transform: scale(1); } }
+.build-chip.fusion { border-color: transparent; background: linear-gradient(rgba(11, 16, 41, 0.9), rgba(11, 16, 41, 0.9)) padding-box, linear-gradient(90deg, var(--chip-col, #ffd45c), var(--chip-col2, #6d7bff)) border-box; }
+.build-chip.fusion img + img { margin-left: -6px; }
+.game.reduced .card.fusion { animation: none; }
+.game.reduced .fusion-spark { animation: none; }
+@media (prefers-reduced-motion: reduce) { .card.fusion, .fusion-spark { animation: none; } }

@@ -3,7 +3,7 @@
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { sprites, C, P_CYAN, P_VIOLET, P_WHITE } from "./sprites.js";
+import { sprites, C, P_CYAN, P_VIOLET, P_WHITE, P_MAGENTA, P_AMBER } from "./sprites.js";
 import { fx } from "./fx.js";
 import { input } from "./input.js";
 import { TAU, clamp, smooth, rand, dash, NO_DASH } from "./util.js";
@@ -21,7 +21,9 @@ import { drawZonesUnder, drawZonesOver } from "./zones.js";
 import { E, evoCol, evoPal } from "./evolve.js";
 
 const EVB = BALANCE.evolution;
-const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col;
+const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col, ICE_COL = "#bfe9ff";
+const FRENZY_CAP = BALANCE.fusions.frenzy.cap;
+const fused = (P, id) => !!(P && P.fusions && P.fusions.indexOf(id) !== -1);
 
 // Teammates' astronauts, in their own suits (built on demand, rebuilt when the zoom changes).
 const suitCache = new Map();
@@ -263,6 +265,16 @@ function drawStatus(g, e, x, y, R) {
     g.beginPath();
     for (let k = 0; k < 2; k++) { g.moveTo(x - 5, top + k * 4); g.lineTo(x, top + 4 + k * 4); g.lineTo(x + 5, top + k * 4); }
     g.stroke();
+  }
+  if (e.chill > 0) {
+    // frost: a pale ring with ice crystals on it (Frozen Judgment, Stolen Time)
+    g.strokeStyle = ICE_COL; g.globalAlpha = 0.7; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(x, y, R + 2, 0, TAU); g.stroke();
+    g.globalAlpha = 0.9;
+    for (let k = 0; k < 4; k++) {
+      const a = k * (TAU / 4) + e.id, cx = x + Math.cos(a) * (R + 2), cy = y + Math.sin(a) * (R + 2);
+      g.beginPath(); g.moveTo(cx - 3, cy); g.lineTo(cx + 3, cy); g.moveTo(cx, cy - 3); g.lineTo(cx, cy + 3); g.stroke();
+    }
   }
   if (e.moon > 0) {
     // a red crescent hanging over it
@@ -627,7 +639,7 @@ export const renderer = {
       const q = pk.items[i];
       if (q.life < 3 && Math.floor(q.life * 8) % 2 === 0) continue;
       const x = lerp(q.px, q.x, alpha), y = lerp(q.py, q.y, alpha);
-      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : sprites.star;
+      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : q.kind === 3 ? sprites.covet : sprites.star;
       const pulse = 1 + Math.sin(G.time * 6 + i) * 0.1;
       const sz = spr.w * pulse * (q.t < 0.15 ? q.t / 0.15 : 1);
       g.drawImage(spr.c, x - sz / 2, y - sz / 2, sz, sz);
@@ -688,7 +700,7 @@ export const renderer = {
         g.globalAlpha = 1;
         g.globalCompositeOperation = "source-over";
       }
-      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0) {
+      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) {
         g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
         if (e.kind.drawOver) e.kind.drawOver(g, e, x, y);
         const R = e.r * e.scale;
@@ -727,13 +739,13 @@ export const renderer = {
           g.globalAlpha = 1;
         }
         if (e.ally > 0) {
-          g.strokeStyle = C.magenta;
+          g.strokeStyle = fused(e.allyBy, "bloodlust") ? C.red : C.magenta;     // Bloodlust: they're out for blood
           g.lineWidth = 2;
           g.globalAlpha = 0.9;
           g.beginPath(); g.arc(x, y, R + 5, -Math.PI / 2, -Math.PI / 2 + TAU * (e.ally / e.allyMax)); g.stroke();
           g.globalAlpha = 1;
         }
-        if (e.tox > 0 || e.vuln > 0 || e.moon > 0) drawStatus(g, e, x, y, R);
+        if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, x, y, R);
         if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite)) {
           const bw = Math.max(26, R * 1.8), bx = x - bw / 2, by = y - R - 12;
           g.fillStyle = "rgba(3,5,24,0.8)";
@@ -752,7 +764,7 @@ export const renderer = {
       const k = e.pop > 0 ? e.pop / 0.12 : 0;
       e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
       g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
-      if (e.tox > 0 || e.vuln > 0 || e.moon > 0) drawStatus(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), e.r * e.scale);
+      if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), e.r * e.scale);
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
     if (G.zones.count) drawZonesOver(g);
@@ -1099,6 +1111,39 @@ export const renderer = {
         g.globalAlpha = hot ? 0.7 + Math.sin(G.time * 30) * 0.25 : 0.55;
         g.lineWidth = hot ? 3.5 : 2;
         g.beginPath(); g.arc(x, y + bob, 36, Math.PI / 2 - TAU * 0.22 * f, Math.PI / 2 + TAU * 0.22 * f); g.stroke();
+        g.globalAlpha = 1;
+      }
+    }
+    // Sin Fusions on you: gorged crits waiting, Judgment readied, Golden Frenzy building / blazing
+    if (!Pl.dead) {
+      if (Pl.gorge > 0) {
+        for (let k = 0; k < Pl.gorge; k++) {
+          const a = G.time * 2.4 + (k / 3) * TAU, ox = x + Math.cos(a) * 23, oy = y + bob + Math.sin(a) * 23;
+          if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.7; g.drawImage(sprites.dots[P_MAGENTA], ox - 7, oy - 7, 14, 14); g.globalCompositeOperation = "source-over"; }
+          g.globalAlpha = 1; g.fillStyle = "#ffd6ea";
+          g.beginPath(); g.arc(ox, oy, 2.4, 0, TAU); g.fill();
+        }
+      }
+      if (Pl.judgeT > 0) {
+        g.strokeStyle = ICE_COL; g.globalAlpha = 0.85; g.lineWidth = 2;
+        g.setLineDash(dash(6, 5)); g.lineDashOffset = -G.time * 40;
+        g.beginPath(); g.arc(x, y + bob, 26, 0, TAU); g.stroke();
+        g.setLineDash(NO_DASH); g.globalAlpha = 1;
+      }
+      if (Pl.goldT > 0) {
+        if (G.gfx.glow) {
+          g.globalCompositeOperation = "lighter";
+          g.globalAlpha = 0.35 + Math.sin(G.time * 12) * 0.12;
+          g.drawImage(sprites.dots[P_AMBER], x - 46, y + bob - 46, 92, 92);
+          g.globalCompositeOperation = "source-over";
+        }
+        g.strokeStyle = C.amber; g.globalAlpha = 0.9; g.lineWidth = 3;
+        g.beginPath(); g.arc(x, y + bob, 33, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, Pl.goldT / 4)); g.stroke();
+        g.globalAlpha = 1;
+      } else if (Pl.frenzy > 0.5) {
+        const f = Pl.frenzy / FRENZY_CAP;
+        g.strokeStyle = C.amber; g.globalAlpha = 0.55; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, y + bob, 36, -Math.PI / 2 - TAU * 0.22 * f, -Math.PI / 2 + TAU * 0.22 * f); g.stroke();
         g.globalAlpha = 1;
       }
     }

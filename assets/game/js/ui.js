@@ -29,7 +29,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "" };
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "", fusion: "" };
 let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
 let boardKind = "all";
 
@@ -61,7 +61,7 @@ export const ui = {
     const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
       "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
       "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "charge-btn", "cards", "rotate-hint",
-      "gun-chip", "gun-main", "gun-alt", "team"];
+      "gun-chip", "gun-main", "gun-alt", "team", "fusion-chip"];
     for (const id of ids) this.els[id] = $(id);
 
     // half-heart clip, shared by every heart icon
@@ -106,6 +106,14 @@ export const ui = {
       codeIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("lobby-join").click(); } });
     }
     click("news-done", () => { store.data.seenNews = NEWS_VERSION; store.save(); this.show("menu"); });
+    // the fusion chip flashes whenever your Sin Fusion does something (throttled)
+    let pulseAt = 0;
+    G.on("fusionPulse", () => {
+      const n = this.els["fusion-chip"], t = performance.now();
+      if (!n || n.hidden || t - pulseAt < 250) return;
+      pulseAt = t;
+      n.classList.remove("pulse"); void n.offsetWidth; n.classList.add("pulse");
+    });
     const gunChip = $("gun-chip");
     if (gunChip) gunChip.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); handlers.onSwap && handlers.onSwap(); });
     document.querySelectorAll("#settings-form .tab").forEach((t) => t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.settingsTab(t.dataset.tab); }));
@@ -608,6 +616,23 @@ export const ui = {
       E["gun-chip"].classList.toggle("solo", !b);
     }
 
+    // Sin Fusion
+    const fk = (P.fusions || []).join(",");
+    if (fk !== last.fusion) {
+      last.fusion = fk;
+      const n = E["fusion-chip"];
+      n.replaceChildren();
+      n.hidden = !fk;
+      for (const id of P.fusions || []) {
+        const c = CARD_BY_ID[id];
+        const s = el("span", "fusion-one");
+        s.style.setProperty("--c1", c.color); s.style.setProperty("--c2", c.color2);
+        for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; img.width = 18; img.height = 18; s.append(img); }
+        s.append(el("b", "", c.name));
+        n.append(s);
+      }
+    }
+
     // envy powers
     let key = "";
     for (const p of P.envy) key += p.type + ",";
@@ -710,12 +735,31 @@ export const ui = {
     ids.forEach((id, i) => {
       const c = CARD_BY_ID[id];
       const lvl = G.up[id] || 0;
-      const b = el("button", "card");
+      const b = el("button", "card" + (c.kind === "fusion" ? " fusion" : ""));
       b.type = "button";
       b.setAttribute("role", "listitem");
       b.dataset.id = id;
       b.style.setProperty("--card-col", c.color);
       b.append(el("span", "card-key", String(i + 1)));
+      if (c.kind === "fusion") {
+        // a Sin Fusion: both sins' emblems, the pair it needs, what it does
+        b.style.setProperty("--card-col2", c.color2);
+        b.append(el("span", "card-tag fusion", "Sin Fusion"));
+        const art = el("span", "card-art fusion-art");
+        for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; img.width = 60; img.height = 60; art.append(img); }
+        art.append(el("i", "fusion-spark"));
+        b.append(art);
+        b.append(el("span", "card-name", c.name));
+        b.append(el("span", "fusion-need", CARD_BY_ID[c.need[0]].name + " + " + CARD_BY_ID[c.need[1]].name));
+        const desc = el("p", "card-desc", c.levels[0]);
+        desc.append(el("small", "", "One fusion per run"));
+        b.append(desc);
+        b.setAttribute("aria-label", "Sin Fusion: " + c.name + " (" + c.need.join(" and ") + "). " + c.levels[0]);
+        b.addEventListener("click", () => { if (armed()) handlers.onPick(id); });
+        b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+        box.append(b);
+        return;
+      }
       b.append(el("span", "card-tag" + (c.kind === "gear" ? " gear" : ""), c.kind === "sin" ? "Sin" : "Augment"));
       const art = el("span", "card-art");
       if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; img.width = 76; img.height = 76; art.append(img); }
@@ -1135,8 +1179,16 @@ function renderBuild(box, build, title) {
   if (title) { const t = el("p", "set-note", title); t.style.width = "100%"; box.append(t); }
   if (!build || !build.length) { if (!title) box.append(el("span", "set-note", "No upgrades yet.")); return; }
   for (const c of build) {
-    const chip = el("span", "build-chip");
+    const chip = el("span", "build-chip" + (c.kind === "fusion" ? " fusion" : ""));
     chip.style.setProperty("--chip-col", c.color);
+    if (c.kind === "fusion") {
+      chip.style.setProperty("--chip-col2", c.color2);
+      for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; chip.append(img); }
+      chip.append(document.createTextNode(c.name + " "));
+      chip.append(el("b", "", "FUSION"));
+      box.append(chip);
+      continue;
+    }
     if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; chip.append(img); }
     else chip.append(icon(c.icon));
     chip.append(document.createTextNode(c.name + " "));
