@@ -1184,7 +1184,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
     window.__bot = bot;
     bot.rushRuns = [];
     G.on("rushDone", (sum) => bot.rushRuns.push({ cleared: sum.cleared, beaten: sum.beaten, time: Math.round(sum.time), hits: sum.hits, rank: sum.rank, score: sum.score,
-      splits: sum.splits.map((x) => x.type + ":" + Math.round(x.t) + "s/" + x.hits + "h").join(" "), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier + (g.evo || "")).join("+"), cards: Object.keys(G.up).length }));
+      killedBy: sum.killedBy, splits: sum.splits.map((x) => x.type + ":" + Math.round(x.t) + "s/" + x.hits + "h").join(" "), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier + (g.evo || "")).join("+"), cards: Object.keys(G.up).length }));
     G.debug.god = params.get("god") === "1";
     if (params.get("cohost") || params.get("cojoin")) { bot.autoRetry = false; return; }   // co-op tests start from the lobby
     if (params.get("rush") === "1") {
@@ -1220,6 +1220,9 @@ if (G.debug.on && params.get("cojoin")) {
 if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
 if (G.debug.on && params.get("scene")) {
   import("./debug-bot.js").then(({ scene }) => setTimeout(() => scene(params.get("scene"), { startRun, spawnEnemy, waves, input, seedRng }), 900));
+}
+if (G.debug.on && params.get("tests") === "1") {
+  import("./tests.js").then(({ runTests }) => setTimeout(() => runTests({ startRun, spawnEnemy, waves, rushRank }), 800));
 }
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));

@@ -872,6 +872,14 @@ export const renderer = {
       const k = e.pop > 0 ? e.pop / 0.12 : 0;
       e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
       g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+      if (e.resT > 0) {
+        // resolve: it's shrugging off the overflow
+        const bx = lerp(e.px, e.x, alpha), by = lerp(e.py, e.y, alpha), R = e.r * e.scale;
+        g.strokeStyle = "#ffffff"; g.globalAlpha = 0.25 + (e.resT / 0.25) * 0.35; g.lineWidth = 3;
+        g.setLineDash(dash(10, 8)); g.lineDashOffset = -G.time * 60;
+        g.beginPath(); g.arc(bx, by, R + 10, 0, TAU); g.stroke();
+        g.setLineDash(NO_DASH); g.globalAlpha = 1;
+      }
       if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), e.r * e.scale);
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);

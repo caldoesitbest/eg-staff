@@ -29,10 +29,12 @@ function mutatedAlive() {
 export function rollMutation(type, wave) {
   const list = MU.on[type];
   if (!list || G.state === "menu") return 0;
+  if (G.mode === "rush" && !G.rush.mods.includes("entourage")) return 0;      // Boss Rush: only with Entourage
   const shift = Math.floor((diff().mark || 0) / 2);
-  const open = list.filter((k) => wave >= MU.types[k].from - shift);
+  const fromOf = (k) => Math.max(MU.minFrom, MU.types[k].from - shift);
+  const open = list.filter((k) => wave >= fromOf(k));
   if (!open.length) return 0;
-  const first = Math.min(...open.map((k) => MU.types[k].from)) - shift;
+  const first = Math.min(...open.map(fromOf));
   const p = Math.min(MU.max, MU.chance + (wave - first) * MU.perWave) * Math.pow(diff().elite || 1, 0.6);
   if (!chance(p) || mutatedAlive() >= MU.maxAlive) return 0;
   let total = 0;

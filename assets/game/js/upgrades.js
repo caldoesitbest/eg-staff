@@ -154,7 +154,7 @@ export function computeStats() {
   s.lustBurst = at(U.lust.burst, "lust");
   s.lustMost = at(U.lust.most, "lust");
   s.orbitals = lvl("orbit");
-  s.maxHp = Math.max(2, B.hp + U.suit.hp * lvl("suit") + it("nanoweave") * I.nanoweave.hp + it("glass") * I.glass.hp + it("c_blood") * RL.c_blood.hp);
+  s.maxHp = Math.max(2, B.hp + U.suit.hp * lvl("suit") + it("nanoweave") * I.nanoweave.hp + it("glass") * I.glass.hp + it("c_blood") * RL.c_blood.hp + (G.mode === "rush" ? BALANCE.rush.hp : 0));
   // charged shot
   s.chargeTime = CH.time / (1 + at(U.overcharge.speed, "overcharge")) * (1 - it("coolant") * I.coolant.chargeTime);
   s.chargeMul = (1 + at(U.overcharge.dmg, "overcharge")) * (1 + it("capbank") * I.capbank.chargeDmg) * (1 + it("c_lead") * RL.c_lead.chargeDmg);

@@ -2,7 +2,7 @@
    (damage, kills, scoring, pickups, explosions, asteroids). Co-op: every player is checked in turn
    with usePlayer(), so "the player" in damage/heal/kill code is whoever it's happening to. */
 
-import { G, usePlayer, coop, diff } from "./state.js";
+import { G, usePlayer, coop, diff, threat, resolveRate } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { TAU, rand, randInt, chance, fracRound, clamp } from "./util.js";
 import { fx } from "./fx.js";
@@ -82,7 +82,7 @@ function showDamage(e, dmg, crit) {
   }
 }
 
-const VULN = BALANCE.evolution.nova.b.vuln;
+const VULN = BALANCE.evolution.nova.b.vuln, RESOLVE = BALANCE.resolve;
 export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
   if (e.dead || e.invuln || e.phased) return false;       // a Phantom mid-blink can't be touched
   dmg *= e.dmgMul;
@@ -93,6 +93,13 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
     else if (k > 1) crit = true;                           // the weak spot: it shows like a crit
   }
   if (e.vuln > 0) dmg *= e.boss ? 1 + (VULN - 1) / 2 : VULN;      // Gravity Well (half as much on a boss)
+  if (e.boss) {
+    // boss resolve (balance.resolve): a leaky bucket of the last second's damage; past it, damage lands at `over`
+    const cap = e.maxHp * resolveRate();
+    const room = Math.max(0, cap - e.res);
+    if (dmg > room) { dmg = room + (dmg - room) * RESOLVE.over; e.resT = 0.25; }
+    e.res += dmg;
+  }
   if (e.shield > 0) {
     // Shielded trait: the cyan shield soaks damage first
     const take = Math.min(e.shield, dmg);
@@ -490,7 +497,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   if (!b) return null;
   if (!bolt) {
     const W = BALANCE.waves;
-    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot;
+    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot * (G.curEnemy && G.curEnemy.boss ? threat("bossShot") : 1);
     vx *= k; vy *= k;
   }
   b.dead = false;

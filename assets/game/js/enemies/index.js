@@ -1,7 +1,7 @@
 /* Robot spawning, the shared update loop (slow fields, knockback, charm), separation
    and the steering helpers every robot uses. */
 
-import { G, usePlayer } from "../state.js";
+import { G, usePlayer, threat, resolveRate } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, turnTowards, rand } from "../util.js";
 import { sprites, C, P_HEART, P_WHITE, P_ORANGE, PAL } from "../sprites.js";
@@ -72,7 +72,7 @@ export function spawnEnemy(type, x, y, opts) {
   const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
   // Boss health is fixed by the boss, the chapter, the endless lap and the team size. It never looks
   // at your build: a strong build is supposed to shorten the fight.
-  const rushMul = (boss || type === "gem") && G.mode === "rush" ? BALANCE.rush.bossHp : 1;      // Boss Rush: you have fewer cards
+  const rushMul = boss || type === "gem" ? threat("bossHp") * (G.mode === "rush" ? BALANCE.rush.bossHp : 1) : 1;      // Boss Rush: you have fewer cards
   e.maxHp = e.hp = def.hp * hpMul * crewMul * rushMul * (elite ? E.hp : 1);
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
@@ -91,6 +91,7 @@ export function spawnEnemy(type, x, y, opts) {
   e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
   e.chill = 0; e.chillMul = 1; e.shatterCd = 0; e.passive = false; e.lastCrit = false;
   e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0; e.berserk = false;
+  e.res = 0; e.resT = 0;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   if (opts && opts.mut && !boss) mutate(e, opts.mut);
@@ -253,7 +254,11 @@ export function updateEnemies(dt) {
     if (e.orbCd > 0) e.orbCd -= dt;
     evoRobot(e, dt);                 // Neurotoxin, Gravity Well, Blood Moon timers
     if (e.dead) continue;
-    if (e.boss) bossMoments(e, dt);
+    if (e.boss) {
+      bossMoments(e, dt);
+      if (e.res > 0) e.res = Math.max(0, e.res - e.maxHp * resolveRate() * dt);   // resolve drains back
+      if (e.resT > 0) e.resT -= dt;
+    }
     else if (e.maxHp >= 60 && e.hp < e.maxHp * 0.35 && e.ally <= 0 && Math.random() < dt * 5) {
       // a badly hurt big robot sheds sparks: you can see it's nearly done
       const a = rand(0, TAU);

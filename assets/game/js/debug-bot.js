@@ -146,6 +146,12 @@ export const bot = {
       ax += (-dy / d) * 500; ay += (dx / d) * 500;
       if (d > 260) { ax -= (dx / d) * 300; ay -= (dy / d) * 300; }
     }
+    // a target out of reach (snipers keep their distance): close in, like a person would
+    if (best) {
+      const dx = best.x - P.x, dy = best.y - P.y, d = Math.hypot(dx, dy) || 1;
+      const reach = G.stats.bulletSpeed * G.stats.bulletLife * 0.85;
+      if (d > reach) { ax += (dx / d) * 500; ay += (dy / d) * 500; }
+    }
     ax += (1000 - P.x) * 0.25;
     ay += (650 - P.y) * 0.25;
     input.mode = "kbm";

@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=6">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=7">
+<link rel="stylesheet" href="../assets/game/game.css?v=8">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -139,7 +139,7 @@
       <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
       <ol class="mini-ladder" id="mini-ladder"></ol>
     </aside>
-    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v4.1 · Ascension II</span><span>Same planet.</span> <span>Different breed.</span></footer>
+    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v4.2 · Ascension Unleashed</span><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
   <!-- pause -->
@@ -460,17 +460,17 @@
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 4.1</span><i>&#10022;</i><span>Ascension II</span></p>
+      <p class="kicker"><span>Update 4.2</span><i>&#10022;</i><span>Ascension Unleashed</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
-        <li><b>Difficulty: Normal, Hard, Nightmare.</b> Pick it on the main menu. Harder modes make robots smarter and faster, evolve them sooner and give you less room; scores count ×1.3 on Hard and ×1.7 on Nightmare. The Daily Challenge is always Normal, and co-op plays the host's pick.</li>
-        <li><b>Smarter robots.</b> They aim where you're heading (change direction after they commit and you're clear), cut you off instead of trailing you, and swing round to your side. Swarms surround you, gunners spread into a crossfire, bulwarks guard the robots shooting at you, patch bots hide behind them, snipers relocate. Burn your boost carelessly and they punish it.</li>
-        <li><b>Squads.</b> Robots now arrive in teams that cover each other: shield walls with guns behind them, pincers from both sides, a sniper screened by swarmlings, a field medic with a bodyguard, and more.</li>
-        <li><b>Every boss fights back harder.</b> Sloth reaches for anyone kiting it and snores while it naps. Gluttony's meals stop healing it and it slams twice. Greed makes it rain gold. Lust fires hearts while it lures you. Wrath dashes faster and lands in a burst. Pride's gems shoot and its decree comes in pairs. Envy leads its shots. Bosses still die faster to stronger builds.</li>
-        <li><b>A power check.</b> Twin Barrel's extra shots share the damage, Seeker Rounds curve less, the charged-shot stack and Overdrive's echo are trimmed, Pride and Wrath top out lower, Heartseeker is a touch weaker. Gluttony heals a few times a wave, hearts drop less, the flash of invulnerability after a hit is shorter, and Lust charms a few robots at a time.</li>
-        <li><b>Greed's music, darker.</b> Still a casino, now a dangerous one: harmonic minor, a slow swing, sub bass and coins on steel. The boss track is the same room with the lights off.</li>
-        <li><b>Polish everywhere.</b> A jetpack flame that answers your thrust, a squash into every boost, a visor glint, sharper muzzle flashes and shot trails. Robots jolt when hit and spark when they're nearly done. Bosses arrive in cinematic bars and a shockwave, and every phase change lands. A richer planet and nebula, twinkling stars, smoother cards and buttons.</li>
-        <li><b>Also in 4.0:</b> boss music for every Sin, a crosshair you can always see, seven chapter looks, fewer between-wave stops, endless runs that skip maxed cards.</li>
+        <li><b>Weapon evolutions.</b> Take a gun to Tier IV, beat the next sin boss, and it evolves down one of two paths, for good: Starbreaker or Phantom Repeater, Supernova or Shredder, Overdrive or Neurotoxin, Annihilator or Singularity, Cataclysm or Gravity Well, Thunderlord or Tempest, Blood Moon or Soulbound. Each one changes how the gun plays, and its charged shot.</li>
+        <li><b>Sin Fusions.</b> Take two sins to level 3 and a fusion card can turn up: Covetous King, Bloodlust, Immortal Feast, Frozen Judgment, Golden Frenzy, Parasitic Heart or Stolen Time. One per run (a second in endless).</li>
+        <li><b>Boss Rush.</b> Beat Envy to unlock it: the seven sins back to back, with a draft and a short break after each. Splits against your bests, ranks, its own records, and five modifiers once you've cleared it. Co-op hosts can pick it too.</li>
+        <li><b>Elite mutations.</b> Volatile, Berserker, Armored, Shockwave, Phantom, Vampiric and Replicator robots, each with its own look and its own trick to beat.</li>
+        <li><b>Events.</b> Now and then: a Cosmic Cache drifting through, a Corrupted Armory, a Sin Altar, an Elite Ambush.</li>
+        <li><b>Achievements and the Locker.</b> 34 achievements unlock suits, visors, jetpack trails, weapon finishes, titles, badges and victory effects. Your Profile is on the menu.</li>
+        <li><b>Everything hits harder.</b> Bosses have more health, attack more often and bring more help; robots are tougher, keener and come in bigger waves. Overcharged elites show up from wave 8.</li>
+        <li><b>From 4.1:</b> Normal, Hard and Nightmare, smarter robots and squads, harder bosses, a darker Greed theme and a polish pass.</li>
       </ul>
       <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
     </div>
@@ -491,6 +491,9 @@
           <li>Grab <b>stars</b>. After every wave you pick a <b>Sin</b> or an <b>Augment</b>. After the 2nd and 4th wave of each chapter, and after every boss, <b>the Armory</b> opens: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
           <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
           <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
+          <li>Take a gun to <b>Tier IV</b> and beat the next sin boss: it <b>evolves</b> down one of two paths. Take two <b>sins to level 3</b> and a <b>Sin Fusion</b> card can turn up.</li>
+          <li>Now and then something unusual happens: a <b>Cosmic Cache</b> to crack, a <b>Corrupted Armory</b>, a <b>Sin Altar</b>, an <b>Elite Ambush</b>.</li>
+          <li>Beat <b>@Envy</b> to open <b>Boss Rush</b>. Achievements unlock looks in your <b>Profile</b>.</li>
           <li>Stack <b>Sins</b> and gear that combo: cards and offers say when they synergise with what you have.</li>
           <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
@@ -513,45 +516,46 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=6",
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=6",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=6",
-    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=6",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=6",
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=8",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=8",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=8",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=8",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=8",
     "/assets/game/js/events.js": "/assets/game/js/events.js?v=8",
     "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=8",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=6",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=6",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=6",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=6",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=6",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=6",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=6",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=6",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=6",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=6",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=6",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=8",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=8",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=8",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=8",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=8",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=8",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=8",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=8",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=8",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=8",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=8",
     "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=8",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=6",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=6",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=6",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=8",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=8",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=8",
     "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=8",
-    "/assets/game/js/music.js": "/assets/game/js/music.js?v=6",
-    "/assets/game/js/net.js": "/assets/game/js/net.js?v=7",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=7",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=6",
+    "/assets/game/js/music.js": "/assets/game/js/music.js?v=8",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=8",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=8",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=8",
     "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=8",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=6",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=6",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=6",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=6",
-    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=6",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=7",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=6",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=6",
-    "/assets/game/js/version.js": "/assets/game/js/version.js?v=6",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=6",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=6",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=8",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=8",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=8",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=8",
+    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=8",
+    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=8",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=8",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=8",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=8",
+    "/assets/game/js/version.js": "/assets/game/js/version.js?v=8",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=8",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=8",
     "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=8"
   }
 }
@@ -561,6 +565,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=8" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=7"></script>
+<script type="module" src="../assets/game/js/main.js?v=8"></script>
 </body>
 </html>

@@ -166,8 +166,9 @@ export const waves = {
     w.t = w.max = W.spawnWarn;
     w.type = type; w.count = count;
     const el = BALANCE.elite;
-    const from = el.from - diff().mark;
+    const from = Math.max(el.minFrom, el.from - diff().mark);        // harder modes bring them sooner, never in the first waves
     w.elite = G.wave >= from ? Math.min(el.chanceMax * Math.min(1.6, diff().elite), (G.wave - from + 1) * el.chance * diff().elite) : 0;
+    if (G.mode === "rush" && !G.rush.mods.includes("entourage")) w.elite = 0;      // Boss Rush: plain minions unless you asked for more
     w.spread = 14 + count * 5;
   },
 

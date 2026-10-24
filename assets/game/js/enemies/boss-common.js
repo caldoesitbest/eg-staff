@@ -1,7 +1,7 @@
 /* Shared boss machinery: entrance, minions, the death payoff, endless-lap pacing,
    and the attack patterns several sins share (Envy steals them all). */
 
-import { G, usePlayer, diff } from "../state.js";
+import { G, usePlayer, diff, threat } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, rand, randInt, dash } from "../util.js";
 import { sprites, C, PAL, P_CYAN, P_WHITE } from "../sprites.js";
@@ -27,7 +27,7 @@ export function eachPlayer(fn) {
 }
 
 /** Cooldown multiplier for endless laps (each lap a bit faster). */
-export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0) * diff().boss;
+export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0) * diff().boss * threat("bossPace");
 
 /** Palette index for a boss's main colour (glow dots, particles). */
 export function sinPal(type) {
@@ -67,11 +67,12 @@ export function introUpdate(e, dt) {
 export function minionTick(e, dt, every, max, pool) {
   e.c -= dt;
   if (e.c > 0) return;
-  e.c = (every * pace()) / (diff().minions || 1);         // Boss Rush's Entourage: more of them, more often
+  const more = (diff().minions || 1) * threat("bossMinions");
+  e.c = (every * pace()) / more;         // more of them, more often (4.2 threat, Boss Rush's Entourage)
   let alive = 0;
   const items = G.enemies.items;
   for (let i = 0; i < G.enemies.count; i++) { const o = items[i]; if (!o.dead && !o.boss && o.ally <= 0 && o.type !== "gem" && !o.passive) alive++; }
-  if (alive + G.warnings.count * 2 >= max * (diff().minions || 1) * (1 + 0.35 * (Math.max(1, G.net.n || 1) - 1))) return;   // co-op: a bigger entourage
+  if (alive + G.warnings.count * 2 >= max * more * (1 + 0.35 * (Math.max(1, G.net.n || 1) - 1))) return;   // co-op: a bigger entourage
   const type = pool[randInt(0, pool.length - 1)];
   const count = type === "swarm" ? randInt(5, 7) : randInt(1, type === "drone" ? 3 : 2);
   waves.spawnGroup(type, count);

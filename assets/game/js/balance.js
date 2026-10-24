@@ -93,7 +93,7 @@ export const BALANCE = {
   },
 
   elite: {                   // "overcharged" robots from this wave on, each with a trait you can see
-    from: 10, chance: 0.035, chanceMax: 0.3, hp: 1.6, speed: 1.1, score: 2.5, stars: 2,
+    from: 8, minFrom: 5, chance: 0.04, chanceMax: 0.3, hp: 1.6, speed: 1.1, score: 2.5, stars: 2,
     twoTraitsFrom: 30,       // from this wave, elites roll two traits
     traits: {
       shielded: { label: "Shielded", share: 0.4 },        // a shield worth 40% of its health takes hits first
@@ -108,7 +108,7 @@ export const BALANCE = {
   // from `from`, growing per wave up to `max` (x the difficulty's elite chance^0.6); a few at a time at most.
   // Harder difficulties bring each one in earlier (half their Mark offset).
   mutations: {
-    chance: 0.03, perWave: 0.003, max: 0.12, maxAlive: 5, hp: 1.2, score: 1.8, stars: 1.5,
+    chance: 0.03, perWave: 0.003, max: 0.12, maxAlive: 5, hp: 1.2, score: 1.8, stars: 1.5, minFrom: 6,
     types: {
       volatile:   { name: "Volatile", col: "#ff5a3c", from: 8, weight: 1, fuse: 0.9, r: 105, dmg: 2, robotDmg: 60,
                     hint: "It bursts when it dies: leave the ring (or kill it next to its friends)." },
@@ -152,6 +152,15 @@ export const BALANCE = {
     punishRange: 520,
   },
 
+  // 4.2: everything a notch harder on every difficulty (players asked for it, and weapon evolutions and Sin
+  // Fusions add power). Bosses ramp up the Ladder, [first rung, last rung] (Sloth stays a teacher, Envy doesn't):
+  // health, attack cadence (x pace), shot speed, minions. Robots: aggression and crowd size (health is in waves).
+  threat: { bossHp: [1, 1.25], bossPace: [0.95, 0.84], bossShot: [1, 1.1], bossMinions: [1, 1.3], aggro: 0.95, budget: 1.05, alive: 1.05 },
+  // Boss resolve: a boss can lose about `rate` of its health a second at full speed; damage beyond that pace
+  // lands at `over`. Weak and average builds never reach it (it never touches them); strong ones still kill
+  // fastest, just not in four seconds. A shimmer shows when it's resisting.
+  resolve: { rate: [0.08, 0.04], over: 0.35 },                   // [Sloth, Envy]: early bosses are teachers, late ones walls
+
   // Difficulty: chosen before a run (the Daily Challenge is always Normal). Harder modes change how
   // robots behave and how much room you get, never by inflating health.
   //   aggro: robot attack cooldowns ×    lead: aim-ahead ×           iframes: your invulnerability after a hit ×
@@ -162,7 +171,7 @@ export const BALANCE = {
   difficulty: {
     normal:    { name: "Normal", aggro: 1, lead: 1, iframes: 1, budget: 1, alive: 1, elite: 1, mark: 0, boss: 1, heal: 1, shot: 1, squads: 1, score: 1 },
     hard:      { name: "Hard", aggro: 0.85, lead: 1.2, iframes: 0.85, budget: 1.15, alive: 1.15, elite: 1.6, mark: 6, boss: 0.86, heal: 0.75, shot: 1.06, squads: 1.5, score: 1.3 },
-    nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.74, heal: 0.5, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4
+    nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.8, heal: 0.6, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4 (4.2: bosses x0.8 and heal x0.6, as the 4.2 threat sits on top)
   },
 
   // Boss Rush (unlocked by beating Envy): the seven sin bosses back to back. You open with a draft
@@ -172,7 +181,9 @@ export const BALANCE = {
     draft: 4, picks: 3,                  // cards to open with / after each boss
     stars: 130, stipend: 55,             // stars to open with / added after each boss
     heal: 4,                             // health back after each boss (½💜 units: two hearts)
+    hp: 2,                               // +1 💜 max for the whole Rush (you'd have Thick Suits by now on the Ladder)
     bossHp: 0.8,                         // x the boss's Ladder health
+    resolve: [0.1, 0.06],                // bosses' resolve rate here, [Sloth, Envy] (balance.resolve): the Rush is meant to be fast
     rank: { par: [240, 330, 450, 600], hits: 8, slower: { hard: 1.15, nightmare: 1.3 } },   // S/A/B/C within these many seconds of fighting; every 8 hits costs a grade
     timeScore: { base: 30000, perSec: 25 },        // score for speed: base - seconds x perSec (never below 0)
     hitless: 1500,                                 // per boss beaten without a hit
@@ -180,7 +191,7 @@ export const BALANCE = {
       starved:  { name: "Starved", text: "No healing between bosses, and a third of the usual healing in fights", score: 0.2, heal: 0.35 },
       hell:     { name: "Bullet Hell", text: "Every robot and boss shot flies 20% faster", score: 0.15, shot: 1.2 },
       sealed:   { name: "Sealed Armory", text: "The Armory only opens after every other boss", score: 0.15 },
-      entourage:{ name: "Entourage", text: "Bosses bring twice the minions, and more of them are elite", score: 0.2, minions: 2, elite: 2 },
+      entourage:{ name: "Entourage", text: "Bosses bring twice the minions, and some are elites and mutants", score: 0.2, minions: 2, elite: 2 },
       fury:     { name: "Fury", text: "Bosses attack 15% faster from the start", score: 0.2, boss: 0.85 },
     },
   },
@@ -206,7 +217,7 @@ export const BALANCE = {
     gap: { min: 1.5, max: 2.2, perWave: 0.06, floorMin: 0.4, floorMax: 0.75 },
     lanes: { two: 9, three: 20 },                       // from these waves, 2 / 3 groups land at once (from different edges)
     group: { max: 2, perWaves: 4, cap: 5 },             // biggest spawn group grows by 1 every N waves
-    hpPerWave: 0.06, hpCurve: 0.0012,                   // robot health: 1 + 6%·(wave-1) + 0.12%·(wave-1)²  (≈1.6× at 10, 2.6× at 20, 3.8× at 30)
+    hpPerWave: 0.065, hpCurve: 0.0014,                  // robot health: 1 + 6.5%·(wave-1) + 0.14%·(wave-1)²  (≈1.7× at 10, 2.7× at 20, 4.1× at 30)
     shotSpeedPerWave: 0.01, shotSpeedCap: 0.3,          // robot shots get a little faster (not the sniper's)
     speedPerWave: 0.01, speedCap: 0.25,
     spawnWarn: 0.8,                                     // seconds a spawn marker shows before the robot lands

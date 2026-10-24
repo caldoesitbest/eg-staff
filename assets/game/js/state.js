@@ -151,10 +151,24 @@ export const isMe = (P) => P === G.me;
 /** This run's difficulty settings (balance.difficulty, with Boss Rush modifiers): Normal unless the run says otherwise. */
 export const diff = () => G.dcur || BALANCE.difficulty[G.difficulty] || BALANCE.difficulty.normal;
 
+/** A boss threat value (balance.threat) for the current rung: from its first-rung value at Sloth to its
+    last-rung value at Envy, and the last-rung value on every endless lap. */
+export function threat(key, pair) {
+  const [a, b] = pair || BALANCE.threat[key];
+  const w = Math.max(1, G.wave || 1);
+  const k = w > 35 ? 1 : Math.min(1, Math.floor((w - 1) / 5) / 6);
+  return a + (b - a) * k;
+}
+
+/** How much of its health a boss can lose a second before its resolve kicks in (world.damageEnemy). */
+export const resolveRate = () => threat("", G.mode === "rush" ? BALANCE.rush.resolve : BALANCE.resolve.rate);
+
 /** Sets this run's difficulty: the preset, times every Boss Rush modifier that's on. */
 export function setDifficulty(name, mods) {
   G.difficulty = BALANCE.difficulty[name] ? name : "normal";
+  const T = BALANCE.threat;
   const d = { ...BALANCE.difficulty[G.difficulty], minions: 1 };
+  d.aggro *= T.aggro; d.budget *= T.budget; d.alive *= T.alive;
   const M = BALANCE.rush.mods;
   let bonus = 0;
   for (const id of mods || []) {
