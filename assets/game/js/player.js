@@ -144,7 +144,7 @@ function fire(P, s) {
   if (G.net.role !== "client") {
     for (let i = 0; i < n; i++) {
       const off = (i - (n - 1) / 2) * s.fan;
-      const b = firePlayerBullet(mx, my, base + off + rand(-spread, spread));
+      const b = firePlayerBullet(mx, my, base + off + rand(-spread, spread), undefined, s.multiDmg);
       if (b && pellets) { const k = rand(0.85, 1.12); b.vx *= k; b.vy *= k; }   // a shotgun's pellets don't fly in a perfect line
     }
     if (s.rear) firePlayerBullet(P.x - c * 12, P.y + 3 - sn * 12, base + Math.PI + rand(-spread, spread));
@@ -166,12 +166,12 @@ function fire(P, s) {
 const SHOOT_SFX = { scatter: "shotgun", smg: "smg", rail: "rail", nova: "launch", arc: "zap", heart: "kissShot" };
 
 /** Lets go of a charged shot. amt is 0..1. What it does depends on the gun. */
-function fireCharged(P, s, amt, ang) {
+function fireCharged(P, s, amt, ang, mul = 1) {
   const full = amt >= 0.999;
   const k = Math.pow(amt, 1.3);
   // based on your core damage (sins, gear, the gun's tier), not the gun's per-bullet damage,
   // so a light SMG bolt and a heavy rail slug charge into shots of similar weight
-  const dmg = s.baseDamage * BALANCE.gunTiers.dmg[s.gunTier - 1] * (CH.dmg[0] + (CH.dmg[1] - CH.dmg[0]) * k) * s.chargeMul;
+  const dmg = s.baseDamage * BALANCE.gunTiers.dmg[s.gunTier - 1] * (CH.dmg[0] + (CH.dmg[1] - CH.dmg[0]) * k) * s.chargeMul * mul;
   const c = Math.cos(ang), sn = Math.sin(ang);
   const mx = P.x + c * 22, my = P.y + 3 + sn * 22;
   const id = s.gunId;
@@ -405,7 +405,7 @@ export function updatePlayer(dt, P = G.player) {
   if (P.echoT > 0) {
     // Overdrive Core: a full charge goes off twice
     P.echoT -= dt;
-    if (P.echoT <= 0 && playing) fireCharged(P, s, P.echoAmt, P.aimAng);
+    if (P.echoT <= 0 && playing) fireCharged(P, s, P.echoAmt, P.aimAng, BALANCE.items.overdrive.echo);
   }
 
   // ----- fire -----

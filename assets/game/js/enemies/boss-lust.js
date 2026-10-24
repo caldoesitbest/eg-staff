@@ -103,13 +103,16 @@ export const lust = {
         brake(e, 6, dt);
         e.t -= dt;
         e.ribbon = 1 - Math.max(0, e.t) / d.allure.windup;
-        if (e.t <= 0) { e.state = LURE; e.t = d.allure.time; e.ribbon = 1; }
+        if (e.t <= 0) { e.state = LURE; e.t = d.allure.time; e.ribbon = 1; e.t2 = 0.25; }
         break;
       case LURE: {
         brake(e, 6, dt);
         e.t -= dt;
         P = G.players[e.lureSlot] || P;
         const dx = e.x - P.x, dy = e.y - P.y, dd = Math.hypot(dx, dy) || 1;
+        // a lure is dangerous to sit in: it fires rings of hearts while it pulls you close
+        e.t2 = (e.t2 || 0) - dt;
+        if (e.t2 <= 0) { e.t2 = d.allure.ringEvery; moves.ring(e, d.allure.ring + (broken ? 4 : 0), 150, "heart"); }
         if (!P.dead && dd < d.allure.range) {
           if (P.boostT > 0) {
             // boosted out: the charm breaks and Lust is left reeling
@@ -122,7 +125,8 @@ export const lust = {
             fx.shake(0.25);
             break;
           }
-          P.vx += (dx / dd) * d.allure.pull * dt * 3; P.vy += (dy / dd) * d.allure.pull * dt * 3;
+          const pull = broken ? d.allure.brokenPull : d.allure.pull;
+          P.vx += (dx / dd) * pull * dt * 3; P.vy += (dy / dd) * pull * dt * 3;
           if (Math.random() < 0.4) fx.p(1, P.x, P.y, dx * 1.6, dy * 1.6, 0.5, 1, P_HEART, 0);
         }
         if (e.t <= 0) { e.state = ROAM; e.lureCd = randRange(d.allure.every) * pc; }
@@ -156,7 +160,7 @@ export const lust = {
         e.alpha = 1 - e.t / 0.3;
         if (e.t <= 0) {
           e.alpha = 1; e.invuln = false;
-          moves.ring(e, 8, 170, "heart");
+          moves.ring(e, broken ? 14 : 10, 170, "heart");
           fx.burst(e.x, e.y, 12, P_LUST, 220, 0.5, 1.6);
           e.state = ROAM; e.blinkCd = randRange(d.dance.every) * pc;
         }

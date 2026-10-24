@@ -66,6 +66,7 @@ export const G = {
   fxOwner: -1,               // co-op host: whose update made the current effects (that player already saw them)
   personal: false,           // co-op host: effects for your own screen only (not sent to teammates)
   netLeft: 0,                // co-op client: robots left this wave (from the host)
+  difficulty: "normal",      // this run's difficulty (balance.difficulty)
   curEnemy: null, hurtSrc: "",   // what's hurting you right now (for the hit arc and "what got you")
   runStats: null,            // { dmg, big, byGun, spent } for the summary screen
   stats: null,               // computed from upgrades (upgrades.js)
@@ -131,3 +132,6 @@ export function syncCtx() {
 }
 export const coop = () => G.net.role !== "off";
 export const isMe = (P) => P === G.me;
+
+/** This run's difficulty settings (balance.difficulty): Normal unless the run says otherwise. */
+export const diff = () => BALANCE.difficulty[G.difficulty] || BALANCE.difficulty.normal;

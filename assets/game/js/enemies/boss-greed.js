@@ -8,15 +8,18 @@ import { C, SIN, P_GREED, P_AMBER, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { seek, brake, angleToPlayer } from "./index.js";
-import { fireEnemyBullet, dropPickup } from "../world.js";
-import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, moves, pace } from "./boss-common.js";
-import { lineToWall } from "./roster.js";
+import { fireEnemyBullet, dropPickup, hurtPlayer } from "../world.js";
+import { playerHurtRadius } from "../player.js";
+import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, moves, pace, eachPlayer } from "./boss-common.js";
+import { lineToWall, leadAngle, leadK } from "./roster.js";
 
 const COL = SIN.greed;
 const IDLE = 0, WIND = 1, SPIN = 2;
 
 function coinToss(e, P, count, arc, speed) {
-  const shots = moves.fan(e, P, count, arc, speed, "coin", 8);
+  // thrown where you're heading
+  const la = leadAngle(e.x, e.y, P, speed, leadK("boss"));
+  const shots = moves.fan(e, { x: e.x + Math.cos(la) * 100, y: e.y + Math.sin(la) * 100 }, count, arc, speed, "coin", 8);
   for (const b of shots) { b.back = BB.greed.coins.back; b.owner = e; b.homeX = e.x; b.homeY = e.y; }
   audio.play("star", e.x, e.y, 0.7, { pitch: -5 });
 }
@@ -26,6 +29,7 @@ export const greed = {
   init(e) {
     bossInit(e, A.w / 2, A.h * 0.32);
     e.pips = 0; e.knock = 0; e.lastHp = e.hp; e.spinCd = 6; e.bounces = 0; e.trailT = 0; e.strafe = 1;
+    e.rainCd = 2; e.rainT = 0; e.rain = Array.from({ length: 8 }, () => ({ x: 0, y: 0 })); e.nRain = 0;
   },
   update(e, dt, P) {
     const d = BB.greed;
@@ -75,6 +79,38 @@ export const greed = {
       }
     }
 
+    // golden rain: marked spots around you (one where you're heading), then the coins land
+    if (e.rainT > 0) {
+      e.rainT -= dt;
+      if (e.rainT <= 0) {
+        const r = d.rain.radius;
+        for (let i = 0; i < e.nRain; i++) {
+          const m = e.rain[i];
+          eachPlayer((Q) => { if (Math.hypot(Q.x - m.x, Q.y - m.y) < r + playerHurtRadius()) hurtPlayer(d.rain.dmg, m.x, m.y); });
+          fx.ring(m.x, m.y, 6, r, 0.3, COL, 4);
+          fx.burst(m.x, m.y, 8, P_GREED, 220, 0.45, 1.5);
+        }
+        fx.shake(0.2);
+        audio.play("clank", P.x, P.y, 0.8);
+      }
+    } else if (enraged) {
+      e.rainCd -= dt;
+      if (e.rainCd <= 0 && e.state === IDLE) {
+        e.rainCd = randRange(d.rain.every) * pc;
+        e.rainT = d.rain.warn;
+        e.nRain = Math.min(e.rain.length, d.rain.count + (G.lap ? 2 : 0));
+        const la = leadAngle(P.x, P.y, P, 1, 0);
+        for (let i = 0; i < e.nRain; i++) {
+          const m = e.rain[i];
+          if (i === 0) { m.x = P.x + P.vx * 0.6; m.y = P.y + P.vy * 0.6; }
+          else { const a = la + (i / e.nRain) * TAU + rand(-0.3, 0.3), rr = rand(70, d.rain.spread); m.x = P.x + Math.cos(a) * rr; m.y = P.y + Math.sin(a) * rr; }
+          m.x = Math.max(40, Math.min(A.w - 40, m.x)); m.y = Math.max(40, Math.min(A.h - 40, m.y));
+        }
+        fx.text(e.x, e.y - 80, "MAKE IT RAIN", COL, 18, 1);
+        audio.play("warn", e.x, e.y, 0.8);
+      }
+    }
+
     switch (e.state) {
       case IDLE: {
         const dx = P.x - e.x, dy = P.y - e.y, dist = Math.hypot(dx, dy) || 1;
@@ -115,7 +151,10 @@ export const greed = {
           const pa = e.a + Math.PI / 2;
           fireEnemyBullet(e.x, e.y, Math.cos(pa) * 55, Math.sin(pa) * 55, 1, "coin", 8);
         }
-        if (e.bounces < 0 || e.t <= 0) { e.state = IDLE; e.contact = d.contact; e.spinCd = randRange(d.spin.every) * pc; e.vx *= 0.2; e.vy *= 0.2; }
+        if (e.bounces < 0 || e.t <= 0) {
+          e.state = IDLE; e.contact = d.contact; e.spinCd = randRange(d.spin.every) * pc; e.vx *= 0.2; e.vy *= 0.2;
+          if (enraged) { moves.ring(e, d.spin.cashOut, 230, "coin"); audio.play("star", e.x, e.y, 0.8, { pitch: -8 }); }   // cashes out
+        }
         break;
       }
     }
@@ -126,8 +165,25 @@ export const greed = {
     for (let i = 0; i < 12 + e.pips * 3; i++) dropPickup(1, e.x, e.y, 5);
   },
   drawUnder(g, e, x, y) {
-    if (e.state !== WIND) return;
     const d = BB.greed;
+    if (e.rainT > 0) {
+      // where the gold will land: rings that fill as it falls
+      const p = 1 - e.rainT / d.rain.warn;
+      g.save();
+      for (let i = 0; i < e.nRain; i++) {
+        const m = e.rain[i];
+        g.globalAlpha = 0.12 + p * 0.25;
+        g.fillStyle = COL;
+        g.beginPath(); g.arc(m.x, m.y, d.rain.radius * p, 0, TAU); g.fill();
+        g.globalAlpha = 0.85;
+        g.strokeStyle = p > 0.7 ? "#ffffff" : COL;
+        g.lineWidth = 2.5;
+        g.setLineDash(dash(10, 7));
+        g.beginPath(); g.arc(m.x, m.y, d.rain.radius, 0, TAU); g.stroke();
+      }
+      g.restore();
+    }
+    if (e.state !== WIND) return;
     const p = 1 - e.t / d.spin.windup;
     const locked = e.t <= d.spin.windup * 0.35;
     const len = Math.min(900, lineToWall(x, y, e.a));

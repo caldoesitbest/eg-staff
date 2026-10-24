@@ -645,8 +645,8 @@ export function startHost() {
   coop.ready.clear();
   coop.readySlots = [];
   net.closeChannel();
-  net.broadcast({ k: "start", members: net.members }, true);
-  coop.hooks.startRun({ coop: true });
+  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty }, true);
+  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty });
 }
 
 function startClient(msg) {
@@ -660,7 +660,7 @@ function startClient(msg) {
   coop.waiting = false;
   prevEnemy.clear(); prevRock.clear();
   net.closeChannel();
-  coop.hooks.startRun({ coop: true });
+  coop.hooks.startRun({ coop: true, difficulty: msg.diff });     // everyone plays the host's difficulty
 }
 
 /** Players for a run: [{slot, name, suit}] → G.players with a build each; G.me is yours. */

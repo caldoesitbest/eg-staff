@@ -61,6 +61,7 @@ function defaults() {
       lookahead: true,      // camera leans toward your aim
       contrastShots: false, // bolder robot shots
       hitstop: "light",     // impact freeze on big hits: full | light | off
+      difficulty: "normal", // normal | hard | nightmare (the Daily Challenge is always Normal)
       // crosshair
       crossColor: "auto",   // auto (inverts what's behind it) | cyan | white | yellow | lime | magenta | red | orange | custom
       crossCustom: "#63f4ff",

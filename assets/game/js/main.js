@@ -19,7 +19,7 @@ import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
 import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
-import { formatScore, rand, pick, TAU, withSeed, hashStr } from "./util.js";
+import { formatScore, rand, pick, TAU, withSeed, hashStr, seedRng } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
 import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut } from "./armory.js";
@@ -40,6 +40,8 @@ G.desktop = !!(window.chrome && window.chrome.webview);
 
 store.load();
 G.settings = store.data.settings;
+if (G.debug.on && params.get("diff")) G.settings.difficulty = params.get("diff");     // balance tests: ?diff=hard
+if (G.debug.on && params.get("zoom")) G.debug.zoom = Math.max(1, Math.min(4, parseFloat(params.get("zoom")) || 1));   // close-up screenshots
 computeStats();
 
 const root = document.getElementById("game");
@@ -158,6 +160,9 @@ function startRun(opts) {
   clearWorld();
   const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
+  // the Daily Challenge is always Normal (everyone plays the same run); co-op uses the host's pick
+  const want = (opts && opts.difficulty) || G.settings.difficulty;
+  G.difficulty = !G.daily && BALANCE.difficulty[want] ? want : "normal";
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
@@ -219,7 +224,7 @@ function seeded(tag, fn) {
 function startWave(n) {
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
-  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; }     // Bubble Shield refills every wave
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; }     // Bubble Shield refills every wave; Gluttony's heals reset
   usePlayer(G.me);
   waveIntro(n);
   hostSend({ k: "go", n });
@@ -507,7 +512,7 @@ async function postRun(sum) {
   ui.setOnline("posting");
   const res = await online.submit({
     score: sum.score, wave: sum.wave, kills: sum.kills, combo: sum.combo, seconds: G.time, won: G.won,
-    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items } },
+    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items }, difficulty: G.difficulty },
   });
   if (G.state !== "over") return;
   if (res.skipped) ui.setOnline(null);
@@ -527,7 +532,7 @@ function gameOver() {
   const sum = {
     score: Math.floor(G.score), wave: G.wave, kills: G.kills, combo: G.bestCombo, stars: G.starsTotal,
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
-    build: buildSummary(), buildTitle: buildTitle(),
+    build: buildSummary(), buildTitle: buildTitle(), difficulty: G.difficulty,
   };
   // how the run went: your damage, your best hit, the gun that did the most, what you spent, what got you
   const rs = G.runStats;
@@ -696,6 +701,7 @@ function render(alpha, dt) {
 
 let autopilot = null;      // debug only: ?debug=1&autoplay=1
 const step = (dt) => {
+  if (G.debug.freeze) return;           // debug ?scene=: a frozen moment for screenshots
   for (let i = 0; i < G.debug.speed; i++) {
     if (autopilot) autopilot.tick();
     update(dt);
@@ -916,6 +922,9 @@ if (G.debug.on && params.get("cojoin")) {
   setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
 }
 if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
+if (G.debug.on && params.get("scene")) {
+  import("./debug-bot.js").then(({ scene }) => setTimeout(() => scene(params.get("scene"), { startRun, spawnEnemy, waves, input, seedRng }), 900));
+}
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
 }

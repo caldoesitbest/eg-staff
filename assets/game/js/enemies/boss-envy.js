@@ -15,6 +15,7 @@ import { sloth } from "./boss-sloth.js";
 import { greed } from "./boss-greed.js";
 import { lust } from "./boss-lust.js";
 import { kneelRing } from "./boss-pride.js";
+import { leadAngle, leadK } from "./roster.js";
 
 const COL = SIN.envy;
 let hooked = false;
@@ -69,6 +70,7 @@ export const envy = {
     }
     if (e.boostT > 0) {
       e.boostT -= dt;
+      if (e.boostT <= 0 && stealing) { moves.ring(e, d.boostRing, 200, "envy"); audio.play("enemyShot", e.x, e.y, 0.6); }   // lands in a ring
       e.vx = e.boostDX * d.boostSpeed; e.vy = e.boostDY * d.boostSpeed;
       if (Math.random() < 0.8) fx.p(0, e.x, e.y, -e.vx * 0.1, -e.vy * 0.1, 0.35, 2, P_ENVY, 3);
     } else {
@@ -88,8 +90,9 @@ export const envy = {
       const r = Math.max(1.2, s.rate * d.fireMul * rate);
       e.fireCd = 1 / r;
       const n = Math.min(5, s.projectiles);
+      const la = leadAngle(e.x, e.y, P, d.shotSpeed, Math.min(1, leadK("boss") * (frenzy ? 1.5 : 1)));
       for (let i = 0; i < n; i++) {
-        const a = e.ang + (i - (n - 1) / 2) * Math.max(0.14, s.fan);
+        const a = la + (i - (n - 1) / 2) * Math.max(0.14, s.fan);
         fireEnemyBullet(e.x + Math.cos(e.ang) * 26, e.y + Math.sin(e.ang) * 26, Math.cos(a) * d.shotSpeed, Math.sin(a) * d.shotSpeed, d.shotDmg, "envy", 6);
       }
       if (s.rear) fireEnemyBullet(e.x, e.y, -Math.cos(e.ang) * d.shotSpeed, -Math.sin(e.ang) * d.shotSpeed, d.shotDmg, "envy", 6);

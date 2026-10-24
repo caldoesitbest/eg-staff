@@ -45,7 +45,12 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 4;     // bump with each update's What's new
+const NEWS_VERSION = 5;
+const DIFF_NOTES = {
+  normal: "Dodge, learn the robots, build smart.",
+  hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
+  nightmare: "A mastery test: robots evolve early and punish every slip. Score ×1.7.",
+};     // bump with each update's What's new
 
 export const ui = {
   els: {},
@@ -67,6 +72,9 @@ export const ui = {
 
     const click = (id, fn) => { const n = $(id); if (n) n.addEventListener("click", (e) => { handlers.onClick && handlers.onClick(); fn(e); }); };
     click("play-btn", () => handlers.onPlay());
+    for (const b of document.querySelectorAll(".diff-opt")) {
+      b.addEventListener("click", () => { store.data.settings.difficulty = b.dataset.diff; store.save(); this.renderDifficulty(); });
+    }
     click("how-btn", () => this.show("how"));
     click("settings-btn", () => this.openSettings("menu"));
     click("pause-btn", () => handlers.onPause());
@@ -310,6 +318,7 @@ export const ui = {
       add("Best wave", "—");
     }
     this.renderSuits();
+    this.renderDifficulty();
     this.renderControlsHint();
     this.renderLadder($("mini-ladder"), b.rung || 0, (b.wins || 0) > 0);
     const daily = store.data.daily;
@@ -426,6 +435,14 @@ export const ui = {
     for (const id of ["exit-btn", "pause-exit-btn"]) { const n = $(id); if (n) n.hidden = !on; }
   },
 
+  /** The menu's difficulty picker (applies to the Ladder and to co-op games you host). */
+  renderDifficulty() {
+    const cur = BALANCE.difficulty[store.data.settings.difficulty] ? store.data.settings.difficulty : "normal";
+    for (const b of document.querySelectorAll(".diff-opt")) b.setAttribute("aria-checked", b.dataset.diff === cur ? "true" : "false");
+    const note = $("diff-note");
+    if (note) note.textContent = DIFF_NOTES[cur];
+  },
+
   renderSuits() {
     const list = $("suit-list");
     if (!list) return;
@@ -534,6 +551,10 @@ export const ui = {
       rung.textContent = r.name + (G.lap ? " · lap " + (G.lap + 1) : "");
       $("wave-chip").style.setProperty("--rung", r.c1);
       $("daily-chip").hidden = !G.daily;
+      const dc = $("diff-chip");
+      dc.hidden = G.difficulty === "normal";
+      dc.textContent = BALANCE.difficulty[G.difficulty] ? BALANCE.difficulty[G.difficulty].name : "";
+      dc.classList.toggle("nightmare", G.difficulty === "nightmare");
     }
     const remaining = G.net.role === "client" ? G.netLeft : waves.remaining();
     const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? remaining + " left" : "Clear");
@@ -972,6 +993,7 @@ export const ui = {
       d.append(el("dt", "", label), dd);
       dl.append(d);
     };
+    if (sum.difficulty && sum.difficulty !== "normal") add("Difficulty", BALANCE.difficulty[sum.difficulty].name + " · score ×" + BALANCE.difficulty[sum.difficulty].score);
     add("Score", formatScore(sum.score), sum.newScore);
     add("Wave", String(sum.wave), sum.newWave);
     add("Kills", String(sum.kills));

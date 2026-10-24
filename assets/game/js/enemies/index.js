@@ -4,12 +4,12 @@
 import { G, usePlayer } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, turnTowards, rand } from "../util.js";
-import { sprites, C, P_HEART } from "../sprites.js";
+import { sprites, C, P_HEART, P_WHITE, P_ORANGE, PAL } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
-import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage } from "../world.js";
+import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -79,6 +79,7 @@ export function spawnEnemy(type, x, y, opts) {
   e.ang = e.pang = P ? Math.atan2(P.y - y, P.x - x) : 0;
   e.state = 0; e.t = e.t2 = e.t3 = e.cd = 0; e.a = e.b = e.c = 0; e.tx = e.ty = 0;
   e.flash = 0; e.spawnT = (opts && opts.spawnT !== undefined) ? opts.spawnT : 0.35;
+  e.pop = 0; e.popX = 0; e.popY = 0; e.phaseSeen = 0;
   e.ally = 0; e.slowMul = 1; e.dmgMul = 1; e.orbCd = 0; e.invuln = false; e.warnPlayed = false;
   e.ramStamp = 0; e.target = null; e.tgtP = null; e.tgtT = 0; e.allyBy = null;
   e.mark = boss ? (G.lap || 0) : G.mark;
@@ -119,6 +120,30 @@ function rollTraits(e, wave) {
   if (e.traits & TRAIT.hasted) { e.haste = T.hasted.attack; e.speed *= T.hasted.speed; }
 }
 function countBits(v) { let n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
+
+/** A boss's phase changes land as a moment (a shockwave, a flash in its colour, a beat of stillness,
+    a hit in the music), and the more hurt it is the more it sparks and smokes. */
+function bossMoments(e, dt) {
+  if (e.state === -1) return;
+  const phase = (e.b || 0) + (e.phase || 0);
+  if (phase > e.phaseSeen) {
+    e.phaseSeen = phase;
+    const col = e.def.c1, R = e.r * e.scale;
+    fx.ring(e.x, e.y, R, R + 300, 0.6, col, 6);
+    fx.ring(e.x, e.y, R * 0.6, R + 180, 0.45, "#ffffff", 3);
+    fx.burst(e.x, e.y, 26, Math.max(0, PAL.indexOf(col)), 380, 0.8, 2);
+    fx.screenFlash(col, 0.22, 3);
+    fx.shake(0.45);
+    hitStop(0.07, true);
+    audio.impact();
+  }
+  const f = e.hp / e.maxHp;
+  if (f < 0.5 && Math.random() < dt * (f < 0.25 ? 9 : 4)) {
+    const a = rand(0, TAU), R = e.r * e.scale;
+    fx.p(0, e.x + Math.cos(a) * R * 0.85, e.y + Math.sin(a) * R * 0.85, Math.cos(a) * 140, Math.sin(a) * 140, 0.4, 1.5, Math.random() < 0.6 ? P_ORANGE : P_WHITE, 3);
+    if (f < 0.25 && Math.random() < 0.35) fx.smoke(e.x + Math.cos(a) * R * 0.6, e.y + Math.sin(a) * R * 0.6, 1, 14);
+  }
+}
 
 /** Robots that still count toward finishing the wave. */
 export function hostileCount() {
@@ -195,7 +220,14 @@ export function updateEnemies(dt) {
     if (e.dead) continue;
     e.px = e.x; e.py = e.y; e.pang = e.ang;
     if (e.flash > 0) e.flash -= dt;
+    if (e.pop > 0) e.pop -= dt;
     if (e.orbCd > 0) e.orbCd -= dt;
+    if (e.boss) bossMoments(e, dt);
+    else if (e.maxHp >= 60 && e.hp < e.maxHp * 0.35 && e.ally <= 0 && Math.random() < dt * 5) {
+      // a badly hurt big robot sheds sparks: you can see it's nearly done
+      const a = rand(0, TAU);
+      fx.p(0, e.x + Math.cos(a) * e.r * 0.7, e.y + Math.sin(a) * e.r * 0.7, Math.cos(a) * 90, Math.sin(a) * 90 - 30, 0.35, 1.3, Math.random() < 0.5 ? P_ORANGE : P_WHITE, 3);
+    }
     if (e.numCd > 0) { e.numCd -= dt; if (e.numCd <= 0 && e.numAcc > 0) flushDamage(e); }
     if ((e.traits & TRAIT.regen) && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * E.traits.regen.perSec * dt);
 

@@ -3,7 +3,7 @@
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { sprites, C, P_CYAN } from "./sprites.js";
+import { sprites, C, P_CYAN, P_VIOLET, P_WHITE } from "./sprites.js";
 import { fx } from "./fx.js";
 import { input } from "./input.js";
 import { TAU, clamp, smooth, rand, dash, NO_DASH } from "./util.js";
@@ -39,6 +39,7 @@ const bg = { tiles: [], nebula: null, planet: null, vignette: null, tileDpr: 0, 
 // is 8M+ pixels per frame, which is where the late-game lag came from; this keeps it sharp but sane.
 const PIXEL_BUDGET = [900000, 1500000, 2400000];
 let suit = null;
+let cine = 0;              // boss entrance bars (0..1)
 
 function mk(w, h) {
   const c = document.createElement("canvas");
@@ -114,6 +115,24 @@ function buildNebula(id) {
   blob(250, 320, 220, n[2]);
   blob(140, 40, 150, n[3]);
   blob(440, 230, 160, n[4]);
+  // dark dust lanes through the clouds (depth), then a few bright knots where stars are born
+  x.globalCompositeOperation = "source-over";
+  const lane = (cx, cy, r, a) => {
+    const grd = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grd.addColorStop(0, "rgba(3,5,24," + a + ")");
+    grd.addColorStop(1, "rgba(3,5,24,0)");
+    x.globalAlpha = 1;
+    x.fillStyle = grd;
+    x.fillRect(0, 0, 480, 300);
+  };
+  lane(300, 90, 70, 0.5);
+  lane(120, 210, 60, 0.4);
+  lane(210, 60, 45, 0.35);
+  x.globalCompositeOperation = "lighter";
+  blob(330, 70, 26, [n[2][0], n[2][1], n[2][2], 0.35]);
+  blob(90, 140, 20, [n[3][0], n[3][1], n[3][2], 0.3]);
+  x.globalCompositeOperation = "source-over";
+  x.globalAlpha = 1;
   return c;
 }
 const nebulas = {};
@@ -122,6 +141,7 @@ const nebulaFor = (id) => nebulas[id] || (nebulas[id] = buildNebula(id));
 // Ambient motes (screen space), restyled per chapter. Off on Low/Potato and with the background off.
 const motes = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), vx: 0, vy: 0, s: 1, ph: Math.random() * TAU }));
 let moteKind = "";
+const twinkles = Array.from({ length: 10 }, (_, i) => ({ x: Math.random(), y: Math.random(), ph: Math.random() * TAU, sp: 0.6 + Math.random() * 1.4, s: 0.8 + Math.random() * 0.9, warm: i % 4 === 0 }));
 
 function buildPlanet(px) {
   const c = mk(px, px);
@@ -165,12 +185,30 @@ function buildPlanet(px) {
     x.fillStyle = i % 2 ? "rgba(255,255,255,0.08)" : "rgba(13,26,74,0.18)";
     x.beginPath(); x.ellipse(0, i * R * 0.24, R * 1.2, R * 0.07, 0, 0, TAU); x.fill();
   }
-  // night side
+  // storms: two soft ovals riding the bands
+  x.fillStyle = "rgba(184,251,255,0.16)";
+  x.beginPath(); x.ellipse(-R * 0.28, R * 0.18, R * 0.16, R * 0.06, 0, 0, TAU); x.fill();
+  x.fillStyle = "rgba(13,26,74,0.22)";
+  x.beginPath(); x.ellipse(R * 0.32, -R * 0.3, R * 0.1, R * 0.04, 0, 0, TAU); x.fill();
+  // the rings' shadow across the sphere
+  x.fillStyle = "rgba(3,5,24,0.12)";
+  x.beginPath(); x.ellipse(0, R * 0.08, R * 1.3, R * 0.032, 0, 0, TAU); x.fill();
+  // night side, with a soft terminator
   grd = x.createLinearGradient(-R, -R, R, R);
   grd.addColorStop(0.45, "rgba(3,5,24,0)");
-  grd.addColorStop(1, "rgba(3,5,24,0.65)");
+  grd.addColorStop(0.66, "rgba(3,5,24,0.26)");
+  grd.addColorStop(1, "rgba(3,5,24,0.64)");
   x.fillStyle = grd;
   x.fillRect(-R, -R, R * 2, R * 2);
+  x.restore();
+  // a thin lit limb on the sun side (it separates the planet from the nebula behind it)
+  x.save();
+  x.beginPath(); x.arc(cx, cy, R, 0, TAU); x.clip();
+  grd = x.createRadialGradient(cx + R * 0.18, cy + R * 0.2, R * 0.86, cx, cy, R * 1.02);
+  grd.addColorStop(0, "rgba(184,251,255,0)");
+  grd.addColorStop(1, "rgba(184,251,255,0.55)");
+  x.fillStyle = grd;
+  x.beginPath(); x.arc(cx, cy, R, Math.PI * 0.85, Math.PI * 1.75); x.lineTo(cx, cy); x.closePath(); x.fill();
   x.restore();
   ring(true);
   return c;
@@ -227,7 +265,7 @@ export const renderer = {
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     const long = Math.max(W, H), short = Math.min(W, H);
-    const z = Math.min(long / BALANCE.view.long, short / BALANCE.view.short);
+    const z = Math.min(long / BALANCE.view.long, short / BALANCE.view.short) * (G.debug.zoom || 1);   // debug ?zoom=: close-ups
     const cam = G.cam;
     cam.z = z; cam.dpr = dpr; cam.cssW = W; cam.cssH = H;
     cam.viewW = W / z; cam.viewH = H / z;
@@ -396,6 +434,25 @@ export const renderer = {
       let ox = -((camX * f * cam.z * dpr) % T); if (ox > 0) ox -= T;
       let oy = -((camY * f * cam.z * dpr) % T); if (oy > 0) oy -= T;
       for (let ty = oy; ty < ch; ty += T) for (let tx = ox; tx < cw; tx += T) g.drawImage(bg.tiles[L], tx, ty, T, T);
+    }
+
+    // a handful of bright stars that twinkle (on top of the tiles, behind the arena)
+    if (bgMode === "full" && quality > 0 && sprites.dots[P_WHITE]) {
+      g.globalCompositeOperation = "lighter";
+      const unit = Math.min(cw, ch) / 120, d = sprites.dots[P_WHITE], dv = sprites.dots[P_VIOLET];
+      for (let i = 0; i < twinkles.length; i++) {
+        const t = twinkles[i];
+        const tw = 0.5 + Math.sin(G.time * t.sp + t.ph) * 0.5;
+        const x = ((t.x * cw - camX * 0.3 * cam.z * dpr) % cw + cw) % cw, y = ((t.y * ch - camY * 0.3 * cam.z * dpr) % ch + ch) % ch;
+        const r = unit * t.s * (0.5 + tw * 0.5);
+        g.globalAlpha = 0.18 + tw * 0.42;
+        g.drawImage(t.warm ? dv : d, x - r * 1.6, y - r * 1.6, r * 3.2, r * 3.2);
+        g.globalAlpha = 0.32 * tw;
+        g.fillStyle = "#ffffff";
+        g.fillRect(x - r * 1.5, y - 0.5, r * 3, 1); g.fillRect(x - 0.5, y - r * 1.5, 1, r * 3);   // a tiny cross-glint
+      }
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = "source-over";
     }
 
     if (chap.mote && bgMode !== "off" && G.gfx.particles !== "low" && G.gfx.particles !== "minimal") this.drawMotes(chap.mote, dt, cw, ch);
@@ -570,7 +627,8 @@ export const renderer = {
       const art = e.art;
       if (!art) { e.kind.draw(g, e, x, y); continue; }
       const spr = e.flash > 0 ? art.flash : e.ally > 0 ? art.ally : art.base;
-      let sc = e.scale;
+      let sc = e.scale * (1 + Math.sin(G.time * 5 + e.id * 1.3) * 0.022);
+      if (e.pop > 0) { const k = e.pop / 0.12; sc *= 1 + k * 0.16; x += e.popX * k * 5; y += e.popY * k * 5; }
       if (e.spawnT > 0) { const t = 1 - e.spawnT / 0.35; sc *= Math.max(0.05, t * t); }
       if (e.kind.shakeAmt) { const sh = e.kind.shakeAmt(e); if (sh) { x += rand(-sh, sh); y += rand(-sh, sh); } }
       const ang = lerpAng(e.pang, e.ang, alpha);
@@ -644,7 +702,8 @@ export const renderer = {
     for (let i = 0; i < en.count; i++) {
       const e = en.items[i];
       if (e.dead || !e.boss) continue;
-      e.kind.draw(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), lerpAng(e.pang, e.ang, alpha));
+      const k = e.pop > 0 ? e.pop / 0.12 : 0;
+      e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
 
@@ -663,6 +722,7 @@ export const renderer = {
 
     // player shots
     const pb = G.pb;
+    const trails = G.gfx.trails;
     for (let i = 0; i < pb.count; i++) {
       const b = pb.items[i];
       const x = lerp(b.px, b.x, alpha), y = lerp(b.py, b.y, alpha);
@@ -671,6 +731,13 @@ export const renderer = {
       const k = b.special ? (b.r / 7) * (1 + Math.sin(G.time * 30) * 0.08) : b.kind === 7 ? b.r / 7.5 : 1;
       const c = (b.vx / sp) * P * k, sn = (b.vy / sp) * P * k;
       g.setTransform(c, sn, -sn, c, offX + (x - camX) * P, offY + (y - camY) * P);
+      if (trails && !b.special) {
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.3;
+        g.drawImage(spr.c, -spr.w * 1.9, -spr.h * 0.32, spr.w * 1.5, spr.h * 0.64);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "source-over";
+      }
       g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
       if (b.special && b.full) {
         g.globalCompositeOperation = "lighter";
@@ -744,6 +811,23 @@ export const renderer = {
 
     // ---------- screen space ----------
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // a boss's entrance: cinematic bars slide in, then away when the fight starts
+    {
+      const b = G.boss;
+      const want = b && !b.dead && b.state === -1 && G.state !== "menu" ? 1 : 0;
+      cine += (want - cine) * Math.min(1, dt * (want ? 5 : 3));
+      if (cine > 0.01) {
+        const h = Math.min(H * 0.07, 54) * cine;
+        g.fillStyle = "rgba(2,3,12,0.92)";
+        g.fillRect(0, 0, W, h); g.fillRect(0, H - h, W, h);
+        if (b) {
+          g.globalAlpha = 0.6 * cine;
+          g.fillStyle = b.def.c1;
+          g.fillRect(0, h - 1.5, W, 1.5); g.fillRect(0, H - h, W, 1.5);
+          g.globalAlpha = 1;
+        }
+      }
+    }
     this.drawIndicators(alpha);
 
     if (Pl && !Pl.dead && Pl.hp <= 2 && G.state !== "menu") {
@@ -874,17 +958,56 @@ export const renderer = {
         g.beginPath(); g.arc(len + 6, 0, 1.5 + c2 * 3.2, 0, TAU); g.fill();
       }
       if (Pl.muzzle > 0) {
+        // a quick star-shaped flash: a glow, three spikes in the gun's colour, a white core
+        const k = Math.min(1, Pl.muzzle / 0.05);
         g.globalCompositeOperation = "lighter";
         const d = sprites.dots[gpal];
-        g.drawImage(d, len + 2, -9, 18, 18);
+        g.globalAlpha = k;
+        g.drawImage(d, len + 1, -10, 20, 20);
+        g.fillStyle = gcol;
+        g.beginPath(); g.moveTo(len + 5, -2.2); g.lineTo(len + 5 + 15 * k, 0); g.lineTo(len + 5, 2.2); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(len + 6, 0); g.lineTo(len + 10, -7 * k); g.lineTo(len + 8, 0); g.lineTo(len + 10, 7 * k); g.closePath(); g.fill();
+        g.fillStyle = "#ffffff";
+        g.beginPath(); g.arc(len + 6, 0, 2.2 * k, 0, TAU); g.fill();
+        g.globalAlpha = blink ? 0.35 : 1;
         g.globalCompositeOperation = "source-over";
       }
     };
     const aimUp = Math.sin(Pl.aimAng) < -0.3;
     if (aimUp) drawGun();
     const spr = me ? (Pl.hurtT > 0.3 ? sprites.playerFlash : sprites.player) : (Pl.hurtT > 0.3 ? look.flash : look.player);
-    g.setTransform(c * f * P, sn * f * P, -sn * P, c * P, offX + (x - camX) * P, offY + (y + bob - camY) * P);
+    // a little squash and stretch into a boost
+    const sq = Pl.boostT > 0 ? 1 + Math.min(1, Pl.boostT / 0.17) * 0.12 : 1;
+    g.setTransform(c * f * P * sq, sn * f * P * sq, -sn * P / sq, c * P / sq, offX + (x - camX) * P, offY + (y + bob - camY) * P);
+    // the jetpack's flame: it answers your thrust and roars on a boost
+    if (!Pl.dead) {
+      const thrust = Math.min(1, Math.hypot(Pl.vx, Pl.vy) / ((s && s.moveSpeed) || 285));
+      const boost = Pl.boostT > 0 ? 1 : 0;
+      const L = 5 + thrust * 9 + boost * 16 + Math.sin(G.time * 42 + Pl.slot) * 1.6;
+      const d = sprites.dots[boost ? P_CYAN : P_VIOLET];
+      g.globalCompositeOperation = "lighter";
+      g.globalAlpha = 0.45 + thrust * 0.35 + boost * 0.2;
+      g.drawImage(d, -16, 9, 11, L * 1.6);
+      g.globalAlpha = 0.7 + boost * 0.3;
+      g.fillStyle = boost ? "#e9fdff" : "#f1e6ff";
+      g.beginPath(); g.ellipse(-10.5, 14 + L * 0.28, 1.6 + boost, L * 0.32, 0, 0, TAU); g.fill();
+      g.globalAlpha = blink ? 0.35 : 1;
+      g.globalCompositeOperation = "source-over";
+    }
     g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+    // a glint that slides across the visor every few seconds
+    {
+      const ph = (G.time * 0.45 + Pl.slot * 0.3) % 1;
+      if (ph < 0.18) {
+        const k = ph / 0.18;
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = Math.sin(k * Math.PI) * 0.7;
+        g.fillStyle = "#ffffff";
+        g.beginPath(); g.ellipse(-2 + k * 10, -10 - k * 2, 1, 4.6, -0.55, 0, TAU); g.fill();
+        g.globalAlpha = blink ? 0.35 : 1;
+        g.globalCompositeOperation = "source-over";
+      }
+    }
     if (!aimUp) drawGun();
     g.globalAlpha = 1;
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);

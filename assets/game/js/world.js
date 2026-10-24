@@ -2,7 +2,7 @@
    (damage, kills, scoring, pickups, explosions, asteroids). Co-op: every player is checked in turn
    with usePlayer(), so "the player" in damage/heal/kill code is whoever it's happening to. */
 
-import { G, usePlayer, coop } from "./state.js";
+import { G, usePlayer, coop, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { TAU, rand, randInt, chance, fracRound, clamp } from "./util.js";
 import { fx } from "./fx.js";
@@ -27,7 +27,7 @@ export function comboMult() {
   return Math.min(c.cap, 1 + G.combo * c.perKill);
 }
 export function addScore(base) {
-  G.score += base * comboMult();
+  G.score += base * comboMult() * diff().score;
 }
 // Hit-stop: the tiny freeze that sells a big hit. Kills draw from a small bank that refills slowly
 // and skip it entirely in a crowd, so a screen full of explosions never turns into a stutter.
@@ -90,6 +90,7 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
   }
   e.hp -= dmg;
   e.flash = 0.08;
+  e.pop = 0.12; e.popX = dirX || 0; e.popY = dirY || 0;     // the sprite jolts along the hit
   if (knock && !e.boss) {
     const k = knock / e.mass;
     e.kx += dirX * k;
@@ -134,7 +135,7 @@ export function killEnemy(e, silent) {
     for (let i = 0; i < n; i++) dropPickup(0, e.x, e.y, s.starValue);
     if (!ally && !e.boss) {
       const low = G.player && G.player.hp <= 2;
-      if (chance(low ? D.heartChanceLow : D.heartChance)) dropPickup(2, e.x, e.y, D.heartHeal);
+      if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal)) dropPickup(2, e.x, e.y, D.heartHeal);
     }
     if (!ally) onKill(e);
   }
@@ -184,7 +185,7 @@ export function hurtPlayer(dmg, sx, sy) {
   }
 
   P.hp -= dmg;
-  P.iframes = BALANCE.player.iframes;
+  P.iframes = BALANCE.player.iframes * diff().iframes;
   P.hurtT = 0.45;
   let dx = P.x - sx, dy = P.y - sy;
   const d = Math.hypot(dx, dy) || 1;
@@ -446,7 +447,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   if (!b) return null;
   if (!bolt) {
     const W = BALANCE.waves;
-    const k = 1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave);
+    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot;
     vx *= k; vy *= k;
   }
   b.dead = false;

@@ -72,24 +72,29 @@ const THEMES = {
       drums: { kick: "x..xx...x..x.x..", snare: "....X.......X...", hat: "xxxxxxxxxxxxxxxx", perc: "...x..x..x.x..x." },
     },
   },
+  // Greed: a dark, extravagant casino in space, run by someone very rich and very dangerous.
+  // G harmonic minor (the augmented second between E♭ and F♯ is the villain's smile); the swing
+  // stays, slower and more confident; "vault" drums ring like coins on steel. The chapter is a lounge
+  // after hours (low arpeggio, sub bass, no stabs); the boss is the same room with the lights off
+  // (driving bass, dark stabs, a cat-and-mouse lead built on that augmented second).
   greed: {
     chapter: {
-      bpm: 108, root: 43, scale: "mixolydian", prog: [0, 0, 3, 4], swing: 0.12,
-      pad: { type: "sawtooth", cutoff: 1600, gain: 0.06, stab: "x..x......x.x..." },
-      arp: { type: "sine", notes: [0, 4, 7, 9, 7, 4], every: 2, oct: 3, cutoff: 5000, gain: 0.04 },
-      bass: { type: "square", type2: "triangle", cutoff: 700, env: 1800, gain: 0.2, pat: "0..0.7..4.0..3.4" },
-      kit: "punch",
-      drums: { kick: "x.....x.x...x...", snare: "....x..g.g..x..g", hat: "xxxxxxxxxxxxxxxx" },
+      bpm: 96, root: 43, scale: "harmonic", prog: [0, 5, 4, 0], swing: 0.14,
+      pad: { type: "sawtooth", type2: "triangle", cutoff: 900, gain: 0.05, detune: 12, attack: 0.3 },
+      arp: { type: "triangle", notes: [0, 2, 4, 6, 4, 2], every: 2, oct: 2, cutoff: 2000, gain: 0.04 },
+      bass: { type: "sine", type2: "sawtooth", cutoff: 360, env: 420, gain: 0.22, glide: 0.035, pat: "0-----0.4---3-2-" },
+      kit: "vault",
+      drums: { kick: "x.......x..x....", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.xg", perc: "..x.......x....." },
     },
     boss: {
-      bpm: 118, root: 43, scale: "dorian", prog: [0, 3, 0, 4], swing: 0.1,
-      pad: { type: "sawtooth", cutoff: 2000, gain: 0.07, stab: "x..x..x...x.x..x" },
-      arp: { type: "sine", notes: [0, 2, 4, 7, 9, 7], every: 1, oct: 3, cutoff: 6000, gain: 0.03 },
-      bass: { type: "square", type2: "sawtooth", cutoff: 800, env: 2200, gain: 0.22, pat: "0.70.0.47.0.3.4." },
-      lead: { type: "sawtooth", type2: "sawtooth", gain: 0.075, cutoff: 2600, glide: 0.01,
-        mel: "4 . 4 . 6 . 4 - 3 . . . 2 - 0 - 4 . 4 . 7 . 6 - 4 . . . 3 - 4 -" },
-      kit: "punch",
-      drums: { kick: "x.....x.x..x..x.", snare: "....X..g.g..X..g", hat: "xxxxxxxxxxxxxxxx", ohat: "......x.......x." },
+      bpm: 112, root: 43, scale: "harmonic", prog: [0, 5, 1, 4], swing: 0.08,
+      pad: { type: "sawtooth", cutoff: 1400, gain: 0.058, detune: 14, stab: "x.....x...x....." },
+      arp: { type: "triangle", notes: [0, 4, 7, 6, 4, 2], every: 1, oct: 2, cutoff: 2200, gain: 0.026 },
+      bass: { type: "sawtooth", type2: "square", cutoff: 420, env: 1400, gain: 0.21, drive: 0.45, glide: 0.02, pat: "0.00.0.00.0.00.3" },
+      lead: { type: "sawtooth", type2: "square", gain: 0.07, cutoff: 2000, glide: 0.03, vib: 4,
+        mel: "4 - - 5 4 - 2 - 6 - - - 7 - - - 4 - - 5 4 - 2 - 1 - 2 - 6 - - -" },
+      kit: "vault",
+      drums: { kick: "x.....x.x.....x.", snare: "....X.......X...", hat: "x.xxx.x.x.xxx.x.", ohat: "..x...x...x...x.", perc: "..x...x...x..x.x" },
     },
   },
   lust: {
@@ -365,22 +370,22 @@ export function createMusic(ctx, bus, noiseBuf) {
   // drums
   function kick(t, vel) {
     const n = N, k = theme.kit;
-    const start = k === "808" ? 120 : k === "hard" ? 170 : 150, end = k === "808" ? 42 : 48, drop = k === "808" ? 0.2 : 0.09;
+    const start = k === "808" ? 120 : k === "hard" ? 170 : k === "vault" ? 135 : 150, end = k === "808" || k === "vault" ? 42 : 48, drop = k === "808" ? 0.2 : k === "vault" ? 0.13 : 0.09;
     n.kick.frequency.cancelScheduledValues(t - 0.006);
     n.kick.frequency.setValueAtTime(start, t);
     n.kick.frequency.exponentialRampToValueAtTime(end, t + drop);
     n.kAmp.gain.cancelScheduledValues(t - 0.006);
     n.kAmp.gain.setTargetAtTime(0, t - 0.006, 0.0015);
     n.kAmp.gain.setTargetAtTime(0.9 * vel, t, 0.002);
-    n.kAmp.gain.setTargetAtTime(0, t + 0.02, k === "808" ? 0.28 : 0.07);
+    n.kAmp.gain.setTargetAtTime(0, t + 0.02, k === "808" ? 0.28 : k === "vault" ? 0.11 : 0.07);
     // pump: duck the bass and pad under the kick
     n.pump.gain.cancelScheduledValues(t - 0.006);
     n.pump.gain.setTargetAtTime(0.35, t, 0.004);
     n.pump.gain.setTargetAtTime(1, t + 0.03, 0.09);
   }
   function snare(t, vel) {
-    const n = N, clap = theme.kit === "808" || theme.kit === "hard";
-    n.sF.frequency.setValueAtTime(clap ? 1400 : 1900, t);
+    const n = N, clap = theme.kit === "808" || theme.kit === "hard" || theme.kit === "vault";
+    n.sF.frequency.setValueAtTime(theme.kit === "vault" ? 1100 : clap ? 1400 : 1900, t);
     n.sAmp.gain.cancelScheduledValues(t - 0.006);
     n.sAmp.gain.setTargetAtTime(0, t - 0.006, 0.0015);
     if (clap) {
@@ -414,13 +419,15 @@ export function createMusic(ctx, bus, noiseBuf) {
     n.tAmp.gain.setTargetAtTime(0.6 * vel, t, 0.003);
     n.tAmp.gain.setTargetAtTime(0, t + 0.02, 0.22);
   }
-  function perc(t, vel, f) {
+  function perc(t, vel, f, ring) {
     const n = N;
     n.perc.frequency.setValueAtTime(f, t);
+    n.pcF.frequency.setValueAtTime(ring ? f : 2400, t);
+    n.pcF.Q.setValueAtTime(ring ? 14 : 6, t);
     n.pcAmp.gain.cancelScheduledValues(t - 0.004);
     n.pcAmp.gain.setTargetAtTime(0, t - 0.004, 0.001);
-    n.pcAmp.gain.setTargetAtTime(0.12 * vel, t, 0.001);
-    n.pcAmp.gain.setTargetAtTime(0, t + 0.004, 0.03);
+    n.pcAmp.gain.setTargetAtTime((ring ? 0.085 : 0.12) * vel, t, 0.001);
+    n.pcAmp.gain.setTargetAtTime(0, t + 0.004, ring ? 0.09 : 0.03);   // a coin rings a little longer
   }
   function crash(t, vel) {
     const n = N;
@@ -458,7 +465,11 @@ export function createMusic(ctx, bus, noiseBuf) {
       if (h) hat(t, h, false);
       const oh = hit(d.ohat, s);
       if (oh && lvl >= 2) hat(t, oh, true);
-      if (d.perc && lvl >= 2) { const p = hit(d.perc, s); if (p) perc(t, p, th.kit === "hard" ? 1800 + (s % 3) * 400 : 2600); }
+      if (d.perc && (lvl >= 2 || th.kit === "vault")) {
+        const p = hit(d.perc, s);
+        // vault: coins on steel, two inharmonic pitches (3:2 apart reads as metal, not a melody)
+        if (p) th.kit === "vault" ? perc(t, p, s % 4 === 2 ? 3150 : 4720, true) : perc(t, p, th.kit === "hard" ? 1800 + (s % 3) * 400 : 2600);
+      }
     } else if (s % 4 === 2) hat(t, 0.25, false);
     // bass
     if (lvl >= 1) {

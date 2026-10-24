@@ -2,7 +2,7 @@
    Brotato-style: four offers a wave, lock the ones you like, reroll, and buy a gun you already
    hold to raise its tier (I → IV). Also runs the gear that acts on its own (mines, buddy drones). */
 
-import { G, usePlayer } from "./state.js";
+import { G, usePlayer, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { rng, TAU } from "./util.js";
 import { fx } from "./fx.js";
@@ -390,5 +390,5 @@ G.on("kill", (e) => {
   const s = G.stats, P = G.player;
   if (!s.fang || !P || P.dead || e.ally > 0 || e.boss) return;
   P.fangN = (P.fangN || 0) + 1;
-  if (P.fangN >= s.fang) { P.fangN = 0; healPlayer(1, false); fx.burst(P.x, P.y, 6, P_MAGENTA, 120, 0.5, 1.2); }
+  if (P.fangN >= Math.ceil(s.fang / diff().heal)) { P.fangN = 0; healPlayer(1, false); fx.burst(P.x, P.y, 6, P_MAGENTA, 120, 0.5, 1.2); }
 });
