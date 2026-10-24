@@ -20,6 +20,7 @@ import { updateDrones } from "./armory.js";
 import { waves } from "./waves.js";
 import { TAU } from "./util.js";
 import { evoCode, evoTick } from "./evolve.js";
+import { mutVis, M as MUT } from "./mutations.js";
 
 const TYPES = [...Object.keys(ROSTER), ...Object.keys(BOSS_MINIONS)];
 const TYPE_IX = Object.fromEntries(TYPES.map((t, i) => [t, i]));
@@ -155,7 +156,8 @@ function encodeSnapshot() {
     w16(q100(e.t)); w16(q100(e.t2)); w16(q100(e.t3)); w16(Math.max(-32768, Math.min(32767, Math.round(e.a * 1000))));
     w16(q100(e.b)); w16(q100(e.c));
     w8(u8((e.spawnT / 0.35) * 255)); w8(u8(e.allyMax > 0 ? (e.ally / e.allyMax) * 255 : 0)); w8(u8(e.shieldMax > 0 ? (e.shield / e.shieldMax) * 255 : 0));
-    w8(Math.min(15, e.tox) | (e.vuln > 0 ? 16 : 0) | (e.moon > 0 ? 32 : 0) | (e.phased ? 64 : 0) | (e.chill > 0 ? 128 : 0)); w8(e.mut || 0);
+    w8(Math.min(15, e.tox) | (e.vuln > 0 ? 16 : 0) | (e.moon > 0 ? 32 : 0) | (e.phased ? 64 : 0) | (e.chill > 0 ? 128 : 0));
+    w8((e.mut || 0) | (e.berserk ? 128 : 0) | (e.mutN === 1 && e.mut === MUT.PHANTOM ? 64 : 0)); w8(u8(mutVis(e) * 255));
   }
   dv.setUint16(nAt, n);
   // robot shots
@@ -274,7 +276,7 @@ function applySnapshot(data) {
     const scale = r8() / 50, hpF = r8() / 255, flags = r8(), traits = r8(), mark = r8(), state = r8() - 1;
     const t = r16() / 100, t2 = r16() / 100, t3 = r16() / 100, a = r16() / 1000, b = r16() / 100, c = r16() / 100;
     const spawnT = (r8() / 255) * 0.35, allyF = r8() / 255, shF = r8() / 255;
-    const st = r8(), mut = r8();
+    const st = r8(), mut = r8(), mv = r8();
     const e = en.get();
     if (!e) continue;
     const kind = ROSTER[type] || BOSS_MINIONS[type];
@@ -295,7 +297,8 @@ function applySnapshot(data) {
     e.traits = traits; e.mark = mark; e.state = state; e.t = t; e.t2 = t2; e.t3 = t3; e.a = a; e.b = b; e.c = c;
     e.spawnT = spawnT; e.shieldMax = shF > 0 ? 1 : 0; e.shield = shF;
     e.vx = e.vy = 0; e.slowMul = 1; e.alpha = 1; e.beat = G.time * 8;
-    e.tox = st & 15; e.vuln = st & 16 ? 1 : 0; e.moon = st & 32 ? 1 : 0; e.phased = !!(st & 64); e.chill = st & 128 ? 1 : 0; e.mut = mut;
+    e.tox = st & 15; e.vuln = st & 16 ? 1 : 0; e.moon = st & 32 ? 1 : 0; e.phased = !!(st & 64); e.chill = st & 128 ? 1 : 0;
+    e.mut = mut & 31; e.berserk = !!(mut & 128); e.mutN = mut & 64 ? 1 : 0; e.mutVisNet = mv / 255;
     seen.add(id);
   }
   for (const id of prevEnemy.keys()) if (!seen.has(id)) prevEnemy.delete(id);

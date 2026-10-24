@@ -97,8 +97,43 @@ export const BALANCE = {
     traits: {
       shielded: { label: "Shielded", share: 0.4 },        // a shield worth 40% of its health takes hits first
       hasted:   { label: "Hasted", speed: 1.35, attack: 1.35 },
-      volatile: { label: "Volatile", count: 10, speed: 190 },   // bursts into a ring of shots when it dies
+      volatile: { label: "Shrapnel", count: 10, speed: 190 },   // bursts into a ring of shots when it dies (4.2: renamed from "Volatile" for the mutation)
       regen:    { label: "Regenerating", perSec: 0.05 },
+    },
+  },
+
+  // Elite mutations: rarer than overcharged elites and never on the same robot. Each changes how you fight
+  // it (where to shoot, when to dodge, when to kill it) rather than just adding health. Chance per robot
+  // from `from`, growing per wave up to `max` (x the difficulty's elite chance^0.6); a few at a time at most.
+  // Harder difficulties bring each one in earlier (half their Mark offset).
+  mutations: {
+    chance: 0.03, perWave: 0.003, max: 0.12, maxAlive: 5, hp: 1.2, score: 1.8, stars: 1.5,
+    types: {
+      volatile:   { name: "Volatile", col: "#ff5a3c", from: 8, weight: 1, fuse: 0.9, r: 105, dmg: 2, robotDmg: 60,
+                    hint: "It bursts when it dies: leave the ring (or kill it next to its friends)." },
+      berserker:  { name: "Berserker", col: "#ff3b3b", from: 8, weight: 1, at: 0.5, speed: 1.5, attack: 1.65,
+                    hint: "Below half health it goes berserk: faster, angrier. Finish it quickly." },
+      armored:    { name: "Armored", col: "#c9d2f0", from: 13, weight: 0.9, front: 0.4, back: 1.6, frontArc: 1.15, backArc: 0.9,
+                    hint: "Plated in front, a glowing weak spot behind. Get round it." },
+      shockwave:  { name: "Shockwave", col: "#6ad8ff", from: 13, weight: 0.8, every: [3.6, 4.6], windup: 0.75, speed: 230, reach: 280, dmg: 1,
+                    hint: "It sends out rings: step out of reach or boost through them." },
+      phantom:    { name: "Phantom", col: "#b58cff", from: 18, weight: 0.7, every: [3.4, 4.8], shimmer: 0.45, phase: 0.7, blink: [130, 210],
+                    hint: "It shimmers, slips out of reach and reappears at your side. Track the shimmer." },
+      vampiric:   { name: "Vampiric", col: "#ff2d6a", from: 18, weight: 0.6, heal: 0.25, healCap: 1,
+                    hint: "Every hit it lands on you heals it. Don't trade blows with it." },
+      replicator: { name: "Replicator", col: "#3ff0c8", from: 23, weight: 0.5, at: [0.6, 0.3], copyHp: 0.4, copyScale: 0.78,
+                    hint: "Wounded, it copies itself (twice at most). Burst it down." },
+    },
+    // which robots can carry which mutation (swarmlings and minis never mutate)
+    on: {
+      drone:    ["volatile", "berserker", "armored", "shockwave", "phantom", "vampiric", "replicator"],
+      ripper:   ["volatile", "berserker", "armored", "phantom", "vampiric", "replicator"],
+      gunner:   ["volatile", "berserker", "armored", "shockwave", "phantom", "vampiric", "replicator"],
+      splitter: ["volatile", "berserker", "armored", "shockwave"],
+      bulwark:  ["volatile", "berserker", "shockwave", "vampiric", "replicator"],
+      boomer:   ["berserker", "armored", "phantom"],
+      sniper:   ["volatile", "armored", "phantom", "vampiric", "replicator"],
+      patch:    ["volatile", "shockwave", "phantom"],
     },
   },
 

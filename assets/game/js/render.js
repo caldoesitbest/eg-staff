@@ -19,6 +19,7 @@ import { waves } from "./waves.js";
 import { reviveRange } from "./world.js";
 import { drawZonesUnder, drawZonesOver } from "./zones.js";
 import { E, evoCol, evoPal } from "./evolve.js";
+import { M, mutDef, mutVis } from "./mutations.js";
 
 const EVB = BALANCE.evolution;
 const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col, ICE_COL = "#bfe9ff";
@@ -243,6 +244,107 @@ function sparkle(g, x, y, r) {
   g.lineTo(x, y + r); g.lineTo(x - q, y + q); g.lineTo(x - r, y); g.lineTo(x - q, y - q);
   g.closePath();
   g.fill();
+}
+
+/** An elite mutation's marker: you can tell each one apart at a glance, and see its telegraphs. */
+function drawMutation(g, e, x, y, R) {
+  const d = mutDef(e.mut);
+  if (!d) return;
+  const col = d.col, t = G.time + e.id * 0.7, v = mutVis(e);
+  g.lineWidth = 2;
+  switch (e.mut) {
+    case M.VOLATILE: {
+      // a hot core and a slowly turning hazard ring
+      if (G.gfx.glow) {
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.45 + Math.sin(t * 9) * 0.2;
+        g.drawImage(sprites.dots[7], x - R * 0.9, y - R * 0.9, R * 1.8, R * 1.8);
+        g.globalCompositeOperation = "source-over";
+      }
+      g.strokeStyle = col; g.globalAlpha = 0.9;
+      g.setLineDash(dash(4, 6)); g.lineDashOffset = -t * 18;
+      g.beginPath(); g.arc(x, y, R + 7, 0, TAU); g.stroke();
+      g.setLineDash(NO_DASH);
+      break;
+    }
+    case M.BERSERKER: {
+      // horns; berserk, a red pulse around it
+      g.fillStyle = col; g.globalAlpha = e.berserk ? 1 : 0.85;
+      for (let k = -1; k <= 1; k += 2) {
+        g.beginPath(); g.moveTo(x + k * R * 0.35, y - R * 0.7); g.lineTo(x + k * R * 0.85, y - R * 1.35); g.lineTo(x + k * R * 0.65, y - R * 0.55); g.closePath(); g.fill();
+      }
+      if (e.berserk) {
+        g.strokeStyle = col; g.globalAlpha = 0.5 + Math.sin(t * 16) * 0.3; g.lineWidth = 3;
+        g.beginPath(); g.arc(x, y, R + 5 + Math.sin(t * 16) * 2, 0, TAU); g.stroke();
+      }
+      break;
+    }
+    case M.ARMORED: {
+      // a plate across its face, a red weak spot on its back
+      const a = e.ang, fa = BALANCE.mutations.types.armored.frontArc;
+      g.strokeStyle = "#e9eeff"; g.globalAlpha = 0.95; g.lineWidth = 5;
+      g.beginPath(); g.arc(x, y, R + 4, a - fa, a + fa); g.stroke();
+      g.strokeStyle = "#6f7aa3"; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(x, y, R + 7, a - fa, a + fa); g.stroke();
+      const bx = x - Math.cos(a) * R * 0.95, by = y - Math.sin(a) * R * 0.95;
+      if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.7 + Math.sin(t * 7) * 0.25; g.drawImage(sprites.dots[8], bx - 9, by - 9, 18, 18); g.globalCompositeOperation = "source-over"; }
+      g.fillStyle = "#ff3b5c"; g.globalAlpha = 1;
+      g.beginPath(); g.arc(bx, by, 3.2, 0, TAU); g.fill();
+      break;
+    }
+    case M.SHOCKWAVE: {
+      // rings rippling off it; winding up, a bright ring closes in
+      g.strokeStyle = col;
+      for (let k = 0; k < 2; k++) {
+        const f = (t * 0.8 + k * 0.5) % 1;
+        g.globalAlpha = 0.6 * (1 - f);
+        g.beginPath(); g.arc(x, y, R + 4 + f * 16, 0, TAU); g.stroke();
+      }
+      if (v > 0) {
+        g.globalAlpha = 0.5 + v * 0.5; g.lineWidth = 2 + v * 3;
+        g.beginPath(); g.arc(x, y, R + 30 * (1 - v) + 4, 0, TAU); g.stroke();
+        if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = v * 0.7; g.drawImage(sprites.dots[12], x - R * 1.6, y - R * 1.6, R * 3.2, R * 3.2); g.globalCompositeOperation = "source-over"; }
+      }
+      break;
+    }
+    case M.PHANTOM: {
+      // violet wisps trailing it; the shimmer fills a ring before it goes
+      g.fillStyle = col;
+      for (let k = 0; k < 3; k++) {
+        const a = t * 2.2 + k * 2.1, rr = R + 5 + Math.sin(t * 3 + k) * 3;
+        g.globalAlpha = 0.55;
+        g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 2.2, 0, TAU); g.fill();
+      }
+      if (v > 0) {
+        g.strokeStyle = col; g.globalAlpha = 0.9; g.lineWidth = 2.5;
+        g.beginPath(); g.arc(x, y, R + 6, -Math.PI / 2, -Math.PI / 2 + TAU * v); g.stroke();
+      }
+      break;
+    }
+    case M.VAMPIRIC: {
+      // a crimson aura and two fangs
+      g.strokeStyle = col; g.globalAlpha = 0.55 + Math.sin(t * 4) * 0.15;
+      g.beginPath(); g.arc(x, y, R + 5, 0, TAU); g.stroke();
+      g.fillStyle = "#ffffff"; g.globalAlpha = 0.95;
+      for (let k = -1; k <= 1; k += 2) {
+        g.beginPath(); g.moveTo(x + k * 4 - 2.2, y + R * 0.55); g.lineTo(x + k * 4 + 2.2, y + R * 0.55); g.lineTo(x + k * 4, y + R * 0.55 + 6); g.closePath(); g.fill();
+      }
+      break;
+    }
+    case M.REPLICATOR: {
+      // a doubled outline, and a pip for each copy it can still make
+      g.strokeStyle = col; g.globalAlpha = 0.8;
+      g.beginPath(); g.arc(x - 3, y - 2, R + 4, 0, TAU); g.stroke();
+      g.globalAlpha = 0.45;
+      g.beginPath(); g.arc(x + 3, y + 2, R + 4, 0, TAU); g.stroke();
+      g.fillStyle = col; g.globalAlpha = 0.95;
+      const left = BALANCE.mutations.types.replicator.at.length - e.mutN;
+      for (let k = 0; k < left; k++) g.fillRect(x - 5 + k * 7, y - R - 14, 4, 4);
+      break;
+    }
+  }
+  g.globalAlpha = 1;
+  g.lineWidth = 2;
 }
 
 /** What weapon evolutions left on a robot: corruption (Neurotoxin), vulnerable (Gravity Well), a Blood Moon mark. */
@@ -686,6 +788,9 @@ export const renderer = {
       if (!art) { e.kind.draw(g, e, x, y); continue; }
       const spr = e.flash > 0 ? art.flash : e.ally > 0 ? art.ally : art.base;
       let sc = e.scale * (1 + Math.sin(G.time * 5 + e.id * 1.3) * 0.022);
+      // a Phantom flickers as it gets ready to blink, and is a ghost while it does
+      const ghost = e.mut === M.PHANTOM ? (e.phased ? 0.2 : e.mutN === 1 ? 0.45 + Math.sin(G.time * 60) * 0.3 : 1) : 1;
+      if (ghost < 1) g.globalAlpha = ghost;
       if (e.pop > 0) { const k = e.pop / 0.12; sc *= 1 + k * 0.16; x += e.popX * k * 5; y += e.popY * k * 5; }
       if (e.spawnT > 0) { const t = 1 - e.spawnT / 0.35; sc *= Math.max(0.05, t * t); }
       if (e.kind.shakeAmt) { const sh = e.kind.shakeAmt(e); if (sh) { x += rand(-sh, sh); y += rand(-sh, sh); } }
@@ -693,6 +798,7 @@ export const renderer = {
       const c = Math.cos(ang) * sc * P, sn = Math.sin(ang) * sc * P;
       g.setTransform(c, sn, -sn, c, offX + (x - camX) * P, offY + (y - camY) * P);
       g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+      if (ghost < 1) g.globalAlpha = 1;
       if (e.spawnT > 0) {
         g.globalCompositeOperation = "lighter";
         g.globalAlpha = e.spawnT / 0.35;
@@ -700,7 +806,7 @@ export const renderer = {
         g.globalAlpha = 1;
         g.globalCompositeOperation = "source-over";
       }
-      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) {
+      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0 || e.mut) {
         g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
         if (e.kind.drawOver) e.kind.drawOver(g, e, x, y);
         const R = e.r * e.scale;
@@ -746,7 +852,8 @@ export const renderer = {
           g.globalAlpha = 1;
         }
         if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, x, y, R);
-        if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite)) {
+        if (e.mut && e.ally <= 0) drawMutation(g, e, x, y, R);
+        if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite || e.mut)) {
           const bw = Math.max(26, R * 1.8), bx = x - bw / 2, by = y - R - 12;
           g.fillStyle = "rgba(3,5,24,0.8)";
           g.fillRect(bx - 1, by - 1, bw + 2, 5);

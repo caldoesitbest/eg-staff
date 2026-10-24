@@ -12,6 +12,7 @@ import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
 import { evoRobot } from "../evolve.js";
 import { bloodRamp, allyHit, allyPop } from "../fusion.js";
+import { mutate, mutTick, mutBusy } from "../mutations.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -89,10 +90,29 @@ export function spawnEnemy(type, x, y, opts) {
   e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
   e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
   e.chill = 0; e.chillMul = 1; e.shatterCd = 0; e.passive = false; e.lastCrit = false;
-  e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0;
+  e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0; e.berserk = false;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
+  if (opts && opts.mut && !boss) mutate(e, opts.mut);
+  if (opts && opts.copy) {
+    // a Replicator's copy: smaller, weaker, worth less, and it doesn't copy itself
+    e.scale = BALANCE.mutations.types.replicator.copyScale;
+    e.maxHp *= BALANCE.mutations.types.replicator.copyHp; e.hp = e.maxHp;
+    e.score *= 0.3; e.stars *= 0.3;
+  }
   return e;
+}
+
+/** Replicator: a copy pops out of it. */
+export function spawnCopy(e) {
+  const a = rand(0, TAU);
+  const c = spawnEnemy(e.type, e.x + Math.cos(a) * e.r * 1.6, e.y + Math.sin(a) * e.r * 1.6, { spawnT: 0.2, copy: true });
+  if (!c) return;
+  c.kx = Math.cos(a) * 260; c.ky = Math.sin(a) * 260;
+  const col = BALANCE.mutations.types.replicator.col;
+  fx.ring(e.x, e.y, e.r, e.r * 2.6, 0.3, col, 3);
+  fx.text(e.x, e.y - e.r - 10, "REPLICATED", col, 13, 0.8);
+  audio.play("spawn", e.x, e.y, 0.7);
 }
 
 /** Which player a robot is after: the nearest, re-picked every second or two so a crowd spreads out. */
@@ -267,7 +287,8 @@ export function updateEnemies(dt) {
       const T = targetOf(e);
       usePlayer(T);
       G.curEnemy = e;            // its shots and blasts remember who fired them
-      e.kind.update(e, edt * e.haste, T);
+      if (e.mut) mutTick(e, edt, T);
+      if (!mutBusy(e)) e.kind.update(e, edt * e.haste, T);
       G.curEnemy = null;
       if (e.dead) continue;
     }

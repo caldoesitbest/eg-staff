@@ -77,6 +77,7 @@ function defaults() {
     ver: SAVE_VER,
     // Boss Rush: clears, and per difficulty your best run ({ time, score, hits, mods, splits }) and best split per boss
     rush: { clears: 0, best: {}, splits: {}, mods: [] },
+    seenMut: {},          // elite mutations you've met (their hint shows once)
   };
 }
 

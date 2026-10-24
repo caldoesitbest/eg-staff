@@ -25,6 +25,7 @@ import { ladderRungs } from "./ui.js";
 import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName } from "./armory.js";
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { fusionActivated, fusionWave } from "./fusion.js";
+import { mutKey, mutHint } from "./mutations.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
@@ -678,7 +679,17 @@ function fmtTime(t) {
 
 // "What got you", for the summary screen.
 const SRC_NAMES = { drone: "a Drone", swarm: "a Swarmling", ripper: "a Ripper's charge", gunner: "a Gunner", splitter: "a Splitter", mini: "a Splitter shard",
-  bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Volatile elite's burst" };
+  bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Shrapnel elite's burst",
+  shockwave: "a Shockwave mutant's ring", "volatile mutant": "a Volatile mutant's blast" };
+
+// The first time you ever meet each mutation, a hint says what to do about it.
+G.on("mutSpawn", (e) => {
+  const k = mutKey(e.mut), seen = store.data.seenMut || (store.data.seenMut = {});
+  if (!k || seen[k] || G.state === "menu") return;
+  seen[k] = 1;
+  store.save();
+  ui.toast("Mutation · " + mutHint(e.mut), 4600);
+});
 function sourceName(src) {
   if (!src) return "";
   if (BALANCE.bosses[src]) return "@" + BALANCE.bosses[src].name;

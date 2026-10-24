@@ -17,6 +17,8 @@ import { SHOT_KIND, GUN_R, updateGear } from "./armory.js";
 import { E, evoHit, evoEnd, evoKill, evoRicochet, evoTick, evoPal, chainRamp, beamRamp, annihilate, soulTarget, volleyHit, shotGone, evoShotKind } from "./evolve.js";
 import { updateZones, addZone, Z } from "./zones.js";
 import { fusionStar, fusionOverheal, fusionDmg, fusionShot, fusionPerfect, fusionHit, fusionTick } from "./fusion.js";
+import { M, armorMul, replicateAt, vampHeal, volatileDeath } from "./mutations.js";
+import { spawnCopy } from "./enemies/index.js";
 
 const A = BALANCE.arena;
 const D = BALANCE.drops;
@@ -81,8 +83,14 @@ function showDamage(e, dmg, crit) {
 
 const VULN = BALANCE.evolution.nova.b.vuln;
 export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
-  if (e.dead || e.invuln) return false;
+  if (e.dead || e.invuln || e.phased) return false;       // a Phantom mid-blink can't be touched
   dmg *= e.dmgMul;
+  if (e.mut === M.ARMORED) {
+    const k = armorMul(e, dirX, dirY);
+    dmg *= k;
+    if (k < 1) fx.sparks(e.x - dirX * e.r, e.y - dirY * e.r, Math.atan2(-dirY, -dirX), 0.6, 3, P_WHITE, 260, 0.15);
+    else if (k > 1) crit = true;                           // the weak spot: it shows like a crit
+  }
   if (e.vuln > 0) dmg *= e.boss ? 1 + (VULN - 1) / 2 : VULN;      // Gravity Well (half as much on a boss)
   if (e.shield > 0) {
     // Shielded trait: the cyan shield soaks damage first
@@ -103,6 +111,7 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
   }
   showDamage(e, dmg, crit);
   if (e.hp <= 0) { e.lastCrit = !!crit; killEnemy(e); return true; }
+  if (e.mut === M.REPLICATOR && e.ally <= 0 && G.net.role !== "client" && replicateAt(e)) spawnCopy(e);
   if (e.ally <= 0) onHit(e);
   return false;
 }
@@ -143,6 +152,10 @@ export function killEnemy(e, silent) {
       if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal)) dropPickup(2, e.x, e.y, D.heartHeal);
     }
     if (!ally) { onKill(e); evoKill(e); }
+  }
+  if (e.mut === M.VOLATILE && !silent && !ally) {
+    const n = Math.max(0, G.wave - 1);
+    volatileDeath(e, 1 + n * BALANCE.waves.hpPerWave + n * n * BALANCE.waves.hpCurve);
   }
   if ((e.traits & TRAIT.volatile) && !silent && !ally) {
     const cur = G.curEnemy;
@@ -489,6 +502,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   b.grazed = false;
   b.age = 0; b.turn = 0; b.back = 0; b.owner = null; b.hp = 0; b.home = 0;
   b.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";     // for "what got you"
+  b.from = G.curEnemy; b.fromId = G.curEnemy ? G.curEnemy.id : 0;
   return b;
 }
 
@@ -511,7 +525,7 @@ export function queueBlast(x, y, r, enemyDmg, friendly, hurtsPlayer, playerDmg, 
   q.dead = false; q.x = x; q.y = y; q.r = r; q.enemyDmg = enemyDmg; q.friendly = friendly;
   q.hurtsPlayer = !!hurtsPlayer; q.dmg = playerDmg || 0; q.col = col || C.orange; q.pal = pal === undefined ? P_ORANGE : pal;
   q.by = G.player;
-  q.src = G.curEnemy ? G.curEnemy.type : "";
+  q.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";
 }
 
 function processBlasts() {
@@ -967,6 +981,7 @@ function updateEnemyBullets(dt) {
         G.hurtSrc = b.src;
         const hit = hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
         G.hurtSrc = "";
+        if (hit && b.from && b.from.id === b.fromId) vampHeal(b.from, P);
         if (hit) {
           b.dead = true;
           fx.burst(b.x, b.y, 6, P_DANGER, 160, 0.3, 1.2);
@@ -1074,9 +1089,9 @@ function contactsFor(P) {
         continue;
       }
     }
-    if (e.contact <= 0) continue;
+    if (e.contact <= 0 || e.phased) continue;
     const rr = er * 0.82 + hurtR;
-    if (dx * dx + dy * dy < rr * rr) { G.hurtSrc = e.type; hurtPlayer(e.contact, e.x, e.y); G.hurtSrc = ""; }
+    if (dx * dx + dy * dy < rr * rr) { G.hurtSrc = e.type; if (hurtPlayer(e.contact, e.x, e.y) && e.mut) vampHeal(e, P); G.hurtSrc = ""; }
   }
 
   // moons

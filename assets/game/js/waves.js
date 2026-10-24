@@ -8,6 +8,7 @@ import { fx } from "./fx.js";
 import { audio } from "./audio.js";
 import { onScreen } from "./world.js";
 import { spawnEnemy, hostileCount } from "./enemies/index.js";
+import { rollMutation } from "./mutations.js";
 
 const W = BALANCE.waves;
 const A = BALANCE.arena;
@@ -187,7 +188,8 @@ export const waves = {
       w.dead = true;
       for (let k = 0; k < w.count; k++) {
         const a = rand(0, TAU), d = k === 0 ? 0 : rand(8, w.spread);
-        spawnEnemy(w.type, w.x + Math.cos(a) * d, w.y + Math.sin(a) * d, { elite: w.elite > 0 && chance(w.elite) });
+        const mut = rollMutation(w.type, G.wave);          // mutations and elite traits never share a robot
+        spawnEnemy(w.type, w.x + Math.cos(a) * d, w.y + Math.sin(a) * d, { elite: !mut && w.elite > 0 && chance(w.elite), mut });
       }
       fx.ring(w.x, w.y, 6, 40 + w.count * 3, 0.3, "#ffffff", 2);
       audio.play("spawn", w.x, w.y, 0.6);

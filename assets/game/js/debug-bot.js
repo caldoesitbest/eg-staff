@@ -118,6 +118,14 @@ export const bot = {
         if (along > 0 && Math.abs(side) < 60) { const k = side >= 0 ? 1 : -1; ax += -s * k * 400; ay += c * k * 400; if (Math.abs(side) < 25) near = true; }
       }
     }
+    // mutations: boost through a Shockwave ring about to reach you, get out of a Volatile's blast ring
+    for (let i = 0; i < G.zones.count; i++) {
+      const z = G.zones.items[i];
+      if (z.dead) continue;
+      const dx = P.x - z.x, dy = P.y - z.y, d = Math.hypot(dx, dy) || 1;
+      if (z.type === 8) { const R = z.r0 + (z.r - z.r0) * (z.t / z.life); if (d > R - 8 && d - R < 45) near = true; }
+      if (z.type === 7 && z.y2 > 0 && d < z.r + 30) { ax += (dx / d) * (z.r + 30 - d) * 6; ay += (dy / d) * (z.r + 30 - d) * 6; if (d < z.r * 0.7) near = true; }
+    }
     for (let i = 0; i < G.eb.count; i++) {
       const b = G.eb.items[i];
       const d2 = (b.x - P.x) ** 2 + (b.y - P.y) ** 2;
