@@ -1,8 +1,79 @@
 # Envious Glider — Project Ascension progress
 
-Update 4.0 "Ascension" (branch `game-v4`). This file tracks the master directive: what was audited,
+Update 4.0 "Ascension" (branch `game-v4`) and 4.1 "Ascension II" (branch `game-v4.1`, Phase II below).
+This file tracks the master directive: what was audited,
 what shipped, how it was tested, and what is still to do. Statuses are honest: **Done** means built and
 tested, **Partial** means some of it shipped, **Next** means not started.
+
+## Phase II — 4.1 "Ascension II": challenge, visual refinement, Greed's music
+
+### Audit: why it was too easy
+
+| Found | Evidence | Action |
+| --- | --- | --- |
+| Robots aimed at where you *are* | Every gunner, sniper, ripper and drone used the angle to your current position, so constant movement dodged everything | Lead aim (by Mark and difficulty): they aim where you're heading; changing direction after they commit dodges |
+| Chasers trailed you | Pursuit targeted your position | Intercept pursuit, a share of flankers, encircling swarms |
+| No coordination | Random spawn mix, gunners clumped, no protection | Crossfire bearings for gunners, bulwark escorts, patch bots hide, squads in waves |
+| Multiplicative power stacking | Autopilot "high damage" build: 35 dmg × 7/s × 5 homing projectiles × 35% crit ×3, charged shots ×3.75 firing twice; Pride (13.4k HP) died in **1 s** | Extra barrels share damage (+60% each), weaker Seeker Rounds, trimmed charge stack / Overdrive echo / Pride / Wrath / Heartseeker |
+| Generous sustain | Gluttony L4 healed every 5 kills with no cap; 2.5% heart drops; 1.1 s invulnerability | Gluttony heals capped per wave, fewer hearts, 0.95 s invulnerability (× difficulty) |
+| Crowd-control lock | Lust's charm (15% per hit) on a fast gun charmed nearly everything | Charm holds 2–6 robots at once |
+| Infinite boss fight | A low-damage build could never kill Gluttony (it heals from minions): 5,879 s in one test | Meals heal less each time, max 40% back per fight |
+| Bosses barely threatened | 0–1 hits per boss fight on the autopilot | New attacks / sharper second phases for all seven (below) |
+
+### What shipped
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Difficulty modes | **Done** | Normal / Hard / Nightmare (`balance.difficulty`): aggression, aim lead, invulnerability, crowd size, elites, earlier Marks, boss pace, healing, shot speed, squads. Score ×1 / ×1.3 / ×1.7. Daily is always Normal; co-op uses the host's (tested). Recorded in the leaderboard run's `p_build.difficulty` |
+| Smarter robots | **Done** | `enemies/roster.js`: `leadAngle`, intercept `chase`, flankers, swarm ring, gunner crossfire, bulwark escort, patch cover, boomer sprint, sniper relocation, `urge` (faster while your boost recharges) |
+| Squads | **Done** | `balance.waves.squads`: phalanx, demolition, pincer, artillery, field medic, hunters, fortress |
+| Boss pressure | **Done** | Sloth reach + snore + offset rings; Gluttony heal cap + double slam; Greed gold rain + cash-out ring; Lust heart rings while luring; Wrath leading dashes + burst, shield pulses; Pride shooting gems + twin decree + double kneel; Envy leads shots, boost lands in a ring |
+| Survivability audit | **Done** | See audit. Defensive builds still finish runs (autopilot "tank" won Normal with 6 hits) |
+| Greed soundtrack | **Done** | G harmonic minor, 96 bpm swing chapter / 112 bpm boss, "vault" kit (coins on steel), dark stabs, cat-and-mouse lead. Measured: chapter centroid 229 → ~150 Hz, energy above 3 kHz 0.8% → 0.2%, loudness matched to the other themes |
+| Visual polish | **Done** | Jet flame, boost squash, visor glint, muzzle flash, shot trails, robot hit pop + idle breath, damage sparks, boss entrance bars + shockwave, phase-change moments, boss damage smoke, planet lighting, nebula dust lanes, twinkling stars, card sheen, button/panel motion. Art untouched otherwise |
+| Leaderboards by difficulty | **Partial** | The leaderboard SQL lives in Supabase (outside this repo) and only splits by Daily. Difficulty is sent with each run and scores are multiplied; a per-difficulty board needs a server change |
+| Human playtesting | **Next** | Everything below is simulated |
+
+### Balance data (autopilot: sees every shot, perfect aim, so it understates difficulty for people)
+
+| | v4 | 4.1 Normal | 4.1 Hard | 4.1 Nightmare |
+| --- | --- | --- | --- | --- |
+| Random build | Won, 11 hits | Won, 21 hits | Died w10, died w15, won (40 hits) | Died w5, died w6, won (15 hits) |
+| High-damage build | Won, 9 hits; bosses 1–22 s | Died w15, won (14 hits); bosses 4–13 s, Envy 55 s | | |
+| Crowd-control build | Died w30 once | Died w30 (Pride), won | | |
+| Defensive build | (not run with this profile) | Won, 6 hits; Envy 153 s | | |
+
+Boss fights for a random build on Normal (two runs): Sloth 13–24 s, Gluttony 20–31, Greed 33–45, Lust 12–36, Wrath 24–32, Pride 18–25, Envy 59–69 (measured before Envy's base health was trimmed from 7,500 to 6,800).
+
+### Performance (same machine, 977×846, High)
+
+| | v4 | 4.1 |
+| --- | --- | --- |
+| Busy wave 28 (autopilot): average work per frame | 1.40 ms | 1.60 ms (99 robot shots on screen vs 55) |
+| Worst half-second | 2.52 ms | 2.12 ms |
+| Frozen scene (render only) | 0.37 ms | 0.51 ms |
+| Long tasks | 0 | 0 |
+
+### Before / after (same frozen debug scene, `?debug=1&scene=combat|greed|wrath`)
+
+| Before (v4) | After (4.1) |
+| --- | --- |
+| ![](shots/v41-before_combat.jpg) | ![](shots/v41-after_combat.jpg) |
+| ![](shots/v41-before_closeup.jpg) | ![](shots/v41-after_closeup.jpg) |
+| ![](shots/v41-before_greed.jpg) | ![](shots/v41-after_greed.jpg) |
+| ![](shots/v41-before_wrath.jpg) | ![](shots/v41-after_wrath.jpg) |
+| ![](shots/v41-before_cards.jpg) | ![](shots/v41-after_cards.jpg) |
+
+### Testing tools added (debug only)
+
+`?bot=dps|tank|cc|weak` build profiles with per-run metrics (`__bot.runs`, `__bot.fights`), a headless loop that
+runs at full speed in background tabs, `?diff=` for difficulty, `?scene=` frozen screenshot scenes, `?zoom=` close-ups.
+
+### Known limits
+
+- No human playtest yet; the autopilot dodges better than any person.
+- Late fights for low-damage builds are long (Envy up to ~150 s for a pure defensive build).
+- Per-difficulty leaderboards need the Supabase function changed.
 
 ## Audit (before changes)
 
@@ -106,10 +177,11 @@ output). Heartseeker is first in line for the weapon pass.
 
 ## Next steps
 
-1. Weapon pass, starting with Heartseeker (top-tier builds delete late bosses).
-2. Boss Practice and Boss Rush modes.
-3. Key remapping and a UI scale setting.
-4. Achievements and cosmetics (trails, crosshair skins, suit colours).
-5. Per-gun feel and Tier IV signatures.
-6. New boss attacks per Sin; per-boss music stingers on phase changes.
-7. Server-side leaderboard plausibility checks (score vs wave vs time).
+1. Human playtest of 4.1 on all three difficulties; tune from real runs.
+2. A per-difficulty leaderboard (Supabase function change).
+3. Boss Practice and Boss Rush modes.
+4. Key remapping and a UI scale setting.
+5. Achievements and cosmetics (trails, crosshair skins, suit colours).
+6. Per-gun feel and Tier IV signatures.
+7. Per-boss music stingers on phase changes.
+8. Server-side leaderboard plausibility checks (score vs wave vs time).
