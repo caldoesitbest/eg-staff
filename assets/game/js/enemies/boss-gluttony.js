@@ -96,7 +96,7 @@ export const glutton = {
       e.t -= dt;
       e.a += (0.1 - e.a) * Math.min(1, 6 * dt);
       if (e.t <= 0) {
-        const R = d.slamRadius * e.scale * (e.shock ? d.aftershock.scale : 1);
+        const R = d.slamRadius * Math.min(e.scale, d.slamGrowCap) * (e.shock ? d.aftershock.scale : 1);   // its slam outgrows it only so far: you can always get out of it
         fx.ring(e.x, e.y, e.r * e.scale, R, 0.4, COL, 8);
         fx.ring(e.x, e.y, e.r * e.scale, R * 0.8, 0.35, "#ffffff", 3);
         fx.debris(e.x, e.y, 14, "#7a5c96", 340);
@@ -121,7 +121,7 @@ export const glutton = {
       g.beginPath(); g.arc(x, y, d.inhaleRange, 0, TAU); g.stroke();
       g.restore();
     }
-    if (e.state === 3) chargeRing(g, x, y, d.slamRadius * e.scale * (e.shock ? d.aftershock.scale : 1), 1 - e.t / (e.shock ? d.aftershock.windup : d.slamWindup), e.shock ? "#ff8fb3" : COL);
+    if (e.state === 3) chargeRing(g, x, y, d.slamRadius * Math.min(e.scale, d.slamGrowCap) * (e.shock ? d.aftershock.scale : 1), 1 - e.t / (e.shock ? d.aftershock.windup : d.slamWindup), e.shock ? "#ff8fb3" : COL);
   },
   draw(g, e, x, y, ang) {
     const R = e.r * e.scale;

@@ -412,7 +412,7 @@ export const BALANCE = {
       hp: 2000, r: 58, speed: 52, contact: 2, score: 1800,
       mealHeal: 0.035, mealFalloff: 0.12, healCap: 0.4, mealGrow: 0.05, maxGrow: 1.6,   // each meal heals less; never more than 40% back per fight
       inhaleEvery: [6, 8], inhaleTime: 2.4, inhaleRange: 540, pull: 300, playerPull: 85,
-      slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2, aftershock: { windup: 0.55, scale: 1.3 },   // starving: a second, wider slam
+      slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2, slamGrowCap: 1.3, aftershock: { windup: 0.55, scale: 1.25 },   // starving: a second, wider slam
       spit: { count: 9, speed: 250, arc: 1.1, every: [2.6, 3.6] },
       minionEvery: 1.9, minionMax: 12,
     },

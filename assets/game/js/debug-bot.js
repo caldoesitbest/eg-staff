@@ -114,7 +114,7 @@ export const bot = {
       if (e.dead || e.ally > 0) continue;
       const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
       let ring = 0;
-      if (e.type === "glutton" && e.state === 3) ring = BALANCE.bosses.glutton.slamRadius * e.scale + 40;
+      if (e.type === "glutton" && e.state === 3) { const d = BALANCE.bosses.glutton; ring = d.slamRadius * Math.min(e.scale, d.slamGrowCap) * (e.shock ? d.aftershock.scale : 1) + 40; }
       if (e.type === "boomer" && e.state === 1) ring = BALANCE.enemies.boomer.blast + 30;
       if (ring && d < ring) { ax += (dx / d) * (ring - d) * 6; ay += (dy / d) * (ring - d) * 6; if (d < ring * 0.8) near = true; }
       const lane = (e.type === "ripper" && e.state === 1) || (e.type === "sniper" && e.state === 1) || (e.type === "overclock" && e.windT > 0);
