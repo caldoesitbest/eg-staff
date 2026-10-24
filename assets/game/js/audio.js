@@ -294,6 +294,11 @@ const SOUNDS = {
     noise(d, t + 0.45, 0.8, 0.4, "lowpass", 5000, 150, 0.6);
     [523, 784, 1047, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + 0.5 + i * 0.05, 0.7, 0.06));
   }],
+  achv: [0.5, (d) => {              // an achievement: a bright little fanfare
+    const t = now();
+    [784, 988, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.07, 0.35, 0.08));
+    tone(d, "sine", 2349, 2349, t + 0.3, 0.5, 0.05);
+  }],
   evoBurst: [0.2, (d) => {         // Overdrive kicks in, Supernova's shockwave
     const t = now();
     tone(d, "sawtooth", 220, 880, t, 0.25, 0.12, 0.01);

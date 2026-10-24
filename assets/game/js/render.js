@@ -20,6 +20,7 @@ import { reviveRange } from "./world.js";
 import { drawZonesUnder, drawZonesOver } from "./zones.js";
 import { E, evoCol, evoPal } from "./evolve.js";
 import { M, mutDef, mutVis } from "./mutations.js";
+import { finishCol, trailPal } from "./progress.js";
 
 const EVB = BALANCE.evolution;
 const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col, ICE_COL = "#bfe9ff";
@@ -1107,7 +1108,7 @@ export const renderer = {
       const G2 = GUN_SHAPE[gunId] || GUN_SHAPE.blaster;
       const len = G2.len - Pl.recoil * G2.kick;
       const hw = G2.w / 2;
-      g.fillStyle = "#c9d0f2";
+      g.fillStyle = me ? finishCol() : "#c9d0f2";      // your weapon finish (progress.js)
       g.fillRect(4, -hw, len, G2.w);
       g.fillStyle = "#232c5e";
       g.fillRect(4, -hw, 5, G2.w);
@@ -1168,7 +1169,7 @@ export const renderer = {
       const thrust = Math.min(1, Math.hypot(Pl.vx, Pl.vy) / ((s && s.moveSpeed) || 285));
       const boost = Pl.boostT > 0 ? 1 : 0;
       const L = 5 + thrust * 9 + boost * 16 + Math.sin(G.time * 42 + Pl.slot) * 1.6;
-      const d = sprites.dots[boost ? P_CYAN : P_VIOLET];
+      const d = sprites.dots[boost ? P_CYAN : me ? trailPal() : P_VIOLET];
       g.globalCompositeOperation = "lighter";
       g.globalAlpha = 0.45 + thrust * 0.35 + boost * 0.2;
       g.drawImage(d, -16, 9, 11, L * 1.6);

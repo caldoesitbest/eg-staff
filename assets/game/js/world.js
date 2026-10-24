@@ -19,6 +19,7 @@ import { updateZones, addZone, Z } from "./zones.js";
 import { fusionStar, fusionOverheal, fusionDmg, fusionShot, fusionPerfect, fusionHit, fusionTick } from "./fusion.js";
 import { M, armorMul, replicateAt, vampHeal, volatileDeath } from "./mutations.js";
 import { spawnCopy } from "./enemies/index.js";
+import { progressKill } from "./progress.js";
 
 const A = BALANCE.arena;
 const D = BALANCE.drops;
@@ -151,7 +152,7 @@ export function killEnemy(e, silent) {
       const low = G.player && G.player.hp <= 2;
       if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal)) dropPickup(2, e.x, e.y, D.heartHeal);
     }
-    if (!ally) { onKill(e); evoKill(e); }
+    if (!ally) { onKill(e); evoKill(e); progressKill(e, G.curChg); }
   }
   if (e.mut === M.VOLATILE && !silent && !ally) {
     const n = Math.max(0, G.wave - 1);
@@ -203,7 +204,7 @@ export function hurtPlayer(dmg, sx, sy) {
   }
 
   P.hp -= dmg;
-  P.iframes = BALANCE.player.iframes * diff().iframes;
+  P.iframes = BALANCE.player.iframes * diff().iframes * (G.stats.iframesMul || 1);
   P.hurtT = 0.45;
   let dx = P.x - sx, dy = P.y - sy;
   const d = Math.hypot(dx, dy) || 1;
@@ -372,6 +373,7 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.ev = plain ? 0 : s.ev; b.vol = 0; b.life0 = b.life; b.dmg0 = b.dmg; b.amt = 0;
   b.trail = false; b.trailD = 0; b.bounced = false; b.frag = false; b.kin = 0; b.forked = false; b.lock = false; b.pierced = 0;
   b.gorged = false;
+  b.chg = G.curChg;                 // part of a charged shot (achievements count its kills)
   if (!plain) fusionShot(G.player, b, s);        // Sin Fusions: gorged crits, Judgment
   return b;
 }
@@ -525,6 +527,7 @@ export function queueBlast(x, y, r, enemyDmg, friendly, hurtsPlayer, playerDmg, 
   q.dead = false; q.x = x; q.y = y; q.r = r; q.enemyDmg = enemyDmg; q.friendly = friendly;
   q.hurtsPlayer = !!hurtsPlayer; q.dmg = playerDmg || 0; q.col = col || C.orange; q.pal = pal === undefined ? P_ORANGE : pal;
   q.by = G.player;
+  q.chg = G.curChg;
   q.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";
 }
 
@@ -542,6 +545,7 @@ function processBlasts() {
     fx.shake(Math.min(0.35, q.r / 400));
     audio.play("explode", q.x, q.y, 0.7);
     if (q.enemyDmg > 0) {
+      G.curChg = q.chg || 0;
       if (q.by && q.by !== G.player) usePlayer(q.by);
       const n = G.hash.query(q.x, q.y, q.r + G.maxR);
       const res = G.hash.results, items = G.enemies.items;
@@ -556,6 +560,7 @@ function processBlasts() {
         // bosses shrug off most splash (chain explosions next to a boss used to melt it)
         damageEnemy(e, e.boss ? q.enemyDmg * 0.3 : q.enemyDmg, false, dx / d, dy / d, 160);
       }
+      G.curChg = 0;
     }
     if (q.hurtsPlayer) {
       const rr = q.r + playerHurtRadius();
@@ -706,6 +711,7 @@ function updatePlayerBullets(dt) {
   for (let i = 0; i < pb.count; i++) {
     const b = pb.items[i];
     if (b.dead) continue;
+    G.curChg = b.chg || 0;
     b.px = b.x; b.py = b.y;
     b.life -= dt;
     if ((b.life <= 0 || b.special) && b.by && b.by !== G.player) usePlayer(b.by);
@@ -836,6 +842,7 @@ function updatePlayerBullets(dt) {
       else { b.dead = true; break; }
     }
   }
+  G.curChg = 0;
   // shots that are gone this step: accuracy streaks, Blood Moon dart counts
   for (let i = 0; i < pb.count; i++) { const b = pb.items[i]; if (b.dead && (b.vol || b.kin === 2)) shotGone(b); }
   pb.sweep();
@@ -999,7 +1006,7 @@ function collect(q) {
   const P = G.player;
   if (q.kind === 2) {
     if (P.hp < P.maxHp || (P.maxShield > 0 && P.shield < P.maxShield)) {
-      healPlayer(q.value, P.maxShield > 0);
+      healPlayer(Math.max(1, Math.round(q.value * (G.stats.heartMul || 1))), P.maxShield > 0);
       audio.play("heart", P.x, P.y);
       fx.burst(q.x, q.y, 10, P_HEART, 160, 0.6, 1.5);
       haptic(12);

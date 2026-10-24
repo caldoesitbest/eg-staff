@@ -26,6 +26,9 @@ import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patc
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { fusionActivated, fusionWave } from "./fusion.js";
 import { mutKey, mutHint } from "./mutations.js";
+import { progressTick, lookSuit } from "./progress.js";
+import { rollChapterEvent, eventWaveStart, eventTick, pendingEvent, eventDone, cacheAway, cacheOptions, relicOptions, takeRelic, altarOptions, takeAltar, acceptAmbush, ambushReward } from "./events.js";
+import { giveItem } from "./armory.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
@@ -50,7 +53,7 @@ const root = document.getElementById("game");
 const canvas = document.getElementById("game-canvas");
 const layer = document.getElementById("touch-layer");
 
-const suitDef = () => SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0];
+const suitDef = () => lookSuit(SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0]);
 
 const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
 /** Auto's starting point, from what the device says about itself (it adjusts from there as you play). */
@@ -179,6 +182,7 @@ function startRun(opts) {
     runStats: { dmg: 0, big: 0, byGun: {}, spent: 0 },
   });
   setupRunPlayers(isCoop);
+  G.emit("runStart");
   if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
   G.cam.x = G.player.x; G.cam.y = G.player.y;
   if (G.mode === "rush") { for (const P of G.players) { usePlayer(P); G.stars = BALANCE.rush.stars; } usePlayer(G.me); }
@@ -235,7 +239,10 @@ const nextWave = () => (G.mode === "rush" ? (G.rush.i + 1) * BALANCE.waves.bossE
 
 function startWave(n) {
   if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
+  G.waveShots = 0; G.waveMisses = 0;          // Dead Eye: your trigger pulls and misses this wave
   seeded("wave" + n, () => waves.start(n));
+  seeded("event" + n, () => rollChapterEvent(n));
+  if (G.net.role !== "client") eventWaveStart(n);
   G.vacuum = false;
   for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; fusionWave(P); }     // Bubble Shield refills every wave; Gluttony's (and fusions') per-wave caps reset
   usePlayer(G.me);
@@ -285,6 +292,7 @@ G.on("waveClear", (n) => {
   if (G.state !== "playing") return;
   if (G.mode === "rush") { rushBossDown(); return; }
   popAllAllies();
+  cacheAway();
   const bonus = BALANCE.score.waveClear * n;
   const flawless = G.waveHits === 0;
   addScore(bonus);
@@ -420,6 +428,7 @@ function showVictory() {
   ui.clearBanner();
   setState("win");
   input.releaseAll();
+  G.emit("ladderWin");
   if (!G.debug.on) {
     const b = store.data.best;
     b.wins = (b.wins || 0) + 1;
@@ -434,7 +443,7 @@ function showVictory() {
 }
 
 function openUpgrade() {
-  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
+  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus, ev: pendingEvent(), cache: !!G.cacheCracked }); }
   ui.clearBanner();
   if (G.mode === "rush" && !G.rush.inBreak) {
     // Boss Rush: a draft to open with, then a couple of cards after each boss
@@ -445,6 +454,47 @@ function openUpgrade() {
   // a sin boss just fell and a gun is at Tier IV: it can evolve (one evolution per boss)
   if (G.wave > 0 && waves.isBossWave(G.wave) && evoCandidate() >= 0) { openEvolve(); return; }
   openCards();
+}
+
+// ---------------------------------------------------------------------------
+// special events (events.js): a choice between waves
+// ---------------------------------------------------------------------------
+let evOpts = [], evType = "";
+function openEvent(type) {
+  evType = type;
+  setState("event");
+  input.releaseAll();
+  const w = G.wave;
+  if (type === "cache") {
+    evOpts = cacheOptions();
+    ui.showEvent({ kicker: "Cosmic Cache", title: "The cache cracks open", sub: "Stars spill out, and something glints inside. Take one.", col: "#ffc861",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, col: o.col })), leave: false });
+  } else if (type === "corrupt") {
+    evOpts = relicOptions();
+    ui.showEvent({ kicker: "Corrupted Armory", title: "Power, at a price", sub: "A broken vending unit hums with stolen power. Each relic is strong, and each one costs you. Take one, or walk away.", col: "#ff2a55",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, cost: o.cost, col: "#ff2a55" })), leave: "Walk away" });
+  } else if (type === "altar") {
+    evOpts = altarOptions();
+    ui.showEvent({ kicker: "Sin Altar", title: "An altar to the seven", sub: "It takes what you offer and gives what you want. You have \u2605" + G.stars + ".", col: "#a98bff",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, cost: o.price ? "\u2605 " + o.price : "Free", disabled: o.price > G.stars })), leave: "Leave it" });
+  } else if (type === "ambush") {
+    evOpts = [{ id: "fight" }];
+    ui.showEvent({ kicker: "Elite Ambush · wave " + (w + 1), title: "Hunters have your scent", sub: "Three mutated hunters will be waiting when the next wave starts. Kill all three within " + BALANCE.events.ambush.time + " seconds.", col: "#ff3b3b",
+      options: [{ name: "Take the fight", text: "Win: \u2605 " + ambushReward() + " and an extra card after the wave", cost: "Lose: they keep hunting you" }], leave: "Slip away" });
+  }
+  audio.play("evoReady");
+}
+function pickEvent(i) {
+  if (G.state !== "event") return;
+  const o = evOpts[i];
+  if (i >= 0 && !o) return;
+  if (evType === "cache" && o) { if (o.id === "stars") G.stars += o.stars; else giveItem(o.item); }
+  else if (evType === "corrupt" && o) takeRelic(o.id);
+  else if (evType === "altar" && o) { if (!takeAltar(o)) { audio.play("deny"); ui.toast("Not enough stars"); return; } }
+  else if (evType === "ambush" && o) acceptAmbush();
+  audio.play(i >= 0 ? "buy" : "click");
+  eventDone(evType);
+  afterCards();
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +557,9 @@ function openCards() {
 /** After the card: the Armory (if it opens this wave and has anything left for you), else the next wave. */
 function afterCards() {
   if (G.mode === "rush" && G.rush.picks > 1) { G.rush.picks--; openCards(); return; }
+  if (G.bonusPick > 0) { G.bonusPick--; openCards(); return; }            // the Elite Ambush's extra card
+  const ev = pendingEvent();
+  if (ev) { openEvent(ev); return; }
   const P = G.player;
   const skipShop = armorySoldOut() && (!P || P.hp >= P.maxHp);      // still opens to patch you up
   if ((G.mode === "rush" ? rushArmoryOpen() : armoryAfter(G.wave)) && !skipShop) { openArmory(); return; }
@@ -538,6 +591,7 @@ function pickCard(id) {
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);
   fx.text(P.x, P.y - 40, c.name.toUpperCase() + (lvl >= c.max ? " MAX" : " " + lvl), c.color, 18, 1.3);
+  G.emit("card", id);
   afterCards();
 }
 
@@ -682,6 +736,11 @@ const SRC_NAMES = { drone: "a Drone", swarm: "a Swarmling", ripper: "a Ripper's 
   bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Shrapnel elite's burst",
   shockwave: "a Shockwave mutant's ring", "volatile mutant": "a Volatile mutant's blast" };
 
+// The Elite Ambush (events.js)
+G.on("ambushStart", () => ui.banner("Elite Ambush", "Hunters!", "Kill all three within " + BALANCE.events.ambush.time + " seconds", "boss", false, "#ff3b3b"));
+G.on("ambushWon", (gain) => ui.toast("Ambush survived: ★" + gain + " and an extra card after this wave", 3200));
+G.on("ambushLost", () => ui.toast("Too slow: the hunters are still after you", 2800));
+
 // The first time you ever meet each mutation, a hint says what to do about it.
 G.on("mutSpawn", (e) => {
   const k = mutKey(e.mut), seen = store.data.seenMut || (store.data.seenMut = {});
@@ -732,6 +791,7 @@ function gameOver() {
   const best = store.data.best;
   const oldWave = best.wave;
   const sum = {
+    prevBest: best.score,
     score: Math.floor(G.score), wave: G.wave, kills: G.kills, combo: G.bestCombo, stars: G.starsTotal,
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
     build: buildSummary(), buildTitle: buildTitle(), difficulty: G.difficulty,
@@ -769,6 +829,7 @@ function gameOver() {
     const d = store.data.daily;
     if (d.date === G.daily && sum.score > d.score) { d.score = sum.score; d.wave = sum.wave; sum.dailyBest = true; }
   }
+  G.emit("runOver", sum);
   store.save(true);
   postRun(sum);
   lastRun = sum;
@@ -800,7 +861,7 @@ function menuStep(dt) {
 function update(dt) {
   const s = G.state;
   if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
-  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win" || s === "evolve") return;
+  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win" || s === "evolve" || s === "event") return;
   if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
@@ -808,6 +869,8 @@ function update(dt) {
   if (G.net.role === "host") hostBefore(sdt);
   stepWorld(sdt);
   if (G.net.role === "host") hostAfter();
+  if (s === "playing") eventTick(sdt);
+  progressTick(sdt);
   fx.update(sdt);
   if (s === "dying") {
     deathT += dt;
@@ -837,7 +900,7 @@ function musicDirector() {
   const live = !!(b && b.state !== -1);
   if (live && !lastBossLive) audio.impact();
   lastBossLive = live;
-  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win" || s === "evolve") {
+  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win" || s === "evolve" || s === "event") {
     audio.musicTheme(s === "win" ? "envy" : sin, "chapter");
     audio.musicIntensity(0);
     return;
@@ -957,6 +1020,7 @@ ui.init({
   onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
   onEvo: pickEvolution,
+  onEvent: pickEvent,
   onEvoLater: laterEvolution,
   onReroll: reroll,
   onPatch: patchUp,
@@ -968,6 +1032,8 @@ ui.init({
   onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
   onSettings: applySettings,
   onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
+  onLook: () => renderer.setSuit(suitDef()),
+  onAchv: () => audio.play("achv"),
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
@@ -997,7 +1063,7 @@ input.onPause = () => {
     resume();
     return true;
   }
-  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
   if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
@@ -1007,7 +1073,7 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
-  else if (ui.screen === "how" || ui.screen === "news") ui.show("menu");
+  else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush") ui.show("menu");
   else if (G.state === "paused") resume();
 };
 
@@ -1033,6 +1099,8 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
     const onButton = document.activeElement && document.activeElement.tagName === "BUTTON" && document.activeElement.id !== "shop-go";
     if ((e.code === "Enter" || e.code === "Space") && !onButton) { e.preventDefault(); if (ui.armed) shopGo(); return; }
+  } else if (s === "event") {
+    if (digit >= 0 && digit < 3) { e.preventDefault(); if (ui.armed) pickEvent(digit); return; }
   } else if (s === "evolve") {
     if (digit === 0 || digit === 1) { e.preventDefault(); if (ui.armed) pickEvolution(digit === 0 ? "a" : "b"); return; }
   } else if (s === "upgrade") {
@@ -1109,6 +1177,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
     bot.onRetry = startRun;
     bot.onPick = pickCard;
     bot.onEvo = pickEvolution;
+    bot.onEvent = pickEvent;
     bot.onBuy = shopBuy;
     bot.onShopGo = shopGo;
     autopilot = bot;
@@ -1158,7 +1227,7 @@ if (G.debug.on && params.get("smoke") === "1") {
 if (G.debug.on) {
   import("./armory.js").then((armory) => {
     window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop,
-      openUpgrade, openEvolve, pickEvolution,
+      openUpgrade, openEvolve, pickEvolution, openEvent, pickEvent,
       stage: (gun, path, opts) => import("./debug-bot.js").then((m) => m.stage({ spawnEnemy, waves }, gun, path, opts)),
       zoneAt: (t, f) => import("./debug-bot.js").then((m) => m.zoneAt(t, f)) };
   });
@@ -1220,7 +1289,13 @@ initCoop({
   startRun,
   toMenu,
   toast: (t, ms) => ui.toast(t, ms),
-  openUpgrade: (msg) => { G.wave = msg.w; G.lastBonus = msg.bonus || ""; openUpgrade(); },
+  openUpgrade: (msg) => {
+    G.wave = msg.w; G.lastBonus = msg.bonus || "";
+    // the host's event for this break (everyone makes their own choice)
+    G.event = msg.ev && msg.ev !== "cache" ? { type: msg.ev, wave: msg.w, done: false, spawnAt: -1 } : null;
+    G.cacheCracked = !!msg.cache;
+    openUpgrade();
+  },
   closeBetween: (n) => {
     if (G.state !== "playing") { ui.show(null); setState("playing"); }
     G.wave = n;

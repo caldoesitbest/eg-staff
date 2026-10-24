@@ -74,6 +74,7 @@ export const pride = {
       if (e.regrowT <= 0) { growGems(e); audio.play("heal", e.x, e.y); }
     } else if (left === 0 && e.gemsGrown) {
       e.humbleT = d.gems.humbleTime;
+      G.emit("prideHumbled", e);
       fx.text(e.x, e.y - 90, "HUMBLED", "#ffffff", 28, 1.5);
       fx.ring(e.x, e.y, 20, 240, 0.5, COL, 5);
       fx.shake(0.4);

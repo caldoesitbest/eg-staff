@@ -71,14 +71,16 @@ function headless({ before, update, render }) {
   ch.port1.onmessage = () => {
     if (!running) return;
     const t0 = performance.now();
-    // a few steps per message, then yield so the page (and test scripts) stay responsive
-    while (performance.now() - t0 < 8) {
-      if (before) before(STEP);
-      update(STEP);
-      drawDt += STEP;
-      if (++n % 8 === 0) { render(0, drawDt); drawDt = 0; }
-    }
-    ch.port2.postMessage(0);
+    // a few steps per message, then yield so the page (and test scripts) stay responsive; an error in one
+    // step is reported (window error) and the soak carries on, like the real loop
+    try {
+      while (performance.now() - t0 < 8) {
+        if (before) before(STEP);
+        update(STEP);
+        drawDt += STEP;
+        if (++n % 8 === 0) { render(0, drawDt); drawDt = 0; }
+      }
+    } finally { ch.port2.postMessage(0); }
   };
   ch.port2.postMessage(0);
   return {

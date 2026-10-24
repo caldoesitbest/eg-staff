@@ -70,7 +70,7 @@ export function minionTick(e, dt, every, max, pool) {
   e.c = (every * pace()) / (diff().minions || 1);         // Boss Rush's Entourage: more of them, more often
   let alive = 0;
   const items = G.enemies.items;
-  for (let i = 0; i < G.enemies.count; i++) { const o = items[i]; if (!o.dead && !o.boss && o.ally <= 0 && o.type !== "gem") alive++; }
+  for (let i = 0; i < G.enemies.count; i++) { const o = items[i]; if (!o.dead && !o.boss && o.ally <= 0 && o.type !== "gem" && !o.passive) alive++; }
   if (alive + G.warnings.count * 2 >= max * (diff().minions || 1) * (1 + 0.35 * (Math.max(1, G.net.n || 1) - 1))) return;   // co-op: a bigger entourage
   const type = pool[randInt(0, pool.length - 1)];
   const count = type === "swarm" ? randInt(5, 7) : randInt(1, type === "drone" ? 3 : 2);
@@ -78,7 +78,7 @@ export function minionTick(e, dt, every, max, pool) {
 }
 
 export function startBossDeath(e) {
-  G.bossFx = { x: e.x, y: e.y, r: e.r * e.scale, t: 0, next: 0, def: e.def, type: e.type, pal: sinPal(e.type), col: e.def.c1 };
+  G.bossFx = { x: e.x, y: e.y, r: e.r * e.scale, t: 0, next: 0, def: e.def, type: e.type, pal: sinPal(e.type), col: e.def.c1, healed: e.healed || 0 };
   G.slowmo = 1.3; G.slowScale = 0.4;
   e.invuln = true;
   audio.play("bigExplode", e.x, e.y);

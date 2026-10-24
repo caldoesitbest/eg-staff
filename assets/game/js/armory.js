@@ -13,6 +13,8 @@ import { firePlayerBullet, queueBlast, healPlayer } from "./world.js";
 import { evoCode, evoName, evoCol } from "./evolve.js";
 
 const GUNS = BALANCE.guns, ITEMS = BALANCE.items, SH = BALANCE.shop, T = BALANCE.gunTiers;
+// Corrupted relics (the Corrupted Armory event) are gear too, but the shop never sells them.
+for (const id in BALANCE.relics) ITEMS[id] = { ...BALANCE.relics[id], r: 4, max: 1, price: 0, corrupt: true };
 export const GUN_IDS = Object.keys(GUNS);
 export const ITEM_IDS = Object.keys(ITEMS);
 export const RARITY = [
@@ -20,6 +22,7 @@ export const RARITY = [
   { name: "Rare", col: "#63f4ff" },
   { name: "Epic", col: "#c86bff" },
   { name: "Legendary", col: "#ffc861" },
+  { name: "Corrupted", col: "#ff2a55" },
 ];
 export const TIER_NAMES = ["I", "II", "III", "IV"];
 // Which shot sprite each gun fires (index into sprites.shots) and its colour + bullet size.
@@ -43,6 +46,7 @@ const ITEM_ICON = {
   battery: "#battery", hollow: "circle-dot", fuel: "rocket", coolant: "hourglass", magnet: "#magnet", nanoweave: "heart",
   capbank: "zap", scope: "search", fang: "#fang", thorns: "sparkle", coupon: "tag", piggy: "coins", bubble: "shield-check",
   mines: "#mine", turret: "satellite-dish", glass: "gem", crown: "crown", clover: "#clover", overdrive: "infinity",
+  c_blood: "flame", c_overclock: "zap", c_greedy: "coins", c_crown: "crown", c_halo: "sparkle", c_lead: "shield-half",
 };
 const CUSTOM_ICON = {
   battery: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M10 10v4"/>',
@@ -165,7 +169,7 @@ function rollRarity() {
   return 0;
 }
 
-const itemOpen = (id) => itemLvl(id) < ITEMS[id].max && (id !== "crown" || crownTarget());
+const itemOpen = (id) => !ITEMS[id].corrupt && itemLvl(id) < ITEMS[id].max && (id !== "crown" || crownTarget());
 
 function rollOffer(taken) {
   const has = (kind, id) => taken.some((o) => o && o.kind === kind && o.id === id);

@@ -89,6 +89,7 @@ export const BALANCE = {
     patch:    { hp: 50, r: 15, speed: 92, contact: 1, score: 40, stars: 3, mass: 1.2, threat: 4,
                 healRadius: 160, healEvery: 1.4, healPct: 0.12, keep: 300 },
     decoy:    { hp: 1, r: 40, speed: 125, contact: 0, score: 15, stars: 0.5, mass: 3, threat: 0 },   // Lust's fakes: one hit pops them
+    cache:    { hp: 520, r: 26, speed: 0, contact: 0, score: 250, stars: 0, mass: 99, threat: 0 },  // the Cosmic Cache event (events.js)
   },
 
   elite: {                   // "overcharged" robots from this wave on, each with a trait you can see
@@ -351,6 +352,26 @@ export const BALANCE = {
     crown:     { name: "Crown of Sins", r: 3, price: 150, max: 1, text: "Your strongest unfinished sin gains a level" },
     clover:    { name: "Four-Leaf Chip", r: 3, price: 120, max: 1, text: "Pick from 4 cards instead of 3. Shops lean rarer" },
     overdrive: { name: "Overdrive Core", r: 3, price: 140, max: 1, echo: 0.6, text: "Full charges fire twice (the echo hits for 60%)" },
+  },
+
+  // Corrupted relics: only from the Corrupted Armory event (never the shop). Strong, with a price you can see.
+  relics: {
+    c_blood:     { name: "Blood Pact", dmg: 0.4, hp: -2, text: "+40% damage", cost: "−1 💜 max health" },
+    c_overclock: { name: "Overclocked Core", rate: 0.3, boostCd: 0.3, text: "+30% fire rate", cost: "Your boost recharges 30% slower" },
+    c_greedy:    { name: "Greedy Gears", starMul: 2, heal: 0.5, text: "Every star is worth double", cost: "Hearts heal half as much" },
+    c_crown:     { name: "Hollow Crown", sins: 2, dmg: -0.15, text: "+1 level to your two lowest sins", cost: "−15% damage" },
+    c_halo:      { name: "Glass Halo", crit: 0.2, iframes: 0.6, text: "+20% crit chance", cost: "40% less safety time after a hit" },
+    c_lead:      { name: "Leaden Wings", chargeDmg: 0.6, speed: -0.15, text: "Charged shots +60% damage", cost: "You move 15% slower" },
+  },
+
+  // Special events on the Ladder: at most one per chapter (from chapter 2), on one of its first three waves.
+  // The Cosmic Cache drifts through mid-wave; the others are a choice between waves. Stars are the only currency.
+  events: {
+    from: 6, chance: 0.45,
+    weight: { cache: 1, corrupt: 1, altar: 1, ambush: 0.9 },
+    cache: { hp: 520, speed: 78, life: 15, stars: 12, at: [5, 10], reward: [30, 2] },      // reward: ★ base + per wave (or a free rare+ item)
+    altar: { offering: [20, 2], fuse: [40, 3] },                                         // ★ base + per wave
+    ambush: { time: 25, count: 3, reward: [40, 3], types: ["gunner", "ripper", "drone", "bulwark", "sniper"] },
   },
 
   // The Sin Ladder: the same seven rungs, colours and order as the Ladder on the homepage.

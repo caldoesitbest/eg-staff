@@ -25,6 +25,7 @@ export const bot = {
   onRetry: null,
   onPick: null,
   onEvo: null,
+  onEvent: null,
   onBuy: null,
   onShopGo: null,
   chargeT: 0,
@@ -49,6 +50,12 @@ export const bot = {
   tick() {
     this.record();
     const L = PROFILES[this.profile];
+    if (G.state === "event") {
+      // events: take an option you can afford (or leave), so balance runs see them
+      const opts = [...document.querySelectorAll("#event-opts .event-opt:not([disabled])")];
+      if (this.onEvent) this.onEvent(opts.length && Math.random() < 0.8 ? Math.floor(Math.random() * opts.length) : -1);
+      return;
+    }
     if (G.state === "evolve") {
       // ?evo=a|b forces a path (balance tests); otherwise either
       const want = new URLSearchParams(location.search).get("evo");

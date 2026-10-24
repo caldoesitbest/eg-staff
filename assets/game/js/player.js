@@ -16,6 +16,7 @@ import { hasEnvy, ENVY_POWERS } from "./upgrades.js";
 import { swapGun, GUN_COL } from "./armory.js";
 import { evoRate, evoSpread, evoFired, evoShot, evoCharged, evoOrb, evoPal, evoCol, newVolley } from "./evolve.js";
 import { fusionReset, fusionRate, fusionBeforeFire, fusionAfterFire } from "./fusion.js";
+import { newCharge, chargeFired, trailPal } from "./progress.js";
 
 const A = BALANCE.arena;
 const B = BALANCE.player;
@@ -186,6 +187,11 @@ const SHOOT_SFX = { scatter: "shotgun", smg: "smg", rail: "rail", nova: "launch"
 
 /** Lets go of a charged shot. amt is 0..1. What it does depends on the gun. */
 function fireCharged(P, s, amt, ang, mul = 1) {
+  // everything this charge sets off carries its id (Overkill counts its kills)
+  if (P === G.me && G.net.role !== "client") { G.curChg = newCharge(); chargeFired(G.curChg); }
+  try { fireChargedShot(P, s, amt, ang, mul); } finally { G.curChg = 0; }
+}
+function fireChargedShot(P, s, amt, ang, mul) {
   const full = amt >= 0.999;
   const k = Math.pow(amt, 1.3);
   // based on your core damage (sins, gear, the gun's tier), not the gun's per-bullet damage,
@@ -324,7 +330,7 @@ export function updatePlayer(dt, P = G.player) {
       if (P.thrustT <= 0) {
         P.thrustT = 0.03;
         const bx = P.x - P.facing * 10, by = P.y + 4;
-        fx.p(0, bx, by, -mx * 120 + rand(-20, 20), -my * 120 + rand(-20, 20), 0.35, 1.5, Math.random() < 0.5 ? P_VIOLET : P_DVIOLET, 3);
+        fx.p(0, bx, by, -mx * 120 + rand(-20, 20), -my * 120 + rand(-20, 20), 0.35, 1.5, P === G.me ? trailPal() : Math.random() < 0.5 ? P_VIOLET : P_DVIOLET, 3);
       }
     }
   }

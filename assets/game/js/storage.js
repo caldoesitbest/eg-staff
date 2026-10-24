@@ -19,6 +19,12 @@ export const SUITS = [
   { id: "magenta", name: "Magenta", wave: 15, suit: "#ffd6f4", trim: "#ff42d0", visor: "#8e44ff" },
   { id: "gold", name: "Gold", wave: 20, suit: "#fff1cc", trim: "#ffc861", visor: "#ff42d0" },
   { id: "void", name: "Void", wave: 25, suit: "#2a2f55", trim: "#63f4ff", visor: "#63f4ff" },
+  // 4.2: earned with achievements (progress.js)
+  { id: "laureate", name: "Laureate", achv: "ladder", suit: "#fffaf0", trim: "#ffc861", visor: "#63f4ff" },
+  { id: "obsidian", name: "Obsidian", achv: "hard", suit: "#1d1a2e", trim: "#a57bff", visor: "#ff42d0" },
+  { id: "nightmare", name: "Nightmare", achv: "nightmare", suit: "#2a0d14", trim: "#ff3b5c", visor: "#ffc861" },
+  { id: "seven", name: "Seven Sins", achv: "seven", suit: "#f4f6ff", trim: "#ff9448", visor: "#6d7bff" },
+  { id: "unholy", name: "Unholy", achv: "unholy", suit: "#14081f", trim: "#73ffce", visor: "#ff4f8b" },
 ];
 
 // Graphics presets fill in these settings (Auto uses High and steps down on its own when frames are slow).
@@ -78,6 +84,9 @@ function defaults() {
     // Boss Rush: clears, and per difficulty your best run ({ time, score, hits, mods, splits }) and best split per boss
     rush: { clears: 0, best: {}, splits: {}, mods: [] },
     seenMut: {},          // elite mutations you've met (their hint shows once)
+    achv: {},             // achievements: id -> when (progress.js)
+    cos: { visor: "", trail: "", finish: "", title: "", victory: "", badges: [] },   // the cosmetics you picked
+    life: { perfects: 0, mutants: 0, fusions: {}, evos: {}, evoGuns: {}, rushClears: 0 },   // lifetime counts for achievements
   };
 }
 
@@ -85,8 +94,11 @@ function defaults() {
 function migrate(d, saved) {
   const from = saved.ver || 1;
   if (from < 2) {
-    // 4.2: Boss Rush opens for anyone who already beat Envy; nothing else to convert
+    // 4.2: Boss Rush opens for anyone who already beat Envy; achievements you clearly earned already count
     d.rush = { clears: 0, best: {}, splits: {}, mods: [] };
+    const now = Date.now();
+    if ((d.best.wins || 0) > 0) d.achv.ladder = now;
+    if ((d.best.wave || 0) >= 50) d.achv.beyond = now;
   }
   d.ver = SAVE_VER;
   return d;
@@ -123,6 +135,9 @@ export const store = {
           settings: { ...d.settings, ...(saved.settings || {}) },
           daily: { ...d.daily, ...(saved.daily || {}) },
           rush: { ...d.rush, ...(saved.rush || {}) },
+          achv: { ...(saved.achv || {}) },
+          cos: { ...d.cos, ...(saved.cos || {}) },
+          life: { ...d.life, ...(saved.life || {}) },
         };
         migrate(data, saved);
         // v3 saves: auto-aim became a mode, screen shake a strength
@@ -148,7 +163,7 @@ export const store = {
     if (now) write(); else saveTimer = setTimeout(write, 250);
   },
 
-  suitUnlocked(s) { return (data.best.wave || 0) >= s.wave; },
+  suitUnlocked(s) { return s.achv ? !!(data.achv && data.achv[s.achv]) : (data.best.wave || 0) >= s.wave; },
   /** Boss Rush opens once you've beaten Envy on the Ladder. */
   rushUnlocked() { return (data.best.wins || 0) > 0 || (data.rush && data.rush.clears > 0); },
 };

@@ -6,10 +6,11 @@ import { glutton } from "./boss-gluttony.js";
 import { greed } from "./boss-greed.js";
 import { lust, decoy } from "./boss-lust.js";
 import { wrath } from "./boss-wrath.js";
+import { cache } from "../events.js";
 import { pride } from "./boss-pride.js";
 import { envy } from "./boss-envy.js";
 
 export const BOSSES = { sloth, glutton, greed, lust, wrath, pride, envy };
 export { updateBossFx, startBossDeath } from "./boss-common.js";
 // Boss helpers that are spawned like robots but drawn by their boss's code.
-export const BOSS_MINIONS = { decoy };
+export const BOSS_MINIONS = { decoy, cache };

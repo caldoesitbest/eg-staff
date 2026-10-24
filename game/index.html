@@ -64,6 +64,7 @@
       <div class="daily-chip" id="daily-chip" hidden>Daily</div>
       <div class="daily-chip diff-chip" id="diff-chip" hidden></div>
       <div class="daily-chip rush-chip" id="rush-chip" hidden><span id="rush-time">0:00.0</span></div>
+      <div class="daily-chip ambush-chip" id="ambush-chip" hidden></div>
       <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
       <div class="fusion-chip" id="fusion-chip" hidden aria-label="Your Sin Fusion"></div>
       <div class="team" id="team" hidden aria-label="Teammates"></div>
@@ -88,6 +89,7 @@
     <div class="banner-sub" id="banner-sub"></div>
   </div>
   <div class="toast" id="toast" role="status"></div>
+  <div class="achv-pop" id="achv-pop" role="status" aria-live="polite"></div>
 
   <!-- start menu -->
   <section class="screen screen-menu" id="screen-menu" aria-labelledby="menu-title">
@@ -118,6 +120,7 @@
       </div>
       <div class="menu-actions menu-actions-2">
         <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
+        <button class="btn btn-ghost btn-sm" id="profile-btn" type="button"><i data-icon="badge-check"></i><span id="profile-label">Profile</span></button>
         <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
         <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
         <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
@@ -125,6 +128,7 @@
       </div>
       <p class="controls-hint" id="menu-controls"></p>
       <dl class="bests" id="bests"></dl>
+      <div class="profile-strip" id="profile-strip"></div>
       <div class="suits">
         <span class="suits-label">Suit</span>
         <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
@@ -181,6 +185,18 @@
         <button class="btn btn-ghost btn-sm" id="evo-later" type="button"><i data-icon="clock"></i>Decide after the next boss</button>
       </div>
       <p class="up-hint" id="evo-hint"></p>
+    </div>
+  </section>
+
+  <!-- special events (between waves) -->
+  <section class="screen screen-event" id="screen-event" hidden aria-labelledby="event-title">
+    <div class="up-wrap event-wrap">
+      <p class="kicker" id="event-kicker">Event</p>
+      <h2 class="up-title" id="event-title">Something stirs</h2>
+      <p class="up-bonus" id="event-sub"></p>
+      <div class="event-opts" id="event-opts" role="list"></div>
+      <div class="up-econ"><button class="btn btn-ghost btn-sm" id="event-leave" type="button"><i data-icon="log-out"></i><span id="event-leave-label">Leave</span></button></div>
+      <p class="up-hint" id="event-hint"></p>
     </div>
   </section>
 
@@ -269,6 +285,28 @@
         <button class="btn btn-primary btn-xl" id="rushdone-again" type="button"><i data-icon="refresh-cw"></i>Run it back</button>
         <button class="btn btn-ghost" id="rushdone-menu" type="button"><i data-icon="house"></i>Menu</button>
       </div>
+    </div>
+  </section>
+
+  <!-- profile: achievements + the locker (cosmetics) -->
+  <section class="screen screen-profile" id="screen-profile" hidden aria-labelledby="profile-title">
+    <div class="panel panel-wide glow-card profile">
+      <h2 class="panel-title" id="profile-title">Profile</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab" id="ptab-achv" type="button" role="tab" aria-selected="true">Achievements</button>
+        <button class="tab" id="ptab-locker" type="button" role="tab" aria-selected="false">Locker</button>
+      </div>
+      <div class="ppage" id="ppage-achv">
+        <p class="set-note" id="achv-summary"></p>
+        <div class="achv-list" id="achv-list" role="list"></div>
+      </div>
+      <div class="ppage" id="ppage-locker" hidden>
+        <div class="locker">
+          <canvas class="locker-preview" id="locker-preview" width="220" height="200" aria-label="Your astronaut"></canvas>
+          <div class="locker-opts" id="locker-opts"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="profile-done" type="button">Done</button>
     </div>
   </section>
 
@@ -480,6 +518,7 @@
     "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=6",
     "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=6",
     "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=6",
+    "/assets/game/js/events.js": "/assets/game/js/events.js?v=8",
     "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=8",
     "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=6",
     "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=6",
@@ -501,6 +540,7 @@
     "/assets/game/js/net.js": "/assets/game/js/net.js?v=7",
     "/assets/game/js/online.js": "/assets/game/js/online.js?v=7",
     "/assets/game/js/player.js": "/assets/game/js/player.js?v=6",
+    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=8",
     "/assets/game/js/render.js": "/assets/game/js/render.js?v=6",
     "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=6",
     "/assets/game/js/state.js": "/assets/game/js/state.js?v=6",

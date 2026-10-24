@@ -69,6 +69,7 @@ export function evoStats(s, code) {
 const volLeft = new Int16Array(256), volHit = new Uint8Array(256), volBy = new Array(256);
 let volNext = 1;
 export function newVolley(P, shots) {
+  if (P === G.me) G.waveShots = (G.waveShots || 0) + 1;
   const v = volNext;
   volNext = volNext >= 255 ? 1 : volNext + 1;
   volLeft[v] = shots; volHit[v] = 0; volBy[v] = P;

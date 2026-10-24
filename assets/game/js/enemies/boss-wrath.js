@@ -28,6 +28,7 @@ export const wrath = {
     const want = frac > d.phases[0] ? 0 : frac > d.phases[1] ? 1 : 2;
     if (want > e.phase) {
       e.phase = want;
+      if (want === 2) G.emit("wrathEnraged", e);
       if (want === 1) {
         e.summoned = 0; e.summonCd = 0.8; e.shieldT = 14; e.dmgMul = d.shieldedTakes;
         fx.text(e.x, e.y - 80, "SUMMONING", PHASE_COL[1], 24, 1.4);

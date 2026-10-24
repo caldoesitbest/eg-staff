@@ -25,7 +25,7 @@ export function addZone(type, x, y, r, life) {
   if (!z) return null;
   z.dead = false; z.type = type; z.x = x; z.y = y; z.x2 = 0; z.y2 = 0; z.a = 0;
   z.r = r; z.r0 = 0; z.t = 0; z.life = life; z.dmg = 0; z.tick = 0; z.n = 0; z.nh = 0; z.big = false; z.k = 0;
-  z.by = G.player; z.src = G.curEnemy ? G.curEnemy.type : "";
+  z.by = G.player; z.src = G.curEnemy ? G.curEnemy.type : ""; z.chg = G.curChg || 0;
   z.col = C.cyan; z.pal = 0;
   z.hits[0] = z.hits[1] = z.hits[2] = z.hits[3] = 0;     // SHOCK: who it already hit (by player slot)
   return z;
@@ -71,6 +71,7 @@ export function updateZones(dt) {
     const z = zs.items[i];
     if (z.dead) continue;
     z.t += dt;
+    G.curChg = z.chg || 0;
     if (z.by && z.by !== G.player && z.type !== Z.SHOCK) usePlayer(z.by);
     switch (z.type) {
       case Z.TRAIL: {
@@ -207,6 +208,7 @@ export function updateZones(dt) {
     }
     if (z.t >= z.life) { finish(z); z.dead = true; }
   }
+  G.curChg = 0;
   zs.sweep();
   usePlayer(G.me);
 }

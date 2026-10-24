@@ -175,7 +175,7 @@ function bossMoments(e, dt) {
 export function hostileCount() {
   let n = 0;
   const items = G.enemies.items;
-  for (let i = 0; i < G.enemies.count; i++) { const e = items[i]; if (!e.dead && e.ally <= 0) n++; }
+  for (let i = 0; i < G.enemies.count; i++) { const e = items[i]; if (!e.dead && e.ally <= 0 && !e.passive) n++; }
   return n;
 }
 

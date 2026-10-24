@@ -98,10 +98,11 @@ export function computeStats() {
   s.gunId = slot.id;
   s.gunTier = tier + 1;
   s.gun = gun;
-  const dmgBonus = 1 + at(U.wrath.damage, "wrath") + it("hollow") * I.hollow.dmg + it("glass") * I.glass.dmg;
+  const RL = BALANCE.relics;
+  const dmgBonus = 1 + at(U.wrath.damage, "wrath") + it("hollow") * I.hollow.dmg + it("glass") * I.glass.dmg + it("c_blood") * RL.c_blood.dmg + it("c_crown") * RL.c_crown.dmg;
   s.baseDamage = B.gun.damage * dmgBonus;           // without the gun's own multiplier (drones, thorns, mines)
   s.damage = s.baseDamage * gun.dmg * T.dmg[tier];
-  s.rate = B.gun.rate * gun.rate * T.rate[tier] * (1 + at(U.wrath.rate, "wrath") + it("battery") * I.battery.rate);
+  s.rate = B.gun.rate * gun.rate * T.rate[tier] * (1 + at(U.wrath.rate, "wrath") + it("battery") * I.battery.rate + it("c_overclock") * RL.c_overclock.rate);
   s.projectiles = gun.pellets + lvl("multishot");
   s.multiDmg = (gun.pellets + U.multishot.extra * lvl("multishot")) / s.projectiles;   // extra barrels share the damage
   s.fan = gun.fan;
@@ -119,18 +120,20 @@ export function computeStats() {
   s.chainRange = gun.chainRange || 0;
   s.chainDmg = gun.chainDmg || 0;
   s.rear = lvl("rear") > 0;
-  s.crit = at(U.pride.crit, "pride") + it("scope") * I.scope.crit;
+  s.crit = at(U.pride.crit, "pride") + it("scope") * I.scope.crit + it("c_halo") * RL.c_halo.crit;
+  s.iframesMul = it("c_halo") ? RL.c_halo.iframes : 1;
   s.critMul = lvl("pride") ? U.pride.critMul[lvl("pride") - 1] : 2;
   s.streakPer = at(U.pride.streak, "pride");
   s.streakCap = at(U.pride.streakCap, "pride");
   s.critPierce = lvl("pride") >= 4;
-  s.moveSpeed = B.speed * (1 + U.thrusters.speed * lvl("thrusters"));
+  s.moveSpeed = B.speed * (1 + U.thrusters.speed * lvl("thrusters") + it("c_lead") * RL.c_lead.speed);
   s.boostSpeed = B.boost.speed * (1 + U.boost.distance * Math.min(2, lvl("boost")));
-  s.boostCd = B.boost.cooldown * (1 - U.boost.cooldown * Math.min(2, lvl("boost"))) * (1 - it("fuel") * I.fuel.boostCd);
+  s.boostCd = B.boost.cooldown * (1 - U.boost.cooldown * Math.min(2, lvl("boost"))) * (1 - it("fuel") * I.fuel.boostCd) * (1 + it("c_overclock") * RL.c_overclock.boostCd);
   s.boostRam = lvl("boost") >= 3 ? U.boost.ramDmg : 0;
   s.magnet = D.magnet * (1 + at(U.greed.magnet, "greed") + it("magnet") * I.magnet.magnet);
   s.starMul = 1 + at(U.greed.drops, "greed");
-  s.starValue = lvl("greed") ? U.greed.value[lvl("greed") - 1] : 1;
+  s.starValue = (lvl("greed") ? U.greed.value[lvl("greed") - 1] : 1) * (it("c_greedy") ? RL.c_greedy.starMul : 1);
+  s.heartMul = it("c_greedy") ? RL.c_greedy.heal : 1;
   s.interest = at(U.greed.interest, "greed");
   s.jackpot = lvl("greed") >= 4 ? U.greed.jackpot : 0;
   s.fusions = FUSION_IDS.filter((id) => lvl(id) > 0);
@@ -151,10 +154,10 @@ export function computeStats() {
   s.lustBurst = at(U.lust.burst, "lust");
   s.lustMost = at(U.lust.most, "lust");
   s.orbitals = lvl("orbit");
-  s.maxHp = Math.max(2, B.hp + U.suit.hp * lvl("suit") + it("nanoweave") * I.nanoweave.hp + it("glass") * I.glass.hp);
+  s.maxHp = Math.max(2, B.hp + U.suit.hp * lvl("suit") + it("nanoweave") * I.nanoweave.hp + it("glass") * I.glass.hp + it("c_blood") * RL.c_blood.hp);
   // charged shot
   s.chargeTime = CH.time / (1 + at(U.overcharge.speed, "overcharge")) * (1 - it("coolant") * I.coolant.chargeTime);
-  s.chargeMul = (1 + at(U.overcharge.dmg, "overcharge")) * (1 + it("capbank") * I.capbank.chargeDmg);
+  s.chargeMul = (1 + at(U.overcharge.dmg, "overcharge")) * (1 + it("capbank") * I.capbank.chargeDmg) * (1 + it("c_lead") * RL.c_lead.chargeDmg);
   s.chargeWide = lvl("overcharge") >= 3;
   s.chargeFire = lvl("capacitor") >= 1;
   s.perfectCharge = lvl("capacitor") >= 2;
@@ -332,7 +335,7 @@ function charmed(P) {
 
 export function onHit(e) {
   const s = G.stats;
-  if (s.lustChance && !e.boss && e.type !== "gem" && e.type !== "decoy" && e.ally <= 0 && !e.dead && chance(s.lustChance) && charmed(G.player) < s.lustMost) {
+  if (s.lustChance && !e.boss && e.type !== "gem" && e.type !== "decoy" && !e.passive && e.ally <= 0 && !e.dead && chance(s.lustChance) && charmed(G.player) < s.lustMost) {
     e.ally = s.lustTime;
     e.allyBy = G.player;
     e.allyMax = s.lustTime;

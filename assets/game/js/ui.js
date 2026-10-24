@@ -8,6 +8,8 @@ import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
 import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
 import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
 import { evoChoices } from "./evolve.js";
+import { ACHIEVEMENTS, ACH_BY_ID, COSMETICS, cosUnlocked, cosOf, unlockedAch, rewardNames, lookSuit } from "./progress.js";
+import { sprites, PAL } from "./sprites.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
@@ -61,7 +63,7 @@ export const ui = {
     const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
       "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
       "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "charge-btn", "cards", "rotate-hint",
-      "gun-chip", "gun-main", "gun-alt", "team", "fusion-chip", "rush-chip", "rush-time"];
+      "gun-chip", "gun-main", "gun-alt", "team", "fusion-chip", "rush-chip", "rush-time", "ambush-chip"];
     for (const id of ids) this.els[id] = $(id);
 
     // half-heart clip, shared by every heart icon
@@ -90,9 +92,15 @@ export const ui = {
     click("shop-patch", () => handlers.onPatch());
     click("shop-go", () => { if (armed()) handlers.onShopGo(); });
     click("evo-later", () => { if (armed()) handlers.onEvoLater(); });
+    click("event-leave", () => { if (armed()) handlers.onEvent(-1); });
     click("news-btn", () => this.show("news"));
     click("coop-btn", () => handlers.onCoop());
     click("rush-btn", () => handlers.onRush());
+    click("profile-btn", () => this.openProfile("achv"));
+    click("ptab-achv", () => this.openProfile("achv"));
+    click("ptab-locker", () => this.openProfile("locker"));
+    click("profile-done", () => this.show("menu"));
+    G.on("achv", (a) => this.achvPop(a));
     click("rush-back", () => this.show("menu"));
     click("rush-start", () => handlers.onRushStart(this.rushMods()));
     click("rushdone-again", () => { if (armed()) handlers.onRushAgain(); });
@@ -198,7 +206,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "profile", "event"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -207,10 +215,10 @@ export const ui = {
       else if (!on) node.hidden = true;
     }
     screen = name;
-    if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo" || name === "rushdone") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
+    if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo" || name === "rushdone" || name === "event") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
     if (name === "how") this.renderHow();
     if (name === "menu") this.refreshMenu();
-    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
+    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
   },
@@ -220,9 +228,9 @@ export const ui = {
 
   setState(state) {
     const g = this.els.game;
-    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win", "state-evolve");
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win", "state-evolve", "state-event");
     g.classList.add("state-" + state);
-    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win" || state === "evolve");
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win" || state === "evolve" || state === "event");
     this.updateRotateHint();
   },
 
@@ -336,6 +344,7 @@ export const ui = {
     this.renderDifficulty();
     this.renderControlsHint();
     this.renderLadder($("mini-ladder"), b.rung || 0, (b.wins || 0) > 0);
+    this.renderProfileStrip();
     const rb = $("rush-btn");
     if (rb) {
       const open = store.rushUnlocked();
@@ -473,15 +482,16 @@ export const ui = {
     const cur = store.data.settings.suit;
     for (const s of SUITS) {
       const unlocked = store.suitUnlocked(s);
+      const need = s.achv ? "Earn " + (ACH_BY_ID[s.achv] ? ACH_BY_ID[s.achv].name : s.achv) : "Reach wave " + s.wave;
       const b = el("button", "suit");
       b.type = "button";
       b.setAttribute("role", "radio");
       b.setAttribute("aria-checked", s.id === cur ? "true" : "false");
-      b.setAttribute("aria-label", s.name + (unlocked ? "" : " (reach wave " + s.wave + ")"));
-      b.title = unlocked ? s.name : "Reach wave " + s.wave + " to unlock";
+      b.setAttribute("aria-label", s.name + (unlocked ? "" : " (" + need.toLowerCase() + ")"));
+      b.title = unlocked ? s.name : need + " to unlock";
       b.style.setProperty("--suit", s.suit);
       b.style.setProperty("--trim", s.trim);
-      if (!unlocked) { b.disabled = true; b.append(el("span", "lock", "W" + s.wave)); }
+      if (!unlocked) { b.disabled = true; b.append(el("span", "lock", s.achv ? "\u2605" : "W" + s.wave)); }
       b.addEventListener("click", () => { handlers.onSuit(s.id); this.renderSuits(); });
       list.append(b);
     }
@@ -594,6 +604,11 @@ export const ui = {
     hudSlowT -= dt;
     const slowTick = hudSlowT <= 0;
     if (slowTick) hudSlowT = 1 / 20;
+    if (slowTick) {
+      const a = G.ambush, on = !!(a && a.t > 0);
+      E["ambush-chip"].hidden = !on;
+      if (on) E["ambush-chip"].textContent = "Ambush " + Math.ceil(a.t) + "s · " + a.left + " left";
+    }
     if (slowTick && G.mode === "rush" && G.rush) E["rush-time"].textContent = fmtClock(G.rush.t0 >= 0 ? G.time - G.rush.t0 : 0);
     if (slowTick) E["combo-fill"].style.transform = "scaleX(" + (G.combo > 0 ? Math.max(0, G.comboTimer / BALANCE.combo.window).toFixed(2) : 0) + ")";
 
@@ -813,6 +828,191 @@ export const ui = {
     n.innerHTML = input.mode === "kbm" ? "Press " + keys + " to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
   },
 
+  // ---------------- achievements + the locker ----------------
+  /** Under the menu's bests: your title and the badges you pinned. */
+  renderProfileStrip() {
+    const box = $("profile-strip");
+    if (!box) return;
+    box.replaceChildren();
+    const c = store.data.cos;
+    const title = cosOf("title");
+    for (const id of c.badges || []) {
+      const a = ACH_BY_ID[id];
+      if (!a || !unlockedAch(id)) continue;
+      const b = el("span", "badge");
+      b.style.setProperty("--b", a.col);
+      b.title = a.name;
+      b.append(icon(a.icon));
+      box.append(b);
+    }
+    if (title.id) box.append(el("span", "player-title", title.name));
+    const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
+    const lab = $("profile-label");
+    if (lab) lab.textContent = "Profile · " + n + "/" + ACHIEVEMENTS.length;
+  },
+
+  openProfile(tab) {
+    $("ptab-achv").setAttribute("aria-selected", tab === "achv" ? "true" : "false");
+    $("ptab-locker").setAttribute("aria-selected", tab === "locker" ? "true" : "false");
+    $("ppage-achv").hidden = tab !== "achv";
+    $("ppage-locker").hidden = tab !== "locker";
+    if (tab === "achv") this.renderAchievements(); else this.renderLocker();
+    if (screen !== "profile") this.show("profile");
+  },
+
+  /** Every achievement: unlocked ones show when, locked ones what to do (and how far along you are). Tap an unlocked one to pin its badge (3 at most). */
+  renderAchievements() {
+    const list = $("achv-list");
+    list.replaceChildren();
+    const pins = store.data.cos.badges || (store.data.cos.badges = []);
+    const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
+    $("achv-summary").textContent = n + " of " + ACHIEVEMENTS.length + " unlocked · tap one you've earned to pin its badge to your profile (3 at most)";
+    let cat = "";
+    for (const a of ACHIEVEMENTS) {
+      if (a.cat !== cat) { cat = a.cat; list.append(el("h3", "achv-cat", cat)); }
+      const got = unlockedAch(a.id);
+      const b = el("button", "achv" + (got ? " got" : "") + (pins.includes(a.id) ? " pinned" : ""));
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      b.style.setProperty("--b", a.col);
+      const badge = el("span", "badge");
+      badge.append(icon(a.icon));
+      b.append(badge);
+      const txt = el("span", "achv-txt");
+      txt.append(el("b", "", a.name), el("span", "", a.desc));
+      const rw = rewardNames(a);
+      if (rw.length) txt.append(el("small", "", "Unlocks: " + rw.join(", ")));
+      if (a.goal && !got) {
+        const [have, need] = a.goal();
+        const bar = el("i", "achv-bar");
+        bar.style.setProperty("--p", Math.min(1, have / need).toFixed(3));
+        txt.append(bar, el("small", "", Math.min(have, need) + " / " + need));
+      }
+      b.append(txt);
+      if (got) b.append(el("span", "achv-when", new Date(store.data.achv[a.id]).toLocaleDateString()));
+      b.disabled = !got;
+      b.setAttribute("aria-label", a.name + (got ? ", unlocked" : ", locked") + ". " + a.desc);
+      b.addEventListener("click", () => {
+        const i = pins.indexOf(a.id);
+        if (i >= 0) pins.splice(i, 1); else { pins.push(a.id); if (pins.length > 3) pins.shift(); }
+        store.save();
+        handlers.onClick && handlers.onClick();
+        this.renderAchievements();
+      });
+      list.append(b);
+    }
+  },
+
+  /** The locker: suit, visor, jetpack trail, weapon finish, title, victory effect, with a live preview. */
+  renderLocker() {
+    const box = $("locker-opts");
+    box.replaceChildren();
+    const c = store.data.cos;
+    const kinds = [["suit", "Suit"], ["visor", "Visor"], ["trail", "Jetpack trail"], ["finish", "Weapon finish"], ["title", "Title"], ["victory", "Victory effect"]];
+    for (const [kind, label] of kinds) {
+      const sec = el("div", "locker-sec");
+      sec.append(el("h3", "set-h", label));
+      const row = el("div", "locker-row");
+      const opts = kind === "suit" ? SUITS.map((s) => ({ id: s.id, name: s.name, col: s.trim, achv: s.achv, wave: s.wave })) : COSMETICS[kind];
+      const cur = kind === "suit" ? store.data.settings.suit : c[kind] || "";
+      for (const o of opts) {
+        const open = cosUnlocked(kind, o.id);
+        const b = el("button", "lock-opt" + (o.id === cur ? " on" : ""));
+        b.type = "button";
+        b.setAttribute("aria-pressed", o.id === cur ? "true" : "false");
+        const sw = el("i", "swatch");
+        const col = o.col || (o.pals ? PAL[o.pals[0]] : o.sins ? "#ff9448" : o.prism ? "#ff5ce1" : "#a57bff");
+        sw.style.setProperty("--sw", col);
+        if (o.sins || o.prism) sw.classList.add("rainbow");
+        b.append(sw, el("span", "", o.name));
+        if (!open) {
+          b.disabled = true;
+          b.title = o.achv ? "Earn " + (ACH_BY_ID[o.achv] ? ACH_BY_ID[o.achv].name : o.achv) : "Reach wave " + o.wave;
+          b.append(el("small", "", o.achv ? "\u2605 " + (ACH_BY_ID[o.achv] ? ACH_BY_ID[o.achv].name : "") : "Wave " + o.wave));
+        }
+        b.addEventListener("click", () => {
+          if (kind === "suit") { handlers.onSuit(o.id); }
+          else { c[kind] = o.id; store.save(); if (kind === "visor") handlers.onLook && handlers.onLook(); handlers.onClick && handlers.onClick(); }
+          this.renderLocker();
+          this.renderProfileStrip();
+        });
+        row.append(b);
+      }
+      sec.append(row);
+      box.append(sec);
+    }
+    this.previewLoop();
+  },
+
+  /** Draws your astronaut in the locker (suit, visor, gun finish, a puff of your trail) while it's open. */
+  previewLoop() {
+    const cv = $("locker-preview");
+    if (!cv || this.previewOn) return;
+    this.previewOn = true;
+    const g = cv.getContext("2d");
+    let suitKey = "", spr = null;
+    const puffs = [];
+    const frame = (now) => {
+      if (screen !== "profile" || $("ppage-locker").hidden) { this.previewOn = false; return; }
+      const suit = lookSuit(SUITS.find((s) => s.id === store.data.settings.suit) || SUITS[0]);
+      const key = suit.id + suit.visor;
+      if (key !== suitKey || !spr) { suitKey = key; spr = sprites.astronaut(2.4, suit).player; }
+      const t = now / 1000;
+      g.clearRect(0, 0, cv.width, cv.height);
+      g.fillStyle = "#050820"; g.fillRect(0, 0, cv.width, cv.height);
+      // the trail
+      const tr = cosOf("trail");
+      if (Math.random() < 0.6) {
+        const col = tr.col || (tr.pals ? PAL[tr.pals[Math.random() < 0.5 ? 0 : 1]] : tr.sins ? PAL[13 + (Math.floor(t * 6) % 7)] : PAL[Math.random() < 0.5 ? 1 : 10]);
+        puffs.push({ x: 84, y: 118, vx: -60 - Math.random() * 40, vy: 20 + Math.random() * 30, life: 0.7, col });
+      }
+      for (let i = puffs.length - 1; i >= 0; i--) {
+        const p = puffs[i];
+        p.life -= 1 / 60; p.x += p.vx / 60; p.y += p.vy / 60;
+        if (p.life <= 0) { puffs.splice(i, 1); continue; }
+        g.globalAlpha = p.life;
+        g.fillStyle = p.col;
+        g.beginPath(); g.arc(p.x, p.y, 3 + (0.7 - p.life) * 6, 0, Math.PI * 2); g.fill();
+      }
+      g.globalAlpha = 1;
+      const bob = Math.sin(t * 3) * 3;
+      const S = 128;
+      g.drawImage(spr.c, 104 - S / 2, 96 - S / 2 + bob, S, S);
+      // the gun, in your finish
+      const f = cosOf("finish");
+      g.fillStyle = f.prism ? "hsl(" + Math.round((t * 90) % 360) + ", 85%, 78%)" : f.col || "#c9d0f2";
+      g.fillRect(112, 97 + bob, 36, 10);
+      g.fillStyle = "#232c5e"; g.fillRect(112, 97 + bob, 10, 10);
+      g.fillStyle = "#63f4ff"; g.fillRect(142, 97 + bob, 6, 10);
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  },
+
+  /** An achievement just unlocked: a card slides in at the top (several queue up). */
+  achvPop(a) {
+    (this.achvQ || (this.achvQ = [])).push(a);
+    if (this.achvBusy) return;
+    const next = () => {
+      const x = this.achvQ.shift();
+      const box = $("achv-pop");
+      if (!x || !box) { this.achvBusy = false; return; }
+      this.achvBusy = true;
+      box.replaceChildren();
+      box.style.setProperty("--b", x.col);
+      const badge = el("span", "badge");
+      badge.append(icon(x.icon));
+      const txt = el("span", "achv-txt");
+      const rw = rewardNames(x);
+      txt.append(el("small", "", "Achievement unlocked"), el("b", "", x.name), el("span", "", rw.length ? "Unlocked: " + rw.join(", ") : x.desc));
+      box.append(badge, txt);
+      box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
+      handlers.onAchv && handlers.onAchv();
+      setTimeout(() => { box.classList.remove("show"); setTimeout(next, 350); }, 3600);
+    };
+    next();
+  },
+
   // ---------------- Boss Rush ----------------
   /** The Rush setup: the seven, your bests, difficulty, modifiers (they unlock after your first clear). */
   openRush() {
@@ -898,6 +1098,35 @@ export const ui = {
     $("rushdone-again").lastChild.textContent = client ? "Waiting for the host" : G.net.role === "host" ? "Run it back (everyone)" : "Run it back";
     $("rushdone-menu").lastChild.textContent = G.net.role !== "off" ? "Leave co-op" : "Menu";
     this.show("rushdone");
+  },
+
+  // ---------------- special events ----------------
+  /** info: { kicker, title, sub, col, options: [{ name, text, cost, col, disabled }], leave: label | false } */
+  showEvent(info) {
+    $("event-kicker").textContent = info.kicker;
+    $("event-title").textContent = info.title;
+    $("event-sub").textContent = info.sub || "";
+    $("screen-event").style.setProperty("--ev-col", info.col || "#a57bff");
+    const box = $("event-opts");
+    box.replaceChildren();
+    box.classList.toggle("two", info.options.length === 2);
+    info.options.forEach((o, i) => {
+      const b = el("button", "event-opt");
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      if (o.col) b.style.setProperty("--opt-col", o.col);
+      b.append(el("span", "card-key", String(i + 1)), el("b", "", o.name), el("span", "event-text", o.text));
+      if (o.cost) b.append(el("span", "event-cost", o.cost));
+      b.disabled = !!o.disabled;
+      b.addEventListener("click", () => { if (armed()) handlers.onEvent(i); });
+      box.append(b);
+    });
+    const lv = $("event-leave");
+    lv.hidden = !info.leave;
+    $("event-leave-label").textContent = info.leave || "";
+    const n = $("event-hint");
+    if (n) n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd>–<kbd>" + info.options.length + "</kbd> to choose" : "";
+    this.show("event");
   },
 
   // ---------------- weapon evolution ----------------
