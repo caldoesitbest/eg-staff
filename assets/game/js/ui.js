@@ -407,7 +407,7 @@ export const ui = {
       b.type = "button"; b.addEventListener("click", () => this.openBoard(detail && detail.daily ? "daily" : "all", "over"));
       box.append(b);
     } else if (state === "signin") {
-      box.append(el("span", "", "Sign in with Discord to put this run on the leaderboard."));
+      box.append(el("span", "", detail === "expired" ? "Your sign-in expired, so this run wasn't posted. Sign in again to post the next one." : "Sign in with Discord to put this run on the leaderboard."));
       const b = el("button", "btn btn-primary btn-sm", "Sign in");
       b.type = "button"; b.addEventListener("click", () => online.signIn());
       box.append(b);

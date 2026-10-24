@@ -515,7 +515,8 @@ async function postRun(sum) {
     daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items }, difficulty: G.difficulty },
   });
   if (G.state !== "over") return;
-  if (res.skipped) ui.setOnline(null);
+  if (res.skipped === "expired") ui.setOnline("signin", "expired");
+  else if (res.skipped) ui.setOnline(null);
   else if (res.ok) ui.setOnline("posted", { rank: res.rank, daily: !!G.daily });
   else ui.setOnline("error", res.error);
 }
