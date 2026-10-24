@@ -6,7 +6,7 @@ import { BALANCE } from "./balance.js";
 import { sprites, C, P_CYAN } from "./sprites.js";
 import { fx } from "./fx.js";
 import { input } from "./input.js";
-import { TAU, clamp, smooth, rand } from "./util.js";
+import { TAU, clamp, smooth, rand, dash, NO_DASH } from "./util.js";
 import { rebuildRockSprites } from "./world.js";
 import { ROSTER } from "./enemies/roster.js";
 import { BOSSES } from "./enemies/bosses.js";
@@ -15,6 +15,7 @@ import { GUN_COL } from "./armory.js";
 import { gunPal } from "./player.js";
 import { SUITS } from "./storage.js";
 import { SLOT_COL } from "./coop.js";
+import { waves } from "./waves.js";
 import { reviveRange } from "./world.js";
 
 // Teammates' astronauts, in their own suits (built on demand, rebuilt when the zoom changes).
@@ -47,17 +48,17 @@ function mk(w, h) {
 }
 
 // ---------- background art (built once per pixel ratio) ----------
-function buildStarTile(size, count, minR, maxR, colors, seed) {
+function buildStarTile(size, count, minR, maxR, colors, seed, scale) {
   const c = mk(size, size);
   const x = c.getContext("2d");
   let s = seed;
   const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
   for (let i = 0; i < count; i++) {
     const px = rnd() * size, py = rnd() * size;
-    const r = (minR + rnd() * (maxR - minR)) * dpr;
+    const r = (minR + rnd() * (maxR - minR)) * scale;
     const col = colors[Math.floor(rnd() * colors.length)];
     const a = 0.35 + rnd() * 0.65;
-    if (r > 1.3 * dpr) {
+    if (r > 1.3 * scale) {
       const grd = x.createRadialGradient(px, py, 0, px, py, r * 3);
       grd.addColorStop(0, col);
       grd.addColorStop(0.3, col + "55");
@@ -73,24 +74,54 @@ function buildStarTile(size, count, minR, maxR, colors, seed) {
   return c;
 }
 
-function buildNebula() {
+// Each Sin chapter's look: its nebula, the tint of the floor grid, the arena's corner accents and
+// the motes drifting past. Kept dark and low-contrast so robots and shots always read on top.
+const CHAPTERS = {
+  menu:    { neb: [[124, 58, 237, 0.45], [88, 28, 170, 0.4], [34, 211, 238, 0.16], [255, 66, 208, 0.14], [255, 66, 208, 0.1]], grid: "99,244,255", corner: "#ff42d0", mote: null },
+  sloth:   { neb: [[70, 78, 170, 0.45], [40, 44, 120, 0.42], [184, 191, 224, 0.14], [120, 110, 200, 0.14], [90, 100, 180, 0.1]], grid: "184,191,224", corner: "#b8bfe0", mote: "dust" },
+  glutton: { neb: [[194, 48, 122, 0.4], [110, 20, 70, 0.42], [255, 79, 139, 0.16], [255, 120, 80, 0.1], [160, 30, 90, 0.12]], grid: "255,79,139", corner: "#ff4f8b", mote: "spore" },
+  greed:   { neb: [[120, 70, 20, 0.36], [88, 28, 120, 0.38], [255, 212, 92, 0.15], [232, 168, 32, 0.13], [255, 240, 180, 0.07]], grid: "255,212,92", corner: "#ffd45c", mote: "glint" },
+  lust:    { neb: [[166, 74, 123, 0.4], [110, 30, 110, 0.4], [255, 154, 213, 0.15], [215, 127, 176, 0.15], [255, 66, 208, 0.11]], grid: "215,127,176", corner: "#d77fb0", mote: "petal" },
+  wrath:   { neb: [[150, 40, 30, 0.4], [90, 20, 60, 0.4], [255, 148, 72, 0.16], [255, 80, 60, 0.13], [224, 90, 214, 0.1]], grid: "255,148,72", corner: "#ff9448", mote: "ember" },
+  pride:   { neb: [[110, 80, 230, 0.45], [60, 30, 150, 0.42], [169, 139, 255, 0.17], [255, 212, 92, 0.07], [138, 108, 240, 0.12]], grid: "169,139,255", corner: "#a98bff", mote: "crystal" },
+  envy:    { neb: [[60, 70, 220, 0.42], [20, 90, 110, 0.4], [115, 255, 206, 0.15], [109, 123, 255, 0.16], [74, 47, 240, 0.12]], grid: "109,123,255", corner: "#6d7bff", mote: "shard" },
+};
+for (const k in CHAPTERS) {
+  const c = CHAPTERS[k];
+  c.gridCol = "rgba(" + c.grid + ",0.055)";
+  c.edgeCol = "rgba(" + c.grid + ",0.12)";
+}
+const MOTE_PAL = { dust: 13, spore: 14, glint: 15, petal: 16, ember: 17, crystal: 18, shard: 19 };
+export function chapterId() {
+  if (G.state === "menu") return "menu";
+  return BALANCE.bosses.order[waves.rungOf(Math.max(1, G.wave))] || "menu";
+}
+
+function buildNebula(id) {
   const c = mk(480, 300);
   const x = c.getContext("2d");
-  const blob = (cx, cy, r, col, a) => {
+  const blob = (cx, cy, r, rgb) => {
     const grd = x.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grd.addColorStop(0, col);
+    grd.addColorStop(0, "rgb(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ")");
     grd.addColorStop(1, "rgba(3,5,24,0)");
-    x.globalAlpha = a;
+    x.globalAlpha = rgb[3];
     x.fillStyle = grd;
     x.fillRect(0, 0, 480, 300);
   };
-  blob(380, 30, 230, "rgb(124,58,237)", 0.45);
-  blob(60, 160, 210, "rgb(88,28,170)", 0.4);
-  blob(250, 320, 220, "rgb(34,211,238)", 0.16);
-  blob(140, 40, 150, "rgb(255,66,208)", 0.14);
-  blob(440, 230, 160, "rgb(255,66,208)", 0.1);
+  const n = CHAPTERS[id].neb;
+  blob(380, 30, 230, n[0]);
+  blob(60, 160, 210, n[1]);
+  blob(250, 320, 220, n[2]);
+  blob(140, 40, 150, n[3]);
+  blob(440, 230, 160, n[4]);
   return c;
 }
+const nebulas = {};
+const nebulaFor = (id) => nebulas[id] || (nebulas[id] = buildNebula(id));
+
+// Ambient motes (screen space), restyled per chapter. Off on Low/Potato and with the background off.
+const motes = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), vx: 0, vy: 0, s: 1, ph: Math.random() * TAU }));
+let moteKind = "";
 
 function buildPlanet(px) {
   const c = mk(px, px);
@@ -172,7 +203,7 @@ export const renderer = {
     canvas = c;
     g = c.getContext("2d", { alpha: false }) || c.getContext("2d");
     suit = suitDef;
-    bg.nebula = buildNebula();
+    bg.nebula = nebulaFor("menu");
     bg.vignette = buildVignette();
   },
 
@@ -201,20 +232,24 @@ export const renderer = {
     cam.z = z; cam.dpr = dpr; cam.cssW = W; cam.cssH = H;
     cam.viewW = W / z; cam.viewH = H / z;
     const P = z * dpr;
-    if (!sprites.player || Math.abs(P - sprites.P) > 0.02) {
-      sprites.build(P, suit);
+    // Sprites and star tiles are drawn at the screen's own sharpness, not the render resolution, so
+    // quality and resolution changes (Auto adjusts them as you play) never rebuild them: no hitch.
+    const art = Math.min(window.devicePixelRatio || 1, capBase);
+    const SP = z * art;
+    if (!sprites.player || Math.abs(SP - sprites.P) > 0.02) {
+      sprites.build(SP, suit);
       rebuildRockSprites();
     }
     cam.P = P;
-    if (bg.tileDpr !== dpr) {
-      bg.tileDpr = dpr;
-      const T = Math.round(bg.tileSize * dpr);
+    if (bg.tileDpr !== art) {
+      bg.tileDpr = art;
+      const T = Math.round(bg.tileSize * art);
       bg.tiles = [
-        buildStarTile(T, 110, 0.5, 0.9, ["#ffffff", "#c9d0f2", "#9aa4cf"], 7),
-        buildStarTile(T, 55, 0.7, 1.3, ["#ffffff", "#bfe9ff", "#d8c8ff"], 31),
-        buildStarTile(T, 18, 1.2, 2.1, ["#ffffff", "#63f4ff", "#a57bff", "#ff42d0"], 97),
+        buildStarTile(T, 110, 0.5, 0.9, ["#ffffff", "#c9d0f2", "#9aa4cf"], 7, art),
+        buildStarTile(T, 55, 0.7, 1.3, ["#ffffff", "#bfe9ff", "#d8c8ff"], 31, art),
+        buildStarTile(T, 18, 1.2, 2.1, ["#ffffff", "#63f4ff", "#a57bff", "#ff42d0"], 97, art),
       ];
-      bg.planet = buildPlanet(Math.round(420 * dpr));
+      bg.planet = buildPlanet(Math.round(420 * art));
     }
     bg.skyKey = "";
   },
@@ -223,7 +258,8 @@ export const renderer = {
       (it used to be three full-screen draws every frame). Rebuilt on resize / menu ↔ play. */
   buildSky(cw, ch, menu, quality) {
     const bgMode = G.gfx.background;
-    const key = cw + "x" + ch + (menu ? "m" : "p") + quality + bgMode;
+    const chap = chapterId();
+    const key = cw + "x" + ch + (menu ? "m" : "p") + quality + bgMode + chap;
     if (bg.skyKey === key) return;
     bg.skyKey = key;
     const mw = Math.round(cw * 1.06), mh = Math.round(ch * 1.06);
@@ -236,15 +272,59 @@ export const renderer = {
     if (bgMode === "off" && !menu) { bg.sky = c; return; }
     if (quality > 0 && bgMode === "full") {
       const nw = Math.max(mw, mh * 1.6) * 1.1, nh = nw * 0.625;
-      x.drawImage(bg.nebula, (mw - nw) / 2, (mh - nh) / 2, nw, nh);
-      const T = bg.tiles[0].width;
-      for (let ty = 0; ty < mh; ty += T) for (let tx = 0; tx < mw; tx += T) x.drawImage(bg.tiles[0], tx, ty);
+      x.drawImage(nebulaFor(chap), (mw - nw) / 2, (mh - nh) / 2, nw, nh);
+      const T = Math.round(bg.tileSize * dpr);
+      for (let ty = 0; ty < mh; ty += T) for (let tx = 0; tx < mw; tx += T) x.drawImage(bg.tiles[0], tx, ty, T, T);
     }
     const ps = Math.min(mw, mh) * (menu ? 0.95 : 0.62);
     x.globalAlpha = menu ? 0.9 : 0.55;
     x.drawImage(bg.planet, mw * (menu ? 0.8 : 0.86) - ps / 2, mh * (menu ? 0.2 : 0.14) - ps / 2, ps, ps);
     x.globalAlpha = 1;
     bg.sky = c;
+  },
+
+  /** The chapter's drifting motes, behind everything that matters. */
+  drawMotes(kind, dt, cw, ch) {
+    const n = G.gfx.particles === "high" ? 40 : 24;
+    const slow = G.settings.reducedMotion ? 0.4 : 1;
+    if (kind !== moteKind) {
+      moteKind = kind;
+      for (const m of motes) {
+        m.x = Math.random(); m.y = Math.random(); m.ph = Math.random() * TAU; m.s = 0.6 + Math.random() * 0.9;
+        const sp = kind === "ember" ? 0.12 : kind === "spore" ? 0.03 : kind === "petal" ? -0.03 : kind === "crystal" ? -0.02 : 0.012;
+        m.vx = (Math.random() - 0.5) * 0.01; m.vy = -sp * (0.6 + Math.random() * 0.8);
+      }
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const dot = sprites.dots[MOTE_PAL[kind]];
+    const unit = Math.min(cw, ch) / 100;
+    for (let i = 0; i < n; i++) {
+      const m = motes[i];
+      m.ph += dt * (kind === "glint" ? 3 : 1.2);
+      m.x += (m.vx + (kind === "spore" || kind === "petal" ? Math.sin(m.ph) * 0.006 : 0)) * dt * slow;
+      m.y += m.vy * dt * slow;
+      if (m.y < -0.05) m.y += 1.1; else if (m.y > 1.05) m.y -= 1.1;
+      if (m.x < -0.05) m.x += 1.1; else if (m.x > 1.05) m.x -= 1.1;
+      const x = m.x * cw, y = m.y * ch, r = unit * m.s;
+      let a = kind === "glint" ? Math.max(0, Math.sin(m.ph)) * 0.8 : kind === "ember" ? 0.35 + Math.sin(m.ph * 3) * 0.25 : 0.32;
+      g.globalAlpha = a;
+      if (kind === "shard") {
+        g.fillStyle = i % 2 ? "#73ffce" : "#6d7bff";
+        const w = r * (2 + Math.sin(m.ph * 5) * 1.5);
+        g.fillRect(x - w, y, w * 2, Math.max(1, r * 0.35));
+      } else if (kind === "petal") {
+        // falling rose petals (not hearts: those are health pickups)
+        g.fillStyle = i % 3 ? "#ff9ad5" : "#d77fb0";
+        g.beginPath(); g.ellipse(x, y, r * 1.1, r * 0.45 * (0.6 + Math.abs(Math.sin(m.ph * 1.3)) * 0.4), m.ph, 0, TAU); g.fill();
+      } else if (kind === "crystal") {
+        g.fillStyle = "#cdbcff";
+        g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.5, y); g.lineTo(x, y + r); g.lineTo(x - r * 0.5, y); g.closePath(); g.fill();
+      } else if (dot) {
+        const z = r * (kind === "glint" ? 3 : 2.2);
+        g.drawImage(dot, x - z, y - z, z * 2, z * 2);
+      }
+    }
+    g.globalAlpha = 1;
   },
 
   /** Follows the (interpolated) player with a little look-ahead toward the aim. */
@@ -306,16 +386,19 @@ export const renderer = {
       const px = clamp(-(camX - A.w / 2) / (A.w / 2), -1, 1) * mx, py = clamp(-(camY - A.h / 2) / (A.h / 2), -1, 1) * my;
       g.drawImage(sky, -mx + px, -my + py);
     }
-    const T = bg.tiles.length ? bg.tiles[0].width : 1;
-    const factors = [0.1, 0.22, 0.42];
+    const T = Math.round(bg.tileSize * dpr);
+    const factors = PARALLAX;
     const bgMode = G.gfx.background;
+    const chap = CHAPTERS[chapterId()];
     const firstLayer = bgMode === "full" || G.state === "menu" ? (quality > 0 ? 1 : 2) : bgMode === "simple" ? 2 : 9;
     for (let L = firstLayer; L < bg.tiles.length; L++) {
       const f = factors[L];
       let ox = -((camX * f * cam.z * dpr) % T); if (ox > 0) ox -= T;
       let oy = -((camY * f * cam.z * dpr) % T); if (oy > 0) oy -= T;
-      for (let ty = oy; ty < ch; ty += T) for (let tx = ox; tx < cw; tx += T) g.drawImage(bg.tiles[L], tx, ty);
+      for (let ty = oy; ty < ch; ty += T) for (let tx = ox; tx < cw; tx += T) g.drawImage(bg.tiles[L], tx, ty, T, T);
     }
+
+    if (chap.mote && bgMode !== "off" && G.gfx.particles !== "low" && G.gfx.particles !== "minimal") this.drawMotes(chap.mote, dt, cw, ch);
 
     // ---------- world ----------
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
@@ -330,7 +413,7 @@ export const renderer = {
     if (vy1 > A.h) g.fillRect(Math.max(0, vx0), A.h, Math.min(A.w, vx1) - Math.max(0, vx0), vy1 - A.h);
     // floor grid
     if (G.gfx.grid) {
-      g.strokeStyle = "rgba(99,244,255,0.05)";
+      g.strokeStyle = chap.gridCol;
       g.lineWidth = 1 / cam.z;
       g.beginPath();
       for (let x = Math.max(0, Math.ceil(vx0 / 100) * 100); x <= Math.min(A.w, vx1); x += 100) { g.moveTo(x, Math.max(0, vy0)); g.lineTo(x, Math.min(A.h, vy1)); }
@@ -338,13 +421,13 @@ export const renderer = {
       g.stroke();
     }
     // border
-    g.strokeStyle = "rgba(99,244,255,0.1)";
+    g.strokeStyle = chap.edgeCol;
     g.lineWidth = 12;
     g.strokeRect(-6, -6, A.w + 12, A.h + 12);
     g.strokeStyle = "rgba(99,244,255,0.7)";
     g.lineWidth = 2;
     g.strokeRect(0, 0, A.w, A.h);
-    g.strokeStyle = C.magenta;
+    g.strokeStyle = chap.corner;
     g.lineWidth = 3;
     const cl = 46;
     g.beginPath();
@@ -378,10 +461,10 @@ export const renderer = {
       g.beginPath(); g.arc(qx, qy, R, 0, TAU); g.fill();
       g.strokeStyle = "rgba(201,184,255,0.3)";
       g.lineWidth = 1.5;
-      g.setLineDash([3, 9]);
+      g.setLineDash(dash(3, 9));
       g.lineDashOffset = G.time * 8;
       g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
     }
 
     // mines (shop gear)
@@ -509,10 +592,10 @@ export const renderer = {
           g.strokeStyle = C.amber;
           g.globalAlpha = 0.85;
           g.lineWidth = 2;
-          g.setLineDash([5, 5]);
+          g.setLineDash(dash(5, 5));
           g.lineDashOffset = G.time * 20;
           g.beginPath(); g.arc(x, y, R + 6, 0, TAU); g.stroke();
-          g.setLineDash([]);
+          g.setLineDash(NO_DASH);
           const t = e.traits;
           if (t & 2) {        // hasted: speed streaks behind it
             const c = Math.cos(e.ang), sn = Math.sin(e.ang);
@@ -613,6 +696,18 @@ export const renderer = {
     if (Pl && coop && Pl.dead && G.state !== "over") this.drawDowned(Pl, plx, ply, P, offX, offY, camX, camY);
     else if (Pl && (!Pl.dead || Pl.deathT < 0.02)) this.drawPlayer(Pl, plx, ply, alpha, P, offX, offY, camX, camY);
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+    // where that hit came from: a red arc around you, pointing at it
+    if (Pl && Pl.hurtShow > 0 && !Pl.dead) {
+      Pl.hurtShow -= dt;
+      const a = Pl.hurtAng || 0, k = Math.min(1, Pl.hurtShow / 0.7);
+      g.strokeStyle = "#ff3b5c";
+      g.globalAlpha = 0.85 * k;
+      g.lineWidth = 5;
+      g.beginPath(); g.arc(plx, ply, 38, a - 0.55, a + 0.55); g.stroke();
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(plx + Math.cos(a) * 44, ply + Math.sin(a) * 44); g.lineTo(plx + Math.cos(a) * 56, ply + Math.sin(a) * 56); g.stroke();
+      g.globalAlpha = 1;
+    }
     if (Pl && coop) {
       // your colour, under you
       g.strokeStyle = SLOT_COL[Pl.slot] || "#fff";
@@ -696,11 +791,11 @@ export const renderer = {
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
     g.strokeStyle = col;
     g.lineWidth = 2;
-    g.setLineDash([6, 8]);
+    g.setLineDash(dash(6, 8));
     g.lineDashOffset = -G.time * 20;
     g.globalAlpha = 0.6;
     g.beginPath(); g.arc(x, y, reviveRange, 0, TAU); g.stroke();
-    g.setLineDash([]);
+    g.setLineDash(NO_DASH);
     g.globalAlpha = 1;
     if (Q.reviveT > 0) {
       g.strokeStyle = C.mint;
@@ -909,39 +1004,37 @@ export const renderer = {
 
   drawCrosshair() {
     const x = input.mouse.x, y = input.mouse.y;
-    const spin = G.time * 1.5;
-    g.strokeStyle = "rgba(3,5,24,0.7)";
-    g.lineWidth = 4;
-    g.beginPath(); g.arc(x, y, 10, 0, TAU); g.stroke();
-    g.strokeStyle = C.cyan;
-    g.lineWidth = 2;
-    g.beginPath(); g.arc(x, y, 10, 0, TAU); g.stroke();
-    g.beginPath();
-    for (let k = 0; k < 4; k++) {
-      const a = spin + k * (Math.PI / 2);
-      g.moveTo(x + Math.cos(a) * 14, y + Math.sin(a) * 14);
-      g.lineTo(x + Math.cos(a) * 19, y + Math.sin(a) * 19);
+    // over a robot? (settings: the crosshair can turn red)
+    let over = false;
+    if (G.settings.crossTarget) {
+      const cam = G.cam, wx = cam.x + (x - W / 2) / cam.z, wy = cam.y + (y - H / 2) / cam.z;
+      const items = G.enemies.items;
+      for (let i = 0; i < G.enemies.count && !over; i++) {
+        const e = items[i];
+        if (e.dead || e.ally > 0) continue;
+        const r = e.r * e.scale + 6;
+        if ((e.x - wx) ** 2 + (e.y - wy) ** 2 < r * r) over = true;
+      }
     }
-    g.stroke();
-    g.fillStyle = C.magenta;
-    g.beginPath(); g.arc(x, y, 2, 0, TAU); g.fill();
+    drawCrosshairAt(g, x, y, G.settings, G.time, over);
     const Pl = G.player;
+    const k = Math.max(0.75, (G.settings.crossSize || 100) / 100);
     if (Pl && Pl.charging) {
       g.strokeStyle = Pl.chargeFull ? "#ffffff" : C.amber;
       g.lineWidth = 2.5;
-      g.beginPath(); g.arc(x, y, 24, -Math.PI / 2, -Math.PI / 2 + TAU * Pl.charge); g.stroke();
+      g.beginPath(); g.arc(x, y, 24 * k, -Math.PI / 2, -Math.PI / 2 + TAU * Pl.charge); g.stroke();
     }
     // hit markers: white X on a hit, red on a kill
     const hm = Math.max(G.hitMark, G.killMark);
     if (hm > 0) {
       const kill = G.killMark > 0;
-      const r0 = 7, r1 = kill ? 15 : 12;
+      const r0 = 7 * k, r1 = (kill ? 15 : 12) * k;
       g.strokeStyle = kill ? "#ff3b5c" : "#ffffff";
       g.globalAlpha = Math.min(1, hm * 8);
       g.lineWidth = kill ? 3 : 2;
       g.beginPath();
-      for (let k = 0; k < 4; k++) {
-        const a = Math.PI / 4 + k * (Math.PI / 2);
+      for (let q = 0; q < 4; q++) {
+        const a = Math.PI / 4 + q * (Math.PI / 2);
         g.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0);
         g.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
       }
@@ -950,6 +1043,60 @@ export const renderer = {
     }
   },
 };
+
+// The crosshair (settings: colour, size, style, outline). "auto" draws by inverting whatever is behind
+// it, so it shows up on dark space and on bright explosions alike.
+const CROSS_COLS = { cyan: "#63f4ff", white: "#ffffff", yellow: "#ffe14d", lime: "#7dff5a", magenta: "#ff42d0", red: "#ff3b5c", orange: "#ff8a3d" };
+export function crossColour(st) {
+  if (st.crossColor === "custom") return st.crossCustom || "#63f4ff";
+  return CROSS_COLS[st.crossColor] || "auto";
+}
+export function drawCrosshairAt(c, x, y, st, time, over) {
+  const k = Math.max(0.75, (st.crossSize || 100) / 100);
+  const style = st.crossStyle || "ring";
+  const col = over ? "#ff3b5c" : crossColour(st);
+  const auto = col === "auto";
+  const spin = time * 1.5;
+  const R = 10 * k;
+  const path = () => {
+    c.beginPath();
+    if (style === "ring" || style === "ringcross") c.arc(x, y, R, 0, TAU);
+    if (style === "ring") {
+      for (let q = 0; q < 4; q++) {
+        const a = spin + q * (Math.PI / 2);
+        c.moveTo(x + Math.cos(a) * (R + 4 * k), y + Math.sin(a) * (R + 4 * k));
+        c.lineTo(x + Math.cos(a) * (R + 9 * k), y + Math.sin(a) * (R + 9 * k));
+      }
+    }
+    if (style === "cross" || style === "ringcross") {
+      const gap = style === "ringcross" ? R + 3 * k : 4 * k, len = style === "ringcross" ? R + 10 * k : 13 * k;
+      c.moveTo(x - len, y); c.lineTo(x - gap, y); c.moveTo(x + gap, y); c.lineTo(x + len, y);
+      c.moveTo(x, y - len); c.lineTo(x, y - gap); c.moveTo(x, y + gap); c.lineTo(x, y + len);
+    }
+  };
+  c.lineCap = "round";
+  if (style !== "dot") {
+    if (st.crossOutline !== false) {
+      c.strokeStyle = "rgba(3,5,24,0.75)";
+      c.lineWidth = 4.5 * Math.min(1.4, k);
+      path(); c.stroke();
+    }
+    if (auto) {
+      c.globalCompositeOperation = "difference";
+      c.strokeStyle = "#ffffff";
+    } else c.strokeStyle = col;
+    c.lineWidth = 2.2 * Math.min(1.4, k);
+    path(); c.stroke();
+    c.globalCompositeOperation = "source-over";
+  }
+  const dot = style === "dot" ? 4 * k : 2 * k;
+  if (st.crossOutline !== false) { c.fillStyle = "rgba(3,5,24,0.8)"; c.beginPath(); c.arc(x, y, dot + 1.6, 0, TAU); c.fill(); }
+  c.fillStyle = over ? "#ff3b5c" : auto ? "#ff42d0" : col;
+  c.beginPath(); c.arc(x, y, dot, 0, TAU); c.fill();
+  c.lineCap = "butt";
+}
+
+const PARALLAX = [0.1, 0.22, 0.42];
 
 // How each gun looks in your hands: length, thickness, recoil, extras.
 const GUN_SHAPE = {

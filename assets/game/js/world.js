@@ -42,6 +42,15 @@ export function hitStop(t, major) {
   G.hitstop = Math.max(G.hitstop, mode === "light" ? t * 0.6 : t);
 }
 
+/** Run stats for the summary screen (your own damage only). */
+export function trackHit(dmg, gun) {
+  const r = G.runStats;
+  if (!r) return;
+  r.dmg += dmg;
+  if (dmg > r.big) r.big = dmg;
+  if (gun) r.byGun[gun] = (r.byGun[gun] || 0) + dmg;
+}
+
 export function haptic(ms) {
   // Phones only, and only after a real tap (Chrome logs an error for vibrate() before that).
   if (!G.settings || !G.settings.haptics || !G.touchActive || !navigator.vibrate) return;
@@ -130,12 +139,15 @@ export function killEnemy(e, silent) {
     if (!ally) onKill(e);
   }
   if ((e.traits & TRAIT.volatile) && !silent && !ally) {
+    const cur = G.curEnemy;
+    G.curEnemy = null; G.hurtSrc = "volatile";
     const V = BALANCE.elite.traits.volatile;
     const off = rand(0, TAU);
     for (let i = 0; i < V.count; i++) {
       const a = off + (i / V.count) * TAU;
       fireEnemyBullet(e.x, e.y, Math.cos(a) * V.speed, Math.sin(a) * V.speed, 1, "amber", 6);
     }
+    G.curEnemy = cur; G.hurtSrc = "";
     fx.ring(e.x, e.y, 6, 70, 0.3, C.amber, 3);
   }
   if (kind.onDeath) kind.onDeath(e, silent);
@@ -188,6 +200,9 @@ export function hurtPlayer(dmg, sx, sy) {
   G.hitsTaken++;
 
   P.hurtSeq++;                 // co-op: tells that player's own screen to flash
+  P.hurtAng = Math.atan2(sy - P.y, sx - P.x);        // the red arc points at it
+  P.hurtShow = 0.7;
+  P.lastHitBy = G.hurtSrc || (G.curEnemy ? G.curEnemy.type : "");
   if (P === G.me) {
     G.personal = true;           // your screen only (not sent to teammates)
     fx.screenFlash("#ff2a55", 0.32, 2.6);
@@ -222,6 +237,10 @@ export function perfectBoost() {
   P.perfSeq = (P.perfSeq || 0) + 1;
   if (G.stats.perfectCharge) { if (P.charging) P.charge = 1; else P.chargeBank = true; }
   fx.text(P.x, P.y - 38, "PERFECT!", C.cyan, 18, 0.9);
+  // a crisp cyan-violet burst: two rings and a spray, no screen flash
+  fx.ring(P.x, P.y, 6, 70, 0.28, C.violet2, 4);
+  fx.sparks(P.x, P.y, 0, Math.PI, 14, P_CYAN, 520, 0.22);
+  if (P === G.me) audio.duck(0.75, 0.22);        // the mix dips for a beat: it should feel like a dodge
   fx.ring(P.x, P.y, 10, 95, 0.35, C.cyan, 3);
   audio.play("perfect", P.x, P.y);
   if (P === G.me) haptic(15);
@@ -245,6 +264,7 @@ export function healPlayer(amount, allowShield) {
 function killPlayer() {
   const P = G.player;
   P.dead = true;
+  P.killedBy = P.lastHitBy || "";
   P.deathT = 0;
   P.reviveT = 0;
   fx.explode(P.x, P.y, 34, P_CYAN, C.cyan);
@@ -327,6 +347,7 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.knock = plain ? PG.knock : s.knock;
   b.tgt = null; b.tgtId = 0; b.tgtT = 0;
   b.by = G.player;            // whose build gets the kill (co-op)
+  b.gun = s.gunId;
   return b;
 }
 
@@ -344,6 +365,7 @@ export function fireBeam(x, y, ang, len, width, dmg) {
     const side = Math.abs(-dx * sn + dy * c);
     if (side > width + e.r * e.scale) continue;
     hits++;
+    if (G.player === G.me) trackHit(dmg, "rail");
     fx.sparks(e.x, e.y, ang, 0.6, 5, P_VIOLET, 360, 0.25);
     if (damageEnemy(e, dmg, true, c, sn, 260)) G.killMark = 0.2;
   }
@@ -437,6 +459,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   b.life = 6;
   b.grazed = false;
   b.age = 0; b.turn = 0; b.back = 0; b.owner = null; b.hp = 0; b.home = 0;
+  b.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";     // for "what got you"
   return b;
 }
 
@@ -459,6 +482,7 @@ export function queueBlast(x, y, r, enemyDmg, friendly, hurtsPlayer, playerDmg, 
   q.dead = false; q.x = x; q.y = y; q.r = r; q.enemyDmg = enemyDmg; q.friendly = friendly;
   q.hurtsPlayer = !!hurtsPlayer; q.dmg = playerDmg || 0; q.col = col || C.orange; q.pal = pal === undefined ? P_ORANGE : pal;
   q.by = G.player;
+  q.src = G.curEnemy ? G.curEnemy.type : "";
 }
 
 function processBlasts() {
@@ -496,7 +520,9 @@ function processBlasts() {
         const P = G.players[k];
         if (P.dead || (P.x - q.x) ** 2 + (P.y - q.y) ** 2 >= rr * rr) continue;
         usePlayer(P);
+        G.hurtSrc = q.src;
         hurtPlayer(q.dmg, q.x, q.y);
+        G.hurtSrc = "";
       }
     }
   }
@@ -731,6 +757,7 @@ function updatePlayerBullets(dt) {
       if (b.nh < 8) b.hits[b.nh++] = e.id;
       fx.sparks(b.x, b.y, Math.atan2(-diry, -dirx), 0.7, b.crit ? 6 : 3, b.crit ? P_AMBER : e.kind.pal, 300, 0.2);
       audio.play(b.crit ? "crit" : "hit", e.x, e.y, 0.55);
+      if (b.by === G.me) trackHit(b.dmg, b.gun);
       if (damageEnemy(e, b.dmg, b.crit, dirx, diry, b.knock)) G.killMark = 0.18;
       G.hitMark = b.crit ? 0.16 : Math.max(G.hitMark, 0.1);
       if (b.chain) chainFrom(e, b);
@@ -883,7 +910,10 @@ function updateEnemyBullets(dt) {
       }
       if (d2 < (b.r + hurtR) ** 2) {
         usePlayer(P);
-        if (hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) {
+        G.hurtSrc = b.src;
+        const hit = hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+        G.hurtSrc = "";
+        if (hit) {
           b.dead = true;
           fx.burst(b.x, b.y, 6, P_DANGER, 160, 0.3, 1.2);
         }
@@ -991,7 +1021,7 @@ function contactsFor(P) {
     }
     if (e.contact <= 0) continue;
     const rr = er * 0.82 + hurtR;
-    if (dx * dx + dy * dy < rr * rr) hurtPlayer(e.contact, e.x, e.y);
+    if (dx * dx + dy * dy < rr * rr) { G.hurtSrc = e.type; hurtPlayer(e.contact, e.x, e.y); G.hurtSrc = ""; }
   }
 
   // moons

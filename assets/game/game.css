@@ -1133,3 +1133,28 @@ body.eg-game::before { display: none; }
 .mate-hp { color: var(--g-heart); letter-spacing: 0.05em; }
 .mate.down .mate-hp { color: var(--g-danger); animation: heart-beat 0.8s ease-in-out infinite; }
 .mate.gone { opacity: 0.45; }
+
+/* ---------- crosshair settings ---------- */
+.set-h { margin: 10px 0 2px; font: 700 0.75rem var(--g-num); letter-spacing: 0.18em; text-transform: uppercase; color: var(--g-cyan); }
+.cross-set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+.cross-fields { display: grid; gap: 4px; }
+.cross-preview { width: 120px; height: 120px; border-radius: 14px; border: 1px solid rgba(150, 170, 255, 0.25); }
+.set-row input[type="color"] { width: 56px; height: 36px; padding: 0; border: 1px solid rgba(150, 170, 255, 0.3); border-radius: 8px; background: #060a1d; }
+.set-row[hidden] { display: none; }
+@media (max-width: 560px) { .cross-set { grid-template-columns: 1fr; } .cross-preview { justify-self: center; } }
+.cards.waiting .card { pointer-events: none; opacity: 0.45; filter: grayscale(0.4); }
+
+/* ---------- synergy hints ---------- */
+.synergy {
+  justify-self: center;
+  padding: 2px 9px;
+  border: 1px solid rgba(115, 255, 206, 0.55);
+  border-radius: 999px;
+  background: rgba(115, 255, 206, 0.1);
+  color: var(--g-mint);
+  font: 700 0.66rem var(--g-num);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 0 10px -3px rgba(115, 255, 206, 0.6);
+}
+.card .synergy { justify-self: inherit; }

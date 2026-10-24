@@ -3,7 +3,7 @@
 
 import { G, usePlayer } from "../state.js";
 import { BALANCE } from "../balance.js";
-import { TAU, rand, randInt } from "../util.js";
+import { TAU, rand, randInt, dash } from "../util.js";
 import { sprites, C, PAL, P_CYAN, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -140,7 +140,7 @@ export function chargeRing(g, x, y, R, p, col) {
   g.globalAlpha = 0.85;
   g.strokeStyle = col;
   g.lineWidth = 3;
-  g.setLineDash([14, 10]);
+  g.setLineDash(dash(14, 10));
   g.beginPath(); g.arc(x, y, R, 0, TAU); g.stroke();
   g.restore();
 }

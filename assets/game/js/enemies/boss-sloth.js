@@ -3,7 +3,7 @@
    damage: be greedy) before waking with a telegraphed shockwave. Hug it and it swipes. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange, angDiff } from "../util.js";
+import { TAU, rand, randRange, angDiff, dash } from "../util.js";
 import { C, SIN, P_SLOTH, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -124,7 +124,7 @@ export const sloth = {
       g.globalAlpha = 0.35;
       g.strokeStyle = COL;
       g.lineWidth = 2;
-      g.setLineDash([3, 12]);
+      g.setLineDash(dash(3, 12));
       g.lineDashOffset = G.time * 6;
       g.stroke();
       g.restore();

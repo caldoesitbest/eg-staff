@@ -1,3 +1,5 @@
+import { createMusic } from "./music.js";
+
 /* Every sound is synthesized with the Web Audio API (no audio files, nothing copyrighted).
    Audio starts on the first tap/click/key (required on iOS). */
 
@@ -34,6 +36,7 @@ function ensure() {
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   applyVolumes();
+  mus = createMusic(ctx, musicBus, noiseBuf);
   return true;
 }
 
@@ -351,74 +354,16 @@ const SOUNDS = {
 // The charged shot's hum: one oscillator that rises with the charge.
 let hum = null;
 
-// ---------- procedural music ----------
-// A minor synthwave loop. Intensity 0 = menu pad, 1 = waves (drums), 2 = boss (lead + faster hats).
-const music = {
-  on: false, intensity: 0, step: 0, nextTime: 0, timer: 0, bpm: 108,
-  progression: [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59]],   // Am F G Em (MIDI)
-  lead: [0, 3, 7, 10, 12, 10, 7, 3],
-};
-const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
-
-function scheduleStep(t, step) {
-  const bar = Math.floor(step / 16) % 4;
-  const s = step % 16;
-  const chord = music.progression[bar];
-  const lvl = music.intensity;
-  const d = musicBus;
-  // bass: eighth notes on the root, octave jump on the off-beat
-  if (s % 2 === 0) {
-    const n = chord[0] - 24 + (s % 4 === 2 ? 12 : 0);
-    const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-    o.type = "sawtooth"; o.frequency.value = midi(n);
-    f.type = "lowpass"; f.frequency.setValueAtTime(lvl ? 900 : 500, t); f.frequency.exponentialRampToValueAtTime(200, t + 0.2);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl ? 0.32 : 0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + 0.26);
-  }
-  // pad: chord on each bar
-  if (s === 0) {
-    for (const n of chord) {
-      for (const det of [-6, 6]) {
-        const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-        o.type = "sawtooth"; o.frequency.value = midi(n); o.detune.value = det;
-        f.type = "lowpass"; f.frequency.value = 1100;
-        const len = (60 / music.bpm) * 4;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-        o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + len + 0.05);
-      }
-    }
-  }
-  if (lvl >= 1) {
-    // kick on 1 and 3 (and 4-on-the-floor at boss intensity)
-    if (s % (lvl >= 2 ? 4 : 8) === 0) {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.14);
-      g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-      o.connect(g); g.connect(d); o.start(t); o.stop(t + 0.22);
-    }
-    // snare on 2 and 4
-    if (s === 4 || s === 12) noise(d, t, 0.16, 0.22, "bandpass", 1800, 900, 0.8);
-    // hats
-    if (s % 2 === 1 || lvl >= 2) noise(d, t, 0.04, lvl >= 2 ? 0.07 : 0.09, "highpass", 7000, 9000);
-  }
-  if (lvl >= 2 && s % 2 === 0) {
-    const n = chord[0] + 12 + music.lead[(s / 2) % 8];
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = "square"; o.frequency.value = midi(n);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.045, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-    o.connect(g); g.connect(d); o.start(t); o.stop(t + 0.15);
-  }
-}
-
-function musicTick() {
-  if (!ctx || !music.on) return;
-  const stepDur = 60 / music.bpm / 4;
-  if (music.nextTime < now() - 0.2) music.nextTime = now() + 0.05;   // woke up late: skip, don't burst
-  while (music.nextTime < now() + 0.12) {
-    scheduleStep(music.nextTime, music.step);
-    music.step++;
-    music.nextTime += stepDur;
-  }
+// ---------- music (music.js: one theme per Sin, chapter + boss arrangements) ----------
+let mus = null;
+const musicWant = { on: false, intensity: 0, theme: "menu", part: "chapter" };
+function musicAllowed() { return !!(ctx && unlocked && !vol.muted && vol.music > 0); }
+function syncMusic() {
+  if (!mus) return;
+  mus.setTheme(musicWant.theme, musicWant.part);
+  mus.setIntensity(musicWant.intensity);
+  if (musicWant.on && musicAllowed()) mus.start();
+  else if (mus.playing) mus.stop();       // nothing to hear: stop it entirely (no CPU spent)
 }
 
 export const audio = {
@@ -433,13 +378,14 @@ export const audio = {
       const s = ctx.createBufferSource();
       s.buffer = b; s.connect(ctx.destination); s.start(0);
       unlocked = true;
-      if (music.on) { music.nextTime = now() + 0.05; }
+      syncMusic();
     }
   },
 
-  setVolumes(sfx, mus, muted) {
-    vol.sfx = sfx; vol.music = mus; vol.muted = !!muted;
+  setVolumes(sfx, musicVol, muted) {
+    vol.sfx = sfx; vol.music = musicVol; vol.muted = !!muted;
     applyVolumes();
+    syncMusic();
   },
 
   setListener(x, y) { listenerX = x; listenerY = y; },
@@ -492,16 +438,28 @@ export const audio = {
   },
 
   musicStart(intensity) {
-    music.intensity = intensity || 0;
-    if (music.on) return;
-    music.on = true;
-    if (ctx) music.nextTime = now() + 0.05;
-    clearInterval(music.timer);
-    music.timer = setInterval(musicTick, 30);
+    musicWant.on = true;
+    if (intensity !== undefined) musicWant.intensity = intensity;
+    syncMusic();
   },
-  musicIntensity(i) { music.intensity = i; },
-  musicStop() { music.on = false; clearInterval(music.timer); },
+  musicIntensity(i) {
+    if (musicWant.intensity === i) return;
+    musicWant.intensity = i;
+    if (mus) mus.setIntensity(i);
+  },
+  /** id: "menu" or a sin ("sloth", "glutton", ...); part: "chapter" or "boss". */
+  musicTheme(id, part) {
+    if (musicWant.theme === id && musicWant.part === part) return;
+    musicWant.theme = id; musicWant.part = part;
+    if (mus) mus.setTheme(id, part);
+  },
+  musicStop() { musicWant.on = false; syncMusic(); },
+  /** A short muffle of the soundtrack (perfect boosts). */
+  duck(depth, time) { if (mus && mus.playing) mus.duck(depth, time); },
+  muffle(on) { if (mus && mus.playing) mus.muffle(on); },
+  riser(time) { if (mus && mus.playing) mus.riser(time); },
+  impact() { if (mus && mus.playing) mus.impact(); },
 
   suspend() { if (ctx && ctx.state === "running") ctx.suspend().catch(() => {}); },
-  resume() { if (ctx && unlocked && ctx.state === "suspended") ctx.resume().catch(() => {}); if (ctx) music.nextTime = Math.max(music.nextTime, now() + 0.05); },
+  resume() { if (ctx && unlocked && ctx.state === "suspended") ctx.resume().catch(() => {}); if (mus) mus.resync(); },
 };

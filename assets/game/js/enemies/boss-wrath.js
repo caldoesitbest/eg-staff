@@ -1,7 +1,7 @@
 /* Rung 5 · Wrath, The Overclock: bullet patterns → summons behind a shield → enraged dashes. */
 
 import { G } from "../state.js";
-import { TAU, rand, randInt, randRange } from "../util.js";
+import { TAU, rand, randInt, randRange, dash } from "../util.js";
 import { C, SIN, P_WRATH, P_MAGENTA, P_RED, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -120,7 +120,7 @@ export const wrath = {
       g.globalAlpha = 0.6;
       g.strokeStyle = e.windT <= 0.25 ? "#ffffff" : C.red;
       g.lineWidth = e.windT <= 0.25 ? 4 : 2;
-      g.setLineDash([16, 10]);
+      g.setLineDash(dash(16, 10));
       g.lineDashOffset = -G.time * 200;
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(e.dashA) * 1100, y + Math.sin(e.dashA) * 1100); g.stroke();
       g.restore();
@@ -153,7 +153,7 @@ export const wrath = {
       g.rotate(e.spin * (k % 2 ? -1.3 : 1) * (1 + k * 0.4));
       g.strokeStyle = k === 0 ? col : "rgba(255,255,255,0.35)";
       g.lineWidth = k === 0 ? 6 : 3;
-      g.setLineDash(k === 0 ? [10, 7] : [4, 6]);
+      g.setLineDash(k === 0 ? dash(10, 7) : dash(4, 6));
       g.beginPath(); g.arc(0, 0, rr, 0, TAU); g.stroke();
       g.restore();
     }

@@ -142,22 +142,38 @@ function rollRarity() {
   return 0;
 }
 
+const itemOpen = (id) => itemLvl(id) < ITEMS[id].max && (id !== "crown" || crownTarget());
+
 function rollOffer(taken) {
   const has = (kind, id) => taken.some((o) => o && o.kind === kind && o.id === id);
-  if (G.wave >= 2 && rng() < SH.gunChance) {
+  const gun = () => {
     const list = GUN_IDS.filter((id) => {
       if (has("gun", id)) return false;
       const held = heldGun(id);
       return held ? held.tier < 4 : id !== "blaster";
     });
-    if (list.length) return { kind: "gun", id: list[Math.floor(rng() * list.length)], locked: false, sold: false };
-  }
-  for (let r = rollRarity(); r >= 0; r--) {
-    const list = ITEM_IDS.filter((id) => ITEMS[id].r === r && itemLvl(id) < ITEMS[id].max && !has("item", id) && (id !== "crown" || crownTarget()));
+    return list.length ? { kind: "gun", id: list[Math.floor(rng() * list.length)], locked: false, sold: false } : null;
+  };
+  if (G.wave >= 2 && rng() < SH.gunChance) { const o = gun(); if (o) return o; }
+  // the rolled rarity, then cheaper, then dearer (late in endless whole rarities run out)
+  const r0 = rollRarity();
+  for (let k = 0; k < 4; k++) {
+    const r = k <= r0 ? r0 - k : k;
+    const list = ITEM_IDS.filter((id) => ITEMS[id].r === r && itemOpen(id) && !has("item", id));
     if (list.length) return { kind: "item", id: list[Math.floor(rng() * list.length)], locked: false, sold: false };
   }
-  return null;
+  return G.wave >= 2 ? gun() : null;     // gear sold out: a gun rather than an empty slot
 }
+
+/** Nothing left to buy: both guns at Tier IV and every piece of gear maxed (long endless runs get here). */
+export function armorySoldOut() {
+  if (!G.guns || G.guns.some((g) => !g || g.tier < 4)) return false;
+  return !ITEM_IDS.some(itemOpen);
+}
+
+/** The Armory opens after waves 2 and 4 of each chapter and after its boss; waves 1 and 3 are a quick card. */
+export function armoryAfter(wave) { return SH.openAfter.indexOf(((wave - 1) % 5) + 1) !== -1; }
+export function nextArmoryWave(wave) { for (let w = wave + 1; w < wave + 6; w++) if (armoryAfter(w)) return w; return wave + 1; }
 
 /** New offers (locked ones stay). */
 export function rollShop() {
@@ -167,11 +183,20 @@ export function rollShop() {
   for (let i = 0; i < SH.slots; i++) if (!offers[i]) offers[i] = rollOffer(offers);
   G.shop.offers = offers;
 }
-export function openShop() {
+/** bounty: after a boss, one offer is guaranteed Epic or better and the first reroll is free. */
+export function openShop(bounty) {
   G.shop.rerolls = 0;
+  G.shop.free = bounty ? 1 : 0;
   rollShop();
+  if (bounty) {
+    const i = G.shop.offers.findIndex((o) => !o || (!o.locked && o.kind === "item"));
+    const pool = ITEM_IDS.filter((id) => ITEMS[id].r >= 2 && itemOpen(id) &&
+      !G.shop.offers.some((o) => o && o.kind === "item" && o.id === id));
+    if (i >= 0 && pool.length) G.shop.offers[i] = { kind: "item", id: pool[Math.floor(rng() * pool.length)], locked: false, sold: false, bounty: true };
+  }
 }
 export function rerollCost() {
+  if (G.shop.free > 0) return 0;
   const R = SH.reroll;
   return Math.round(R.base + R.perWave * G.wave) + R.step * G.shop.rerolls;
 }
@@ -180,7 +205,8 @@ export function rerollShop() {
   const c = rerollCost();
   if (G.stars < c) return false;
   G.stars -= c;
-  G.shop.rerolls++;
+  if (G.runStats) G.runStats.spent += c;
+  if (G.shop.free > 0) G.shop.free--; else G.shop.rerolls++;
   rollShop();
   return true;
 }
@@ -206,6 +232,7 @@ export function buy(i) {
   const price = offerPrice(o);
   if (G.stars < price) return false;
   G.stars -= price;
+  if (G.runStats && G.player === G.me) G.runStats.spent += price;
   o.sold = true;
   o.locked = false;
   if (o.kind === "gun") giveGun(o.id); else giveItem(o.id);
@@ -253,9 +280,10 @@ export function offerInfo(o) {
   }
   const it = ITEMS[o.id], n = itemLvl(o.id);
   let text = it.text;
+  if (o.bounty) text = "Boss bounty. " + text;
   if (o.id === "crown") { const t = crownTarget(); if (t) text += " (" + CARDS.find((c) => c.id === t).name + ")"; }
   return {
-    name: it.name, kicker: RARITY[it.r].name + (it.max > 1 ? " · " + (n + 1) + "/" + it.max : ""), col: RARITY[it.r].col, text,
+    name: it.name, kicker: RARITY[it.r].name + " equipment" + (it.max > 1 ? " · " + (n + 1) + "/" + it.max : ""), col: RARITY[it.r].col, text,
     note: n ? "You have " + n : "", rarity: it.r,
   };
 }

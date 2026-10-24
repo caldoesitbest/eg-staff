@@ -12,6 +12,8 @@ import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { SLOT_COL } from "./coop.js";
+import { drawCrosshairAt } from "./render.js";
+import { synergyFor } from "./synergy.js";
 
 const $ = (id) => document.getElementById(id);
 const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
@@ -43,7 +45,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 3;     // bump with each update's What's new
+const NEWS_VERSION = 4;     // bump with each update's What's new
 
 export const ui = {
   els: {},
@@ -144,6 +146,13 @@ export const ui = {
     bind("set-lookahead", "change", (n) => { s().lookahead = n.checked; });
     bind("set-arrows", "change", (n) => { s().arrows = n.checked; });
     bind("set-hitstop", "change", (n) => { s().hitstop = n.value; });
+    const cross = (id, ev, fn) => bind(id, ev, (n) => { fn(n); this.syncCrosshair(); });
+    cross("set-crosscolor", "change", (n) => { s().crossColor = n.value; });
+    cross("set-crosscustom", "input", (n) => { s().crossCustom = n.value; });
+    cross("set-crosssize", "input", (n) => { s().crossSize = Number(n.value); });
+    cross("set-crossstyle", "change", (n) => { s().crossStyle = n.value; });
+    cross("set-crossoutline", "change", (n) => { s().crossOutline = n.checked; });
+    cross("set-crosstarget", "change", (n) => { s().crossTarget = n.checked; });
     // graphics preset: picking one fills in the detail settings; changing a detail makes it "custom"
     bind("set-quality", "change", (n) => {
       s().quality = n.value;
@@ -250,8 +259,32 @@ export const ui = {
     set("set-lookahead", "checked", s.lookahead);
     set("set-arrows", "checked", s.arrows);
     set("set-hitstop", "value", s.hitstop);
+    set("set-crosscolor", "value", s.crossColor);
+    set("set-crosscustom", "value", s.crossCustom);
+    set("set-crosssize", "value", s.crossSize);
+    set("set-crossstyle", "value", s.crossStyle);
+    set("set-crossoutline", "checked", s.crossOutline);
+    set("set-crosstarget", "checked", s.crossTarget);
+    this.syncCrosshair();
     const note = $("set-note");
     if (note) note.textContent = store.writable ? "Settings save on this device." : "Your browser is blocking storage, so settings and bests won't be saved after you leave.";
+  },
+  /** The crosshair preview: half dark space, half a bright flash. */
+  syncCrosshair() {
+    const st = store.data.settings;
+    const row = $("set-crosscustom-row");
+    if (row) row.hidden = st.crossColor !== "custom";
+    const cv = $("cross-preview");
+    if (!cv) return;
+    const c = cv.getContext("2d");
+    c.globalCompositeOperation = "source-over";
+    c.fillStyle = "#030518";
+    c.fillRect(0, 0, 60, 120);
+    const grd = c.createRadialGradient(95, 60, 4, 95, 60, 70);
+    grd.addColorStop(0, "#fff7d6"); grd.addColorStop(0.5, "#ffc861"); grd.addColorStop(1, "#ff42d0");
+    c.fillStyle = grd;
+    c.fillRect(60, 0, 60, 120);
+    drawCrosshairAt(c, 60, 60, st, 0.4, false);
   },
   syncMute() {
     const b = $("menu-mute");
@@ -635,6 +668,8 @@ export const ui = {
 
   // ---------------- upgrade pick ----------------
   showUpgrade(ids, info) {
+    this.armoryLine = info.armory || "";
+    $("cards").classList.remove("waiting");
     $("up-kicker").textContent = info.kicker;
     $("up-title").textContent = info.title;
     $("up-bonus").innerHTML = info.bonus || "";
@@ -657,7 +692,7 @@ export const ui = {
       b.dataset.id = id;
       b.style.setProperty("--card-col", c.color);
       b.append(el("span", "card-key", String(i + 1)));
-      b.append(el("span", "card-tag" + (c.kind === "gear" ? " gear" : ""), c.kind === "sin" ? "Sin" : "Gear"));
+      b.append(el("span", "card-tag" + (c.kind === "gear" ? " gear" : ""), c.kind === "sin" ? "Sin" : "Augment"));
       const art = el("span", "card-art");
       if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; img.width = 76; img.height = 76; art.append(img); }
       else art.append(icon(c.icon));
@@ -667,6 +702,8 @@ export const ui = {
       pips.setAttribute("aria-label", "Level " + (lvl + 1) + " of " + c.max);
       for (let k = 0; k < c.max; k++) pips.append(el("i", k < lvl ? "on" : k === lvl ? "next" : ""));
       b.append(pips);
+      const syn = synergyFor("card", id);
+      if (syn) b.append(el("span", "synergy", syn));
       const desc = el("p", "card-desc", c.levels[lvl]);
       if (c.tag && lvl === 0) desc.append(el("small", "", c.tag));
       if (lvl > 0) desc.append(el("small", "", "Level " + (lvl + 1) + (lvl + 1 === c.max ? " · max" : "")));
@@ -683,7 +720,7 @@ export const ui = {
     const rr = E.reroll + E.rerollStep * G.rerolls;
     $("reroll-label").textContent = "Reroll · ★" + rr;
     $("reroll-btn").disabled = G.stars < rr;
-    $("up-stars").textContent = "You have ★" + G.stars + " · the Armory is next";
+    $("up-stars").textContent = "You have ★" + G.stars + (this.armoryLine ? " · " + this.armoryLine : "");
   },
 
   renderUpgradeHint() {
@@ -762,6 +799,12 @@ export const ui = {
       box.append(row);
     }
   },
+  /** Co-op, a quick wave (no Armory): you picked, now waiting on these people. */
+  setCardsWaiting(names) {
+    $("cards").classList.add("waiting");
+    $("up-title").textContent = "Ready";
+    $("up-hint").textContent = names.length ? "Waiting for " + names.join(", ") + "…" : "Starting…";
+  },
   /** Co-op shop: you're ready, waiting on these people. */
   setShopWaiting(names) {
     const b = $("shop-go");
@@ -805,6 +848,8 @@ export const ui = {
       b.append(el("span", "offer-name", info.name));
       b.append(el("p", "offer-text", info.text));
       if (info.note) b.append(el("span", "offer-note", info.note));
+      const syn = synergyFor(o.kind, o.id);
+      if (syn) b.append(el("span", "synergy", syn));
       const pr = el("span", "offer-price" + (G.stars < price && !o.sold ? " short" : ""), o.sold ? "Sold" : "★ " + price);
       b.append(pr);
       b.disabled = o.sold;
@@ -935,6 +980,11 @@ export const ui = {
     add("Time", sum.time);
     if (sum.perfects) add("Perfect boosts", String(sum.perfects));
     if (sum.bosses) add("Bosses", String(sum.bosses));
+    if (sum.dmg) add("Damage dealt", formatScore(sum.dmg));
+    if (sum.big) add("Biggest hit", formatScore(sum.big));
+    if (sum.topGun) add("Top gun", sum.topGun);
+    if (sum.spent) add("Stars spent", String(sum.spent));
+    if (sum.killedBy) add("Got you", sum.killedBy);
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
     renderArsenal(buildBox);

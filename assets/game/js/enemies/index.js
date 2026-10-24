@@ -10,7 +10,6 @@ import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage } from "../world.js";
-import { estimateDps } from "../upgrades.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -53,7 +52,8 @@ export function spawnEnemy(type, x, y, opts) {
   const elite = !boss && type !== "gem" && !!(opts && opts.elite);
   // Bosses (and Pride's gems): tougher higher up the ladder, and again on every endless lap.
   const lapWave = ((n - 1) % 35) + 1;
-  const lapMul = (1 + (G.lap || 0) * BALANCE.ladder.lapHp) * (1 + Math.max(0, lapWave - 5) * BALANCE.ladder.rungHp);
+  const rung = Math.max(0, lapWave - 5), L = BALANCE.ladder;
+  const lapMul = (1 + (G.lap || 0) * L.lapHp) * (1 + rung * L.rungHp + rung * rung * L.rungHp2);
   const hpMul = boss || type === "gem" ? lapMul : 1 + (n - 1) * W.hpPerWave + (n - 1) * (n - 1) * W.hpCurve;
   const spMul = boss ? 1 : 1 + Math.min(W.speedCap, (n - 1) * W.speedPerWave);
 
@@ -67,11 +67,9 @@ export function spawnEnemy(type, x, y, opts) {
   // co-op: bosses get much tougher per extra player, robots a little (most of the extra comes as more robots)
   const crew = Math.max(1, G.net.n || 1);
   const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
+  // Boss health is fixed by the boss, the chapter, the endless lap and the team size. It never looks
+  // at your build: a strong build is supposed to shorten the fight.
   e.maxHp = e.hp = def.hp * hpMul * crewMul * (elite ? E.hp : 1);
-  if (boss && def.fightSecs && G.stats) {
-    const floor = teamDps() * def.fightSecs;
-    if (floor > e.maxHp) { e.maxHp = e.hp = floor; e.scaledToYou = true; } else e.scaledToYou = false;
-  }
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
   e.contact = def.contact === undefined ? 1 : def.contact;
@@ -88,16 +86,6 @@ export function spawnEnemy(type, x, y, opts) {
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   return e;
-}
-
-/** Everyone's firepower together (co-op bosses are sized to the whole team). */
-function teamDps() {
-  if (G.players.length <= 1) return estimateDps();
-  const cur = G.player;
-  let t = 0;
-  for (let i = 0; i < G.players.length; i++) { const P = G.players[i]; if (P.gone) continue; usePlayer(P); t += estimateDps(); }
-  usePlayer(cur);
-  return t;
 }
 
 /** Which player a robot is after: the nearest, re-picked every second or two so a crowd spreads out. */
@@ -234,7 +222,9 @@ export function updateEnemies(dt) {
     } else {
       const T = targetOf(e);
       usePlayer(T);
+      G.curEnemy = e;            // its shots and blasts remember who fired them
       e.kind.update(e, edt * e.haste, T);
+      G.curEnemy = null;
       if (e.dead) continue;
     }
 

@@ -1,7 +1,7 @@
 /* Rung 2 · Gluttony, The Gluttony Engine: eats its own minions to heal and grow. Starve it. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange } from "../util.js";
+import { TAU, rand, randRange, dash } from "../util.js";
 import { C, SIN, P_GLUT, P_HEART, P_RED, P_AMBER } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -108,7 +108,7 @@ export const glutton = {
       g.globalAlpha = 0.14;
       g.strokeStyle = COL;
       g.lineWidth = 3;
-      g.setLineDash([6, 14]);
+      g.setLineDash(dash(6, 14));
       g.lineDashOffset = G.time * 140;
       g.beginPath(); g.arc(x, y, d.inhaleRange, 0, TAU); g.stroke();
       g.restore();

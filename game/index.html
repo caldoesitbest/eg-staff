@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=5">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=4">
+<link rel="stylesheet" href="../assets/game/game.css?v=5">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -124,7 +124,7 @@
       <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
       <ol class="mini-ladder" id="mini-ladder"></ol>
     </aside>
-    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v3.0 · Armory + Co-op</span><span>Same planet.</span> <span>Different breed.</span></footer>
+    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v4.0 · Ascension</span><span>Same planet.</span> <span>Different breed.</span></footer>
   </section>
 
   <!-- pause -->
@@ -293,6 +293,22 @@
         <label class="set-row set-check"><input type="checkbox" id="set-arrows"><span>Off-screen markers <small>(arrows at the edge for robots you can't see)</small></span></label>
         <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
         <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
+        <h3 class="set-h">Crosshair</h3>
+        <div class="cross-set">
+          <div class="cross-fields">
+            <label class="set-row"><span>Colour <small>Auto flips to stand out on anything</small></span>
+              <select id="set-crosscolor"><option value="auto">Auto (always visible)</option><option value="cyan">Cyan</option><option value="white">White</option><option value="yellow">Yellow</option><option value="lime">Lime</option><option value="magenta">Magenta</option><option value="red">Red</option><option value="orange">Orange</option><option value="custom">Custom…</option></select>
+            </label>
+            <label class="set-row" id="set-crosscustom-row" hidden><span>Custom colour</span><input type="color" id="set-crosscustom"></label>
+            <label class="set-row"><span>Size</span><input type="range" id="set-crosssize" min="75" max="200" step="5"></label>
+            <label class="set-row"><span>Style</span>
+              <select id="set-crossstyle"><option value="ring">Ring</option><option value="cross">Cross</option><option value="ringcross">Ring + cross</option><option value="dot">Dot</option></select>
+            </label>
+            <label class="set-row set-check"><input type="checkbox" id="set-crossoutline"><span>Dark outline</span></label>
+            <label class="set-row set-check"><input type="checkbox" id="set-crosstarget"><span>Turn red over a robot</span></label>
+          </div>
+          <canvas class="cross-preview" id="cross-preview" width="120" height="120" aria-label="Crosshair preview"></canvas>
+        </div>
       </div>
       <p class="set-note" id="set-note"></p>
       <button class="btn btn-primary" id="settings-done" type="button">Done</button>
@@ -338,17 +354,18 @@
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 3</span><i>&#10022;</i><span>Armory + Co-op</span></p>
+      <p class="kicker"><span>Update 4</span><i>&#10022;</i><span>Ascension</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
-        <li><b>Co-op, 2&ndash;4 players.</b> Host a lobby, send the code, climb the Sin Ladder together (browser or the Windows game). Waves and bosses scale up, everyone builds their own loadout, and you can revive each other.</li>
-        <li><b>The Armory.</b> A shop after every wave: seven guns (Scattergun, Pulse SMG, Rail Lance, Nova Launcher, Arc Caster, Heartseeker), 19 pieces of gear from Common to Legendary. Lock what you like, reroll the rest, buy a gun again to tier it up to IV.</li>
-        <li><b>Two gun slots.</b> Swap with <kbd>Q</kbd>, the mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>, <kbd>Y</kbd> on a gamepad, or tap your gun on a phone.</li>
-        <li><b>Charged shots.</b> Hold right-click (or <kbd>E</kbd>, <kbd>LT</kbd>, the Charge button) and let go. Every gun charges differently: a plasma orb, a pellet wall, a screen-wide rail beam, a cluster bomb, a storm orb, a heart swarm. New cards: Overcharge and Capacitor.</li>
-        <li><b>Lust, reworked.</b> Shoot its kisses down. Its heart is exposed while it lures you, and boosting out of the lure stuns it. Heartbroken, it brings fakes: find the one with the beating heart.</li>
-        <li><b>Auto-aim on mouse and keyboard</b>, plus a lighter Aim assist. <kbd>T</kbd> toggles it mid-run.</li>
-        <li><b>Graphics settings.</b> Presets down to Potato, render resolution, frame-rate cap, particles, background, glow, trails, damage numbers, flashes, bold robot shots.</li>
-        <li><b>Feel.</b> Hit markers, gun-specific sounds and recoil, a charge hum, a low-health heartbeat, clearer menus.</li>
+        <li><b>Boss music.</b> Every Sin has its own track: a heavy half-time crawl for Sloth, an overdriven gnashing stomp for Gluttony, a swung casino bounce for Greed, a harmonic-minor slow burn for Lust, a 174 bpm reese-bass rampage for Wrath, a tom-driven royal anthem for Pride, and Envy steals everyone else's melodies. Each chapter has its own theme too, and the music rises when the arena gets crowded and again when a boss is low.</li>
+        <li><b>A crosshair you can always see.</b> Default "Auto" inverts whatever is behind it. Or pick a colour (or any colour), the size, the shape, an outline, and whether it turns red over a robot. Settings &rarr; Gameplay.</li>
+        <li><b>Seven chapters, seven looks.</b> Each Sin tints the sky, the floor grid and the arena, with its own drifting dust, spores, gold glints, rose petals, embers, crystals or glitch shards.</li>
+        <li><b>Fewer stops.</b> The Armory now opens after the 2nd and 4th wave of each chapter and after every boss (with a boss bounty: one Epic-or-better offer and a free reroll). Other waves: pick your Sin and go.</li>
+        <li><b>Fair bosses.</b> Boss health no longer scales up to match your damage, so a strong build kills bosses faster, as it should. Later bosses are tougher to make up for it, and Pride's crown takes real work to break.</li>
+        <li><b>Know what hit you.</b> A red arc points at whatever just hurt you, and the run summary shows what got you, your damage, biggest hit, top gun and stars spent.</li>
+        <li><b>Endless keeps flowing.</b> Once every Sin and Augment is maxed, the card pick is skipped. Once the Armory has nothing left to sell you, it only opens when you need patching up.</li>
+        <li><b>Synergy hints.</b> Cards and Armory offers tell you when they combo with what you already have.</li>
+        <li><b>Smoother on every device.</b> The game picks a starting quality for your device and lowers the render resolution on its own before it drops effects, sprites stay sharp at any resolution, and less memory churn means fewer hitches.</li>
       </ul>
       <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
     </div>
@@ -365,10 +382,10 @@
           <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
           <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Volatile (bursts when it dies), <em>green +</em> Regenerating.</li>
           <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser.</li>
-          <li>Grab <b>stars</b>. After every wave you pick a card, then hit <b>the Armory</b>: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
+          <li>Grab <b>stars</b>. After every wave you pick a <b>Sin</b> or an <b>Augment</b>. After the 2nd and 4th wave of each chapter, and after every boss, <b>the Armory</b> opens: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
           <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
           <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
-          <li>Pick one of three <b>sins</b> after every wave. Stack them. Get weird.</li>
+          <li>Stack <b>Sins</b> and gear that combo: cards and offers say when they synergise with what you have.</li>
           <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
         </ul>
@@ -390,37 +407,40 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=4",
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=4",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=4",
-    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=4",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=4",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=4",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=4",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=4",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=4",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=4",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=4",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=4",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=4",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=4",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=4",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=4",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=4",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=4",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=4",
-    "/assets/game/js/net.js": "/assets/game/js/net.js?v=4",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=4",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=4",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=4",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=4",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=4",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=4",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=4",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=4",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=4",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=4",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=4"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=5",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=5",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=5",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=5",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=5",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=5",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=5",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=5",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=5",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=5",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=5",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=5",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=5",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=5",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=5",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=5",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=5",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=5",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=5",
+    "/assets/game/js/music.js": "/assets/game/js/music.js?v=5",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=5",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=5",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=5",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=5",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=5",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=5",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=5",
+    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=5",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=5",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=5",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=5",
+    "/assets/game/js/version.js": "/assets/game/js/version.js?v=5",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=5",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=5"
   }
 }
 </script>
@@ -429,6 +449,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=8" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=4"></script>
+<script type="module" src="../assets/game/js/main.js?v=5"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
    with a gap to slip through. Too proud to chase you. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange, angDiff } from "../util.js";
+import { TAU, rand, randRange, angDiff, dash } from "../util.js";
 import { C, SIN, P_PRIDE, P_AMBER, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -149,7 +149,7 @@ export const pride = {
       g.globalAlpha = 0.9;
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
-      g.setLineDash([12, 10]);
+      g.setLineDash(dash(12, 10));
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a0) * d.decree.length, y + Math.sin(a0) * d.decree.length); g.stroke();
       g.restore();
     }

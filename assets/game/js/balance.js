@@ -85,7 +85,7 @@ export const BALANCE = {
                 trigger: 100, fuse: 0.75, blast: 118, blastDmg: 2, blastEnemyDmg: 60 },
     sniper:   { hp: 30, r: 14, speed: 85, contact: 1, score: 35, stars: 3, mass: 1, threat: 4,
                 keep: [480, 680], aim: 1.0, reload: [2.4, 3.2], shotSpeed: 1450, shotDmg: 2 },
-    gem:      { hp: 170, r: 15, speed: 0, contact: 0, score: 30, stars: 1, mass: 99, threat: 0 },   // Pride's crown gems
+    gem:      { hp: 300, r: 15, speed: 0, contact: 0, score: 30, stars: 1, mass: 99, threat: 0 },   // Pride's crown gems
     patch:    { hp: 50, r: 15, speed: 92, contact: 1, score: 40, stars: 3, mass: 1.2, threat: 4,
                 healRadius: 160, healEvery: 1.4, healPct: 0.12, keep: 300 },
     decoy:    { hp: 1, r: 40, speed: 125, contact: 0, score: 15, stars: 0.5, mass: 3, threat: 0 },   // Lust's fakes: one hit pops them
@@ -171,6 +171,7 @@ export const BALANCE = {
     gunChance: 0.3,          // chance each slot is a gun (from wave 2)
     rarity: { rare: [2, 0.04, 0.35], epic: [5, 0.016, 0.2], legendary: [10, 0.006, 0.08] },   // [from wave, + per wave, max]
     patch: 18, patchStep: 14, patchHeal: 2,
+    openAfter: [2, 4, 5],    // the Armory opens after these waves of each 5-wave chapter (5 = the boss: a bounty)
   },
   items: {
     battery:   { name: "Spare Battery", r: 0, price: 22, max: 5, rate: 0.08, text: "+8% fire rate" },
@@ -197,15 +198,18 @@ export const BALANCE = {
   // The Sin Ladder: the same seven rungs, colours and order as the Ladder on the homepage.
   // One sin boss every 5 waves. Beating Envy (wave 35) wins the run; "Keep climbing" laps the
   // ladder again with every boss tougher and faster.
-  ladder: { rungs: 7, lapHp: 0.6, lapPace: 0.85, rungHp: 0.03 },   // per extra lap: boss health +60%, cooldowns ×0.85; per wave up the ladder: +4.5%
+  // Boss health climbs up the ladder on a gentle curve (builds snowball, so later rungs climb faster):
+  // ×(1 + rungHp·w + rungHp2·w²) for w waves past wave 5, so about ×1.2 at Gluttony, ×1.8 at Lust,
+  // ×2.7 at Pride and ×3.25 at Envy. Per extra lap: boss health +60%, cooldowns ×0.85.
+  ladder: { rungs: 7, lapHp: 0.6, lapPace: 0.85, rungHp: 0.03, rungHp2: 0.0015 },
 
-  // fightSecs: a boss always has at least this many seconds of your build's firepower in health
-  // (so a snowballed build still gets a real fight; weak builds just use the normal hp).
+  // Boss health depends on the boss, the rung, the lap and the crew size, never on your build:
+  // a strong build is supposed to melt bosses faster.
   bosses: {
     order: ["sloth", "glutton", "greed", "lust", "wrath", "pride", "envy"],
     sloth: {
       name: "Sloth", title: "The Idle King", tagline: "It isn't lazy. It's waiting.", emoji: "sloth", c1: "#b8bfe0", c2: "#8e97c7",
-      hp: 950, fightSecs: 16, r: 56, speed: 34, contact: 2, score: 1200,
+      hp: 950, r: 56, speed: 34, contact: 2, score: 1200,
       drowse: { radius: 250, slow: 0.62 },                                  // you move slower inside its aura
       yawn: { every: [3.8, 4.8], windup: 0.9, count: 18, speed: 150, rings: 2 },
       nap: { every: [11, 13], time: 4, takes: 2, wakeWindup: 0.9, wakeRadius: 200, wakeDmg: 1 },
@@ -214,7 +218,7 @@ export const BALANCE = {
     },
     glutton: {
       name: "Gluttony", title: "The Gluttony Engine", tagline: "It eats its own. Starve it.", emoji: "gluttony", c1: "#ff4f8b", c2: "#c2307a",
-      hp: 2000, fightSecs: 20, r: 58, speed: 52, contact: 2, score: 1800,
+      hp: 2000, r: 58, speed: 52, contact: 2, score: 1800,
       mealHeal: 0.035, mealGrow: 0.05, maxGrow: 1.6,
       inhaleEvery: [6, 8], inhaleTime: 2.4, inhaleRange: 540, pull: 300, playerPull: 85,
       slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2,
@@ -223,7 +227,7 @@ export const BALANCE = {
     },
     greed: {
       name: "Greed", title: "The Golden Vault", tagline: "Every star you leave, it keeps.", emoji: "greed", c1: "#ffd45c", c2: "#e8a820",
-      hp: 2800, fightSecs: 22, r: 50, speed: 70, contact: 2, score: 2400,
+      hp: 2500, r: 50, speed: 70, contact: 2, score: 2400,
       hoard: { range: 380, pull: 380, heal: 0.003, shieldMax: 5, perPip: 0.08, knockEvery: 0.02, decay: 5 },  // each coin: -8% damage taken; one falls off per 2% of its health you deal, or every 5s
       coins: { every: [2.2, 3.0], count: 7, arc: 1.0, speed: 320, back: 1.1 },   // boomerang coins come back to it
       spin: { every: [7, 9], windup: 0.8, speed: 820, bounces: 3, trailEvery: 0.07 },
@@ -231,7 +235,7 @@ export const BALANCE = {
     },
     lust: {
       name: "Lust", title: "The Heartbreaker", tagline: "Don't fall for it.", emoji: "lust", c1: "#d77fb0", c2: "#a64a7b",
-      hp: 2900, fightSecs: 19, r: 40, speed: 125, contact: 2, score: 2800,
+      hp: 2900, r: 40, speed: 125, contact: 2, score: 2800,
       orbit: { radius: 360, speed: 0.5 },
       kiss: { every: [2.8, 3.6], count: 2, enraged: 3, speed: 185, turn: 1.15, home: 2.2, life: 4.2 },   // kisses can be shot down
       heart: { every: [5, 6.2], windup: 0.75, count: 22, enraged: 26, speed: 150 },
@@ -241,7 +245,7 @@ export const BALANCE = {
     },
     wrath: {
       name: "Wrath", title: "The Overclock", tagline: "Three phases. Zero chill.", emoji: "wrath", c1: "#ff9448", c2: "#e05ad6",
-      hp: 4200, fightSecs: 26, r: 46, speed: 90, contact: 2, score: 3200,
+      hp: 3700, r: 46, speed: 90, contact: 2, score: 3200,
       phases: [0.66, 0.33], shieldedTakes: 0.25,
       spiral: { rate: 9, speed: 210, arms: 2, turn: 1.6 },
       burst: { count: 22, speed: 230, every: [2.4, 3.2] },
@@ -251,15 +255,15 @@ export const BALANCE = {
     },
     pride: {
       name: "Pride", title: "The Throne", tagline: "Break its crown before you break it.", emoji: "pride", c1: "#a98bff", c2: "#8a6cf0",
-      hp: 5000, fightSecs: 30, r: 48, speed: 60, contact: 2, score: 3800,
-      gems: { count: 5, radius: 118, spin: 0.9, hp: 170, guarded: 0.2, humbled: 2, humbleTime: 7, regrow: 1.4 },
+      hp: 5000, r: 48, speed: 60, contact: 2, score: 3800,
+      gems: { count: 5, radius: 118, spin: 0.9, guarded: 0.2, humbled: 1.6, humbleTime: 7, regrow: 1.4 },   // gem health: enemies.gem
       decree: { every: [6, 7.5], warn: 1.0, sweep: 1.8, arc: 1.8, length: 950, width: 20, dmg: 2 },
       kneel: { every: [3.4, 4.2], count: 30, speed: 210, gap: 3 },
       minionEvery: 2.6, minionMax: 9,
     },
     envy: {
       name: "Envy", title: "The Mirror", tagline: "It can't be earned. Only taken.", emoji: "envy", c1: "#6d7bff", c2: "#4a2ff0",
-      hp: 7000, fightSecs: 45, r: 32, speed: 150, contact: 2, score: 6000, maxRange: 460,
+      hp: 9000, r: 32, speed: 150, contact: 2, score: 6000, maxRange: 460,
       fireMul: 0.34, shotSpeed: 330, shotDmg: 1, boostSpeed: 900, boostTime: 0.22, orbitMax: 3,
       steal: { at: 0.66, every: [3.0, 3.8] },          // below 66%: it uses the moves of every sin you beat
       frenzy: { at: 0.3, rate: 1.4 },

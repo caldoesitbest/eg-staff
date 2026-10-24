@@ -5,7 +5,7 @@
 
 import { G } from "../state.js";
 import { BALANCE } from "../balance.js";
-import { TAU, rand, randRange, angDiff } from "../util.js";
+import { TAU, rand, randRange, angDiff, dash, NO_DASH } from "../util.js";
 import { C, P_DANGER, P_VIOLET, P_AMBER, P_MAGENTA, P_BLUE, P_ORANGE, P_RED, P_GREEN, P_WHITE, P_PRIDE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -180,7 +180,7 @@ export const ROSTER = {
       const p = 1 - e.t / wind;
       const len = Math.min(d.chargeSpeed * d.chargeTime, lineToWall(x, y, e.a));
       const locked = e.t <= wind * 0.35;
-      dashedLine(g, x, y, e.a, len, locked ? "#ffffff" : C.amber, 0.35 + p * 0.5, locked ? 3 : 2, [10, 8]);
+      dashedLine(g, x, y, e.a, len, locked ? "#ffffff" : C.amber, 0.35 + p * 0.5, locked ? 3 : 2, dash(10, 8));
       g.save();
       g.globalAlpha = 0.4 + p * 0.5;
       g.strokeStyle = C.amber;
@@ -307,7 +307,7 @@ export const ROSTER = {
     },
     drawUnder(g, e, x, y) {
       if (e.state !== 1) return;
-      dashedLine(g, x, y, e.ang, 170, C.amber, 0.8, 3, [8, 6]);
+      dashedLine(g, x, y, e.ang, 170, C.amber, 0.8, 3, dash(8, 6));
     },
     drawOver(g, e, x, y) {
       if (e.c <= 0) return;
@@ -321,7 +321,7 @@ export const ROSTER = {
       g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
       g.strokeStyle = "rgba(255,200,97," + (0.15 + Math.random() * 0.25) + ")";
       g.lineWidth = 2;
-      g.setLineDash([4, 6]);
+      g.setLineDash(dash(4, 6));
       g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
       g.restore();
     },
@@ -375,10 +375,10 @@ export const ROSTER = {
       g.globalAlpha = 0.9;
       g.strokeStyle = C.red;
       g.lineWidth = 3;
-      g.setLineDash([12, 8]);
+      g.setLineDash(dash(12, 8));
       g.lineDashOffset = G.time * 60;
       g.beginPath(); g.arc(x, y, d.blast, 0, TAU); g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
       g.globalAlpha = 0.8;
@@ -495,7 +495,7 @@ export const ROSTER = {
       g.globalAlpha = 0.1 + (e.t2 > 0 ? e.t2 : 0);
       g.strokeStyle = C.green;
       g.lineWidth = 2;
-      g.setLineDash([4, 10]);
+      g.setLineDash(dash(4, 10));
       g.lineDashOffset = -G.time * 30;
       g.beginPath(); g.arc(x, y, d.healRadius, 0, TAU); g.stroke();
       g.restore();

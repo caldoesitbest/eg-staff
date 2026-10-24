@@ -3,7 +3,7 @@
    Throws fans of boomerang coins, and spins across the arena like a flipped coin (path shown first). */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange } from "../util.js";
+import { TAU, rand, randRange, dash } from "../util.js";
 import { C, SIN, P_GREED, P_AMBER, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -135,7 +135,7 @@ export const greed = {
     g.globalAlpha = 0.4 + p * 0.5;
     g.strokeStyle = locked ? "#ffffff" : COL;
     g.lineWidth = locked ? 4 : 2.5;
-    g.setLineDash([14, 10]);
+    g.setLineDash(dash(14, 10));
     g.lineDashOffset = -G.time * 160;
     g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(e.a) * len, y + Math.sin(e.a) * len); g.stroke();
     g.restore();

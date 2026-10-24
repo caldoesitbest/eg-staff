@@ -5,7 +5,7 @@
    it blinks: the real one is the one whose heart is beating. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange } from "../util.js";
+import { TAU, rand, randRange, dash } from "../util.js";
 import { C, SIN, P_LUST, P_HEART, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -178,7 +178,7 @@ export const lust = {
       g.globalAlpha = 0.75;
       g.strokeStyle = COL;
       g.lineWidth = 3;
-      g.setLineDash([8, 8]);
+      g.setLineDash(dash(8, 8));
       g.lineDashOffset = G.time * 40;
       for (let i = 0; i < e.nMarks; i++) { g.beginPath(); g.arc(e.marks[i].x, e.marks[i].y, e.r + 14, 0, TAU); g.stroke(); }
       g.restore();
@@ -458,7 +458,7 @@ function drawLust(g, e, x, y, fake) {
       g.globalAlpha = 0.6 + Math.sin(G.time * 12) * 0.3;
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
-      g.setLineDash([4, 6]);
+      g.setLineDash(dash(4, 6));
       g.lineDashOffset = -G.time * 30;
       g.beginPath(); g.arc(x, y + bob - R * 0.24, R * 0.4 * beat + 8, 0, TAU); g.stroke();
       g.restore();
