@@ -119,7 +119,8 @@ function playerRow(P) {
   return [P.slot, r1(P.x), r1(P.y), Math.round(P.vx), Math.round(P.vy), Math.round(P.aimAng * 1000) / 1000, P.facing, P.hp, P.maxHp, P.shield, P.maxShield,
     P.dead ? 1 : 0, r1(P.boostT * 10) / 10, Math.round(P.iframes * 100) / 100, P.charging ? 1 : 0, Math.round(P.charge * 100) / 100,
     g ? GUNS.indexOf(g.id) : 0, g ? g.tier : 1, ctx ? ctx.stars : 0, Math.round(P.reviveT * 100) / 100, r1(P.impX), r1(P.impY), Math.round(P.slowMul * 100) / 100,
-    P.hurtSeq, P.orbN, P.slowR, P.turrets, Math.round(P.recoil * 10) / 10, P.perfSeq || 0, P.bubble ? 1 : 0, envy, P.gone ? 1 : 0, Math.round(P.grace * 100) / 100];
+    P.hurtSeq, P.orbN, P.slowR, P.turrets, Math.round(P.recoil * 10) / 10, P.perfSeq || 0, P.bubble ? 1 : 0, envy, P.gone ? 1 : 0, Math.round(P.grace * 100) / 100,
+    Math.round((P.hurtAng || 0) * 100) / 100, P.killedBy || ""];
 }
 
 /** Host: everything a client needs to draw this moment. */
@@ -399,9 +400,10 @@ function applyPlayer(row) {
     if (Math.abs(ix) + Math.abs(iy) < 3000) { P.vx += ix; P.vy += iy; }
     P.slowMul = row[22];
     if (row[23] > (P.hurtSeqSeen || 0)) {
-      if (P.hurtSeqSeen !== undefined) hurtFeedback(P);
+      if (P.hurtSeqSeen !== undefined) { P.hurtAng = row[33]; P.hurtShow = 0.7; hurtFeedback(P); }
       P.hurtSeqSeen = row[23];
     }
+    P.killedBy = row[34] || "";
     if (row[28] > (P.perfSeen || 0)) {
       if (P.perfSeen !== undefined) P.boostCdT *= 1 - BALANCE.player.boost.perfectRefund;
       P.perfSeen = row[28];
@@ -643,8 +645,8 @@ export function startHost() {
   coop.ready.clear();
   coop.readySlots = [];
   net.closeChannel();
-  net.broadcast({ k: "start", members: net.members }, true);
-  coop.hooks.startRun({ coop: true });
+  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty }, true);
+  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty });
 }
 
 function startClient(msg) {
@@ -658,7 +660,7 @@ function startClient(msg) {
   coop.waiting = false;
   prevEnemy.clear(); prevRock.clear();
   net.closeChannel();
-  coop.hooks.startRun({ coop: true });
+  coop.hooks.startRun({ coop: true, difficulty: msg.diff });     // everyone plays the host's difficulty
 }
 
 /** Players for a run: [{slot, name, suit}] → G.players with a build each; G.me is yours. */

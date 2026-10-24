@@ -1,11 +1,12 @@
 /* Rung 2 · Gluttony, The Gluttony Engine: eats its own minions to heal and grow. Starve it. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange } from "../util.js";
+import { TAU, rand, randRange, dash } from "../util.js";
 import { C, SIN, P_GLUT, P_HEART, P_RED, P_AMBER } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { seek, brake, face, angleToPlayer } from "./index.js";
+import { leadAngle, leadK } from "./roster.js";
 import { killEnemy, hurtPlayer } from "../world.js";
 import { playerHurtRadius } from "../player.js";
 import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, chargeRing, moves, pace } from "./boss-common.js";
@@ -17,6 +18,7 @@ export const glutton = {
   init(e) {
     bossInit(e, A.w / 2, A.h * 0.32);
     e.a = 0.3;     // mouth open amount
+    e.meals = 0; e.healed = 0; e.shock = 0;
   },
   update(e, dt, P) {
     const d = BB.glutton;
@@ -41,7 +43,9 @@ export const glutton = {
         audio.play("warn", e.x, e.y);
       } else if (e.t3 <= 0) {
         e.t3 = randRange(d.spit.every) * pc;
-        moves.fan(e, P, d.spit.count + (enraged ? 4 : 0), d.spit.arc, d.spit.speed, "glutton");
+        // spits where you're heading (the fan still covers where you are)
+        const la = leadAngle(e.x, e.y, P, d.spit.speed, leadK("boss"));
+        moves.fan(e, { x: e.x + Math.cos(la) * 100, y: e.y + Math.sin(la) * 100 }, d.spit.count + (enraged ? 4 : 0), d.spit.arc, d.spit.speed, "glutton");
         e.a = 1;
         audio.play("enemyShot", e.x, e.y);
         audio.play("chomp", e.x, e.y, 0.5);
@@ -66,9 +70,12 @@ export const glutton = {
         if (dd < R * 0.75 + o.r) {
           // CHOMP
           killEnemy(o, true);
-          e.hp = Math.min(e.maxHp, e.hp + e.maxHp * d.mealHeal);
+          // every meal heals a little less, and it can only win back so much: starve it and it dies
+          const heal = Math.min(e.maxHp * d.mealHeal * Math.max(0.3, 1 - e.meals * d.mealFalloff), Math.max(0, e.maxHp * d.healCap - e.healed));
+          e.meals++; e.healed += heal;
+          e.hp = Math.min(e.maxHp, e.hp + heal);
           e.scale = Math.min(d.maxGrow, e.scale + d.mealGrow);
-          fx.text(e.x, e.y - R - 14, "+" + Math.round(e.maxHp * d.mealHeal), COL, 18, 0.9);
+          fx.text(e.x, e.y - R - 14, heal > 0 ? "+" + Math.round(heal) : "FULL", COL, 18, 0.9);
           fx.burst(mx, my, 10, P_GLUT, 180, 0.5, 1.6);
           fx.shake(0.12);
           audio.play("chomp", e.x, e.y);
@@ -89,14 +96,15 @@ export const glutton = {
       e.t -= dt;
       e.a += (0.1 - e.a) * Math.min(1, 6 * dt);
       if (e.t <= 0) {
-        const R = d.slamRadius * e.scale;
+        const R = d.slamRadius * e.scale * (e.shock ? d.aftershock.scale : 1);
         fx.ring(e.x, e.y, e.r * e.scale, R, 0.4, COL, 8);
         fx.ring(e.x, e.y, e.r * e.scale, R * 0.8, 0.35, "#ffffff", 3);
         fx.debris(e.x, e.y, 14, "#7a5c96", 340);
         fx.shake(0.55);
         audio.play("slam", e.x, e.y);
         eachPlayer((Q) => { if (Math.hypot(Q.x - e.x, Q.y - e.y) < R + playerHurtRadius()) hurtPlayer(d.slamDmg, e.x, e.y); });
-        e.state = 0; e.t2 = randRange(d.slamEvery) * pc;
+        if (enraged && !e.shock) { e.shock = 1; e.state = 3; e.t = d.aftershock.windup; audio.play("warn", e.x, e.y, 0.8); }   // starving: it slams again, wider
+        else { e.shock = 0; e.state = 0; e.t2 = randRange(d.slamEvery) * pc; }
       }
     }
   },
@@ -108,12 +116,12 @@ export const glutton = {
       g.globalAlpha = 0.14;
       g.strokeStyle = COL;
       g.lineWidth = 3;
-      g.setLineDash([6, 14]);
+      g.setLineDash(dash(6, 14));
       g.lineDashOffset = G.time * 140;
       g.beginPath(); g.arc(x, y, d.inhaleRange, 0, TAU); g.stroke();
       g.restore();
     }
-    if (e.state === 3) chargeRing(g, x, y, d.slamRadius * e.scale, 1 - e.t / d.slamWindup, COL);
+    if (e.state === 3) chargeRing(g, x, y, d.slamRadius * e.scale * (e.shock ? d.aftershock.scale : 1), 1 - e.t / (e.shock ? d.aftershock.windup : d.slamWindup), e.shock ? "#ff8fb3" : COL);
   },
   draw(g, e, x, y, ang) {
     const R = e.r * e.scale;

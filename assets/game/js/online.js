@@ -4,8 +4,9 @@
 
 import { G } from "./state.js";
 import { store } from "./storage.js";
+import { GAME_VERSION } from "./version.js";
 
-const VERSION = "2.0";
+const VERSION = GAME_VERSION;
 const site = () => window.EG;
 
 export function todayUTC() { return new Date().toISOString().slice(0, 10); }

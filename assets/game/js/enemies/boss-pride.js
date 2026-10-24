@@ -4,7 +4,7 @@
    with a gap to slip through. Too proud to chase you. */
 
 import { G } from "../state.js";
-import { TAU, rand, randRange, angDiff } from "../util.js";
+import { TAU, rand, randRange, angDiff, dash } from "../util.js";
 import { C, SIN, P_PRIDE, P_AMBER, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -12,6 +12,7 @@ import { seek, brake, angleToPlayer, spawnEnemy } from "./index.js";
 import { fireEnemyBullet, hurtPlayer, killEnemy } from "../world.js";
 import { playerHurtRadius } from "../player.js";
 import { A, BB, bossInit, introUpdate, minionTick, startBossDeath, glowBall, eachPlayer, pace } from "./boss-common.js";
+import { leadAngle, leadK } from "./roster.js";
 
 const COL = SIN.pride;
 const HOLD = 0, DECREE_WARN = 1, DECREE = 2;
@@ -47,6 +48,7 @@ export const pride = {
   init(e) {
     bossInit(e, A.w / 2, A.h * 0.42);
     e.gemsGrown = false; e.humbleT = 0; e.regrowT = 0; e.kneelCd = 3; e.decreeCd = 5; e.beamA = 0; e.beamDir = 1; e.beamHit = 0;
+    e.twin = false; e.beamA2 = 0; e.kneel2 = 0;
   },
   update(e, dt, P) {
     const d = BB.pride;
@@ -91,6 +93,9 @@ export const pride = {
           e.state = DECREE_WARN; e.t = d.decree.warn;
           e.beamDir = Math.random() < 0.5 ? -1 : 1;
           e.beamA = angleToPlayer(e) - e.beamDir * d.decree.arc / 2;
+          // enraged: a second beam sweeps the other way, so they close like scissors (step out of the arc)
+          e.twin = enraged;
+          e.beamA2 = angleToPlayer(e) + e.beamDir * d.decree.arc / 2;
           fx.text(e.x, e.y - 90, "ROYAL DECREE", COL, 20, 1.1);
           audio.play("laser", e.x, e.y);
         } else if (e.kneelCd <= 0) {
@@ -98,6 +103,11 @@ export const pride = {
           kneelRing(e, d.kneel.count + (enraged ? 8 : 0), d.kneel.speed, d.kneel.gap);
           fx.ring(e.x, e.y, 20, 110, 0.3, COL, 3);
           audio.play("enemyShot", e.x, e.y);
+          if (enraged) e.kneel2 = 0.55;                 // and again, with the gap somewhere else
+        }
+        if (e.kneel2 > 0) {
+          e.kneel2 -= dt;
+          if (e.kneel2 <= 0) { kneelRing(e, d.kneel.count + 8, d.kneel.speed * 1.1, d.kneel.gap); audio.play("enemyShot", e.x, e.y, 0.7); }
         }
         break;
       }
@@ -110,17 +120,18 @@ export const pride = {
         brake(e, 8, dt);
         e.t -= dt;
         e.beamA += e.beamDir * (d.decree.arc / d.decree.sweep) * dt;
+        if (e.twin) e.beamA2 -= e.beamDir * (d.decree.arc / d.decree.sweep) * dt;
         // beam vs. you: distance from your centre to the beam segment
+        const beamHits = (Q, ang) => {
+          const c = Math.cos(ang), s = Math.sin(ang);
+          const px = Q.x - e.x, py = Q.y - e.y;
+          const along = px * c + py * s;
+          return along > 0 && along < d.decree.length && Math.abs(-px * s + py * c) < d.decree.width / 2 + playerHurtRadius();
+        };
         eachPlayer((Q) => {
           const bit = 1 << Q.slot;
           if (e.beamHit & bit) return;           // one hit per player per sweep
-          const c = Math.cos(e.beamA), s = Math.sin(e.beamA);
-          const px = Q.x - e.x, py = Q.y - e.y;
-          const along = px * c + py * s;
-          if (along > 0 && along < d.decree.length) {
-            const side = Math.abs(-px * s + py * c);
-            if (side < d.decree.width / 2 + playerHurtRadius()) { if (hurtPlayer(d.decree.dmg, e.x, e.y)) e.beamHit |= bit; }
-          }
+          if ((beamHits(Q, e.beamA) || (e.twin && beamHits(Q, e.beamA2))) && hurtPlayer(d.decree.dmg, e.x, e.y)) e.beamHit |= bit;
         });
         if (Math.random() < 0.7) {
           const r = rand(60, d.decree.length);
@@ -139,7 +150,7 @@ export const pride = {
   drawUnder(g, e, x, y) {
     const d = BB.pride;
     if (e.state === DECREE_WARN) {
-      // the whole sweep, shown before it fires
+      // the whole sweep, shown before it fires (and the second beam's start, when it has one)
       const p = 1 - e.t / d.decree.warn;
       const a0 = e.beamA, a1 = e.beamA + e.beamDir * d.decree.arc;
       g.save();
@@ -149,18 +160,22 @@ export const pride = {
       g.globalAlpha = 0.9;
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
-      g.setLineDash([12, 10]);
+      g.setLineDash(dash(12, 10));
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a0) * d.decree.length, y + Math.sin(a0) * d.decree.length); g.stroke();
+      if (e.twin) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(e.beamA2) * d.decree.length, y + Math.sin(e.beamA2) * d.decree.length); g.stroke(); }
       g.restore();
     }
     if (e.state === DECREE) {
-      const c = Math.cos(e.beamA), s = Math.sin(e.beamA), L = d.decree.length;
+      const L = d.decree.length;
       g.save();
       g.globalCompositeOperation = "lighter";
-      g.strokeStyle = COL; g.globalAlpha = 0.45; g.lineWidth = d.decree.width * 1.8;
-      g.beginPath(); g.moveTo(x, y); g.lineTo(x + c * L, y + s * L); g.stroke();
-      g.strokeStyle = "#ffffff"; g.globalAlpha = 0.95; g.lineWidth = d.decree.width * 0.45;
-      g.stroke();
+      for (const ang of e.twin ? [e.beamA, e.beamA2] : [e.beamA]) {
+        const c = Math.cos(ang), s = Math.sin(ang);
+        g.strokeStyle = COL; g.globalAlpha = 0.45; g.lineWidth = d.decree.width * 1.8;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + c * L, y + s * L); g.stroke();
+        g.strokeStyle = "#ffffff"; g.globalAlpha = 0.95; g.lineWidth = d.decree.width * 0.45;
+        g.stroke();
+      }
       g.restore();
     }
     if (e.regrowT > 0) {

@@ -1,9 +1,9 @@
 /* Shared boss machinery: entrance, minions, the death payoff, endless-lap pacing,
    and the attack patterns several sins share (Envy steals them all). */
 
-import { G, usePlayer } from "../state.js";
+import { G, usePlayer, diff } from "../state.js";
 import { BALANCE } from "../balance.js";
-import { TAU, rand, randInt } from "../util.js";
+import { TAU, rand, randInt, dash } from "../util.js";
 import { sprites, C, PAL, P_CYAN, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -27,7 +27,7 @@ export function eachPlayer(fn) {
 }
 
 /** Cooldown multiplier for endless laps (each lap a bit faster). */
-export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0);
+export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0) * diff().boss;
 
 /** Palette index for a boss's main colour (glow dots, particles). */
 export function sinPal(type) {
@@ -54,7 +54,13 @@ export function introUpdate(e, dt) {
   e.x += (e.tx - e.x) * k;
   e.y += (e.ty - e.y) * k;
   e.vx = e.vy = 0;
-  if (e.t <= 0) { e.state = 0; e.invuln = false; G.emit("bossFight", e); }
+  if (e.t <= 0) {
+    e.state = 0; e.invuln = false; G.emit("bossFight", e);
+    // it arrives: a shockwave in its colour
+    fx.ring(e.x, e.y, e.r, e.r + 260, 0.55, e.def.c1, 7);
+    fx.ring(e.x, e.y, e.r * 0.5, e.r + 140, 0.4, "#ffffff", 3);
+    fx.shake(0.4);
+  }
   return true;
 }
 
@@ -106,6 +112,8 @@ export function updateBossFx(dt) {
   fx.ring(f.x, f.y, 10, 340, 0.7, C.white, 4);
   fx.burst(f.x, f.y, 40, f.pal, 520, 1.2, 2.4);
   fx.burst(f.x, f.y, 24, P_CYAN, 420, 1.0, 2.2);
+  fx.debris(f.x, f.y, 22, f.col, 520);
+  fx.ring(f.x, f.y, 40, 900, 1.6, f.col, 2);           // a slow, wide afterglow ring
   fx.screenFlash("#ffffff", 0.7, 1.4);
   fx.shake(BALANCE.fx.shake.boss);
   hitStop(BALANCE.fx.hitstop.boss, true);
@@ -140,7 +148,7 @@ export function chargeRing(g, x, y, R, p, col) {
   g.globalAlpha = 0.85;
   g.strokeStyle = col;
   g.lineWidth = 3;
-  g.setLineDash([14, 10]);
+  g.setLineDash(dash(14, 10));
   g.beginPath(); g.arc(x, y, R, 0, TAU); g.stroke();
   g.restore();
 }

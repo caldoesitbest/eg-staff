@@ -6,33 +6,76 @@ import { G } from "./state.js";
 import { input } from "./input.js";
 import { BALANCE } from "./balance.js";
 
+// ?bot=dps|tank|cc|weak: what the autopilot builds toward (balance tests). Anything else: random picks.
+// Earlier in a list = wanted more. "weak" takes the least useful cards and never shops.
+const PROFILES = {
+  dps:  ["wrath", "pride", "multishot", "pierce", "overcharge", "velocity", "homing", "glass", "hollow", "battery", "scope", "capbank", "overdrive", "crown", "clover",
+         "rail", "heart", "nova", "scatter", "smg", "arc"],
+  tank: ["gluttony", "suit", "nanoweave", "wrath", "bubble", "multishot", "fang", "thorns", "boost", "hollow", "battery", "orbit", "thrusters", "fuel", "turret", "scatter", "smg"],
+  cc:   ["sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
+  weak: ["greed", "rear", "magnet", "coupon", "piggy", "velocity", "ricochet"],
+};
+const rank = (list, id) => { const i = list.indexOf(id); return i < 0 ? 99 : i; };
+
 export const bot = {
   runs: [],
+  fights: [],             // [boss, wave, hp, seconds, hits taken in the fight]
+  waves: [],              // [wave, hits taken that wave] for the current run
   autoRetry: true,
   onRetry: null,
   onPick: null,
   onBuy: null,
   onShopGo: null,
   chargeT: 0,
+  profile: new URLSearchParams(location.search).get("bot") || "random",
+  _fight: null, _wave: 0, _wHits: 0,
+
+  record() {
+    // per-wave hits and boss fight lengths, for the balance numbers
+    if (G.wave !== this._wave) {
+      if (this._wave) this.waves.push([this._wave, G.hitsTaken - this._wHits]);
+      this._wave = G.wave; this._wHits = G.hitsTaken;
+    }
+    const b = G.boss && !G.boss.dead && G.boss.state !== -1 ? G.boss : null;
+    if (b && (!this._fight || this._fight.e !== b)) this._fight = { e: b, type: b.type, wave: G.wave, hp: Math.round(b.maxHp), t0: G.time, h0: G.hitsTaken };
+    const f = this._fight;
+    if (f && (f.e.dead || G.boss !== f.e || G.state === "over")) {
+      this.fights.push([f.type, f.wave, f.hp, Math.round(G.time - f.t0), G.hitsTaken - f.h0, G.state === "over" ? "died" : "won"]);
+      this._fight = null;
+    }
+  },
 
   tick() {
+    this.record();
+    const L = PROFILES[this.profile];
     if (G.state === "upgrade") {
-      const cards = document.querySelectorAll("#cards .card");
-      if (cards.length && this.onPick) this.onPick(cards[Math.floor(Math.random() * cards.length)].dataset.id);
+      const cards = [...document.querySelectorAll("#cards .card")];
+      if (cards.length && this.onPick) {
+        let c = cards[Math.floor(Math.random() * cards.length)];
+        if (L) c = cards.slice().sort((a, b) => rank(L, a.dataset.id) - rank(L, b.dataset.id))[0];
+        this.onPick(c.dataset.id);
+      }
       return;
     }
     if (G.state === "shop") {
-      // buy what it can afford, a couple of times, then go
-      for (let k = 0; k < 3; k++) {
-        const i = Math.floor(Math.random() * G.shop.offers.length);
-        if (this.onBuy) this.onBuy(i);
+      // buy what it can afford (a build buys what it wants first), then go
+      if (L && this.profile !== "weak") {
+        const order = G.shop.offers.map((o, i) => [o, i]).filter(([o]) => o && !o.sold).sort((a, b) => rank(L, a[0].id) - rank(L, b[0].id));
+        for (const [o, i] of order) if (rank(L, o.id) < 99 && this.onBuy) this.onBuy(i);
+      } else if (!L) {
+        for (let k = 0; k < 3; k++) {
+          const i = Math.floor(Math.random() * G.shop.offers.length);
+          if (this.onBuy) this.onBuy(i);
+        }
       }
       if (this.onShopGo) this.onShopGo();
       return;
     }
     if (G.state === "over") {
       if (this.autoRetry && this.onRetry) {
-        this.runs.push({ wave: G.wave, time: Math.round(G.time), hits: G.hitsTaken, score: Math.round(G.score), build: JSON.stringify(G.up) });
+        this.runs.push({ wave: G.wave, time: Math.round(G.time), hits: G.hitsTaken, score: Math.round(G.score), build: JSON.stringify(G.up), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join("+"), waves: this.waves,
+          byGun: G.runStats ? Object.fromEntries(Object.entries(G.runStats.byGun).map(([k, v]) => [k, Math.round(v)])) : null, items: JSON.stringify(G.items) });
+        this.waves = []; this._wave = 0;
         this.onRetry();
       }
       return;
@@ -163,4 +206,35 @@ export async function coopSmoke() {
   say("coop: wave " + w0 + " -> " + G.wave + ", state " + G.state + ", robots " + G.enemies.count + ", my hp " + me.hp + ", stars " + G.stars +
     ", players " + G.players.map((p) => p.name + "@" + Math.round(p.x) + "," + Math.round(p.y)).join(" "));
   say("smoke done");
+}
+
+/** Debug only (?debug=1&scene=combat|greed|wrath|lust): the same frozen moment every time, for
+    before/after screenshots and frame timings. Sets up a fixed arena, plays 0.6s, then freezes the
+    simulation (rendering keeps going). Leave it with ?scene= removed. */
+export async function scene(name, h) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  h.seedRng(4242);
+  h.startRun();
+  G.debug.god = true;
+  await sleep(300);
+  G.enemies.clear(); G.eb.clear(); G.pb.clear(); G.warnings.clear(); h.waves.queue.length = 0;
+  const P = G.player;
+  P.x = P.px = 1000; P.y = P.py = 650; P.vx = 120; P.vy = -40;
+  const boss = { greed: [15, "greed"], wrath: [25, "wrath"], lust: [20, "lust"], pride: [30, "pride"] }[name];
+  if (boss) {
+    G.wave = boss[0]; h.waves.boss = true; h.waves.bossT = 99;
+    const b = h.spawnEnemy(boss[1], 1000, 380, { spawnT: 0 });
+    b.state = 0; b.invuln = false; b.x = b.px = 1000; b.y = b.py = 380;
+    b.hp = b.maxHp * 0.45;
+    for (const [t, x, y] of [["drone", 760, 560], ["gunner", 1260, 520], ["drone", 820, 800]]) h.spawnEnemy(t, x, y, { spawnT: 0 });
+  } else {
+    G.wave = 22; G.mark = 1;
+    const list = [["drone", 820, 560], ["drone", 870, 760], ["gunner", 1290, 470], ["gunner", 1250, 830], ["ripper", 700, 420],
+      ["bulwark", 1180, 650], ["sniper", 1450, 300], ["boomer", 930, 470], ["splitter", 640, 760], ["swarm", 1370, 760], ["swarm", 1390, 790], ["swarm", 1350, 800], ["patch", 1500, 640]];
+    for (const [t, x, y] of list) h.spawnEnemy(t, x, y, { spawnT: 0, elite: t === "bulwark" });
+  }
+  h.input.mouse.x = innerWidth * 0.66; h.input.mouse.y = innerHeight * 0.42; h.input.mouse.down = true; h.input.mode = "kbm"; h.input.mouse.seen = true;
+  await sleep(650);
+  h.input.mouse.down = false;
+  G.debug.freeze = true;
 }

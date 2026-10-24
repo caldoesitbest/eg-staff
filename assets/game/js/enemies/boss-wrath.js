@@ -1,7 +1,7 @@
 /* Rung 5 · Wrath, The Overclock: bullet patterns → summons behind a shield → enraged dashes. */
 
 import { G } from "../state.js";
-import { TAU, rand, randInt, randRange } from "../util.js";
+import { TAU, rand, randInt, randRange, dash } from "../util.js";
 import { C, SIN, P_WRATH, P_MAGENTA, P_RED, P_WHITE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -9,6 +9,7 @@ import { seek, brake, angleToPlayer } from "./index.js";
 import { fireEnemyBullet } from "../world.js";
 import { waves } from "../waves.js";
 import { A, BB, bossInit, introUpdate, startBossDeath, glowBall, moves, pace } from "./boss-common.js";
+import { leadAngle, leadK } from "./roster.js";
 
 const PHASE_COL = [SIN.wrath, "#e05ad6", C.red];
 const PHASE_PAL = [P_WRATH, P_MAGENTA, P_RED];
@@ -51,13 +52,18 @@ export const wrath = {
         fireEnemyBullet(e.x, e.y, Math.cos(pa) * 60, Math.sin(pa) * 60, 1, "red", 6);
         fireEnemyBullet(e.x, e.y, -Math.cos(pa) * 60, -Math.sin(pa) * 60, 1, "red", 6);
       }
-      if (e.dashT <= 0 || e.x < 90 || e.x > A.w - 90 || e.y < 90 || e.y > A.h - 90) { e.dashT = 0; e.dashCd = randRange(d.enraged.dashEvery) * pace(); }
+      if (e.dashT <= 0 || e.x < 90 || e.x > A.w - 90 || e.y < 90 || e.y > A.h - 90) {
+        e.dashT = 0; e.dashCd = randRange(d.enraged.dashEvery) * pace();
+        moves.ring(e, d.enraged.dashRing, 210, "red");          // it lands in a burst
+        fx.ring(e.x, e.y, 20, 130, 0.3, C.red, 4);
+        fx.shake(0.25);
+      }
       return;
     }
     if (e.windT > 0) {
       brake(e, 6, dt);
       e.windT -= dt;
-      if (e.windT > 0.25) e.dashA = angleToPlayer(e);
+      if (e.windT > 0.25) e.dashA = leadAngle(e.x, e.y, P, d.enraged.dashSpeed, leadK("boss"));
       if (e.windT <= 0) { e.dashT = 1.1; e.t3 = 0; audio.play("charge", e.x, e.y); fx.shake(0.2); }
       return;
     }
@@ -83,14 +89,18 @@ export const wrath = {
     e.aimCd -= dt;
     if (e.aimCd <= 0 && e.phase !== 1) {
       e.aimCd = randRange(d.aimed.every) / rage;
+      const la = leadAngle(e.x, e.y, P, d.aimed.speed, leadK("boss"));
       for (let i = 0; i < d.aimed.count; i++) {
-        const a = e.ang + (i - 1) * 0.18;
+        const a = la + (i - 1) * 0.18;
         fireEnemyBullet(e.x + Math.cos(a) * 40, e.y + Math.sin(a) * 40, Math.cos(a) * d.aimed.speed, Math.sin(a) * d.aimed.speed, 1, "magenta", 6);
       }
     }
     if (e.phase === 1 && e.shieldT > 0) {
       e.shieldT -= dt;
       e.summonCd -= dt;
+      // the shield pulses: a ring every few seconds while it hides behind the summons
+      e.pulseT = (e.pulseT === undefined ? 1.5 : e.pulseT) - dt;
+      if (e.pulseT <= 0) { e.pulseT = d.summon.pulseEvery * pace(); moves.ring(e, d.summon.pulse, 190, "pink"); fx.ring(e.x, e.y, 30, 150, 0.3, PHASE_COL[1], 3); }
       if (e.summonCd <= 0 && e.summoned < d.summon.waves) {
         e.summonCd = d.summon.every;
         e.summoned++;
@@ -120,7 +130,7 @@ export const wrath = {
       g.globalAlpha = 0.6;
       g.strokeStyle = e.windT <= 0.25 ? "#ffffff" : C.red;
       g.lineWidth = e.windT <= 0.25 ? 4 : 2;
-      g.setLineDash([16, 10]);
+      g.setLineDash(dash(16, 10));
       g.lineDashOffset = -G.time * 200;
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(e.dashA) * 1100, y + Math.sin(e.dashA) * 1100); g.stroke();
       g.restore();
@@ -153,7 +163,7 @@ export const wrath = {
       g.rotate(e.spin * (k % 2 ? -1.3 : 1) * (1 + k * 0.4));
       g.strokeStyle = k === 0 ? col : "rgba(255,255,255,0.35)";
       g.lineWidth = k === 0 ? 6 : 3;
-      g.setLineDash(k === 0 ? [10, 7] : [4, 6]);
+      g.setLineDash(k === 0 ? dash(10, 7) : dash(4, 6));
       g.beginPath(); g.arc(0, 0, rr, 0, TAU); g.stroke();
       g.restore();
     }

@@ -19,10 +19,11 @@ import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
 import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
-import { formatScore, rand, pick, TAU, withSeed, hashStr } from "./util.js";
+import { formatScore, rand, pick, TAU, withSeed, hashStr, seedRng } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
-import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo } from "./armory.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut } from "./armory.js";
+import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
@@ -39,6 +40,8 @@ G.desktop = !!(window.chrome && window.chrome.webview);
 
 store.load();
 G.settings = store.data.settings;
+if (G.debug.on && params.get("diff")) G.settings.difficulty = params.get("diff");     // balance tests: ?diff=hard
+if (G.debug.on && params.get("zoom")) G.debug.zoom = Math.max(1, Math.min(4, parseFloat(params.get("zoom")) || 1));   // close-up screenshots
 computeStats();
 
 const root = document.getElementById("game");
@@ -48,14 +51,24 @@ const layer = document.getElementById("touch-layer");
 const suitDef = () => SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0];
 
 const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
-G.quality = G.settings.quality in FIXED_LEVEL ? FIXED_LEVEL[G.settings.quality] : 2;
+/** Auto's starting point, from what the device says about itself (it adjusts from there as you play). */
+function deviceLevel() {
+  const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
+  let coarse = false;
+  try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch (e) { /* ignore */ }
+  if (cores <= 2 || mem <= 2) return 0;
+  if (cores <= 4 || mem <= 4 || coarse) return 1;
+  return 2;
+}
+G.quality = G.settings.quality in FIXED_LEVEL ? FIXED_LEVEL[G.settings.quality] : deviceLevel();
 
 /** The graphics the renderer actually uses: the preset's (Auto: by its current step) or your custom picks. */
 function computeGfx() {
   const st = G.settings;
-  const src = st.quality === "auto" ? GFX_PRESETS[["low", "medium", "high"][G.quality]] : st;
+  const auto = st.quality === "auto";
+  const src = auto ? GFX_PRESETS[["low", "medium", "high"][G.quality]] : st;
   const g = G.gfx;
-  g.resScale = src.resScale; g.particles = src.particles; g.glow = src.glow;
+  g.resScale = src.resScale * (auto ? G.dynRes : 1); g.particles = src.particles; g.glow = src.glow;
   g.background = src.background; g.grid = src.grid; g.trails = src.trails;
 }
 computeGfx();
@@ -74,7 +87,7 @@ let gfxKey = "";
 function applySettings() {
   const s = G.settings;
   if (s.quality in FIXED_LEVEL) G.quality = FIXED_LEVEL[s.quality];
-  else if (s.quality === "auto" && gfxKey.indexOf("auto") !== 0) G.quality = 2;      // switching to Auto starts it at the top
+  else if (s.quality === "auto" && gfxKey.indexOf("auto") !== 0) { G.quality = deviceLevel(); G.dynRes = 1; }   // switching to Auto starts where the device suggests
   audio.setVolumes(s.sfx, s.music, s.muted);
   fx.shakeOn = s.shakeAmt > 0 && !s.reducedMotion;
   fx.shakeScale = s.shakeAmt / 100;
@@ -90,7 +103,7 @@ function applyQuality() {
   computeGfx();
   fx.setQuality(2, G.gfx.particles);        // the preset (or Auto's current step) already picked the particle level
   // only rebuild the canvas when something that affects it changed
-  const key = G.settings.quality + ":" + G.quality + ":" + G.gfx.resScale;
+  const key = G.settings.quality + ":" + G.quality + ":" + G.gfx.resScale.toFixed(2);
   if (key !== gfxKey) { gfxKey = key; renderer.resize(); }
 }
 
@@ -147,12 +160,16 @@ function startRun(opts) {
   clearWorld();
   const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
+  // the Daily Challenge is always Normal (everyone plays the same run); co-op uses the host's pick
+  const want = (opts && opts.difficulty) || G.settings.difficulty;
+  G.difficulty = !G.daily && BALANCE.difficulty[want] ? want : "normal";
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
     waveHits: 0, hitsTaken: 0, flawlessWaves: 0, bossesKilled: 0, rerolls: 0, patches: 0, perfects: 0,
     hitstop: 0, slowmo: 0, slowScale: 1, freezeT: 0, vacuum: false, boss: null, bossFx: null, autoTarget: null,
     lastSlowmo: -9, hitMark: 0, killMark: 0,
+    runStats: { dmg: 0, big: 0, byGun: {}, spent: 0 },
   });
   setupRunPlayers(isCoop);
   if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
@@ -207,7 +224,7 @@ function seeded(tag, fn) {
 function startWave(n) {
   seeded("wave" + n, () => waves.start(n));
   G.vacuum = false;
-  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; }     // Bubble Shield refills every wave
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; }     // Bubble Shield refills every wave; Gluttony's heals reset
   usePlayer(G.me);
   waveIntro(n);
   hostSend({ k: "go", n });
@@ -223,9 +240,12 @@ function waveIntro(n) {
       "<b>" + def.title + "</b> · " + def.tagline, "boss", true, def.c1);
     audio.musicIntensity(2);
   } else {
-    let hint = HINTS[n] && !lap ? HINTS[n]() : "";
-    if (n > 1 && waves.markOf(n) > waves.markOf(n - 1)) hint = "<b>Robots evolved: " + markName(waves.markOf(n)) + ".</b> Same robots, nastier tricks.";
-    else if (n === BALANCE.elite.from) hint = "From here on, some robots come <b>overcharged</b> with a trait.";
+    // every message for this wave shows (wave 12 used to lose the elite one under the Mk II one)
+    const lines = [];
+    if (n > 1 && waves.markOf(n) > waves.markOf(n - 1)) lines.push("<b>Robots evolved: " + markName(waves.markOf(n)) + ".</b> Same robots, nastier tricks.");
+    if (n === BALANCE.elite.from) lines.push("From here on, some robots come <b>overcharged</b> with a trait.");
+    if (!lines.length && HINTS[n] && !lap) lines.push(HINTS[n]());
+    const hint = lines.join("<br>");
     const r = ladderRungs()[waves.rungOf(n)];
     ui.banner(n === 1 ? "Rung 1 · @Sloth" : "Rung " + (r.i + 1) + " · @" + r.name, "Wave " + n, hint, "", !!hint, r.c1);
     audio.musicIntensity(1);
@@ -304,11 +324,30 @@ function openUpgrade() {
   offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
   const nextBoss = (G.wave + 1) % BALANCE.waves.bossEvery === 0;
   const nb = nextBoss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(G.wave + 1)]] : null;
-  ui.showUpgrade(offered, { kicker: "Wave " + G.wave + " cleared", title: nb ? "@" + nb.name + " is next" : "Pick your sin", bonus: G.lastBonus });
+  const armoryNext = armorySoldOut() ? "the Armory is sold out" : armoryAfter(G.wave) ? "the Armory is next" : "the Armory opens after wave " + nextArmoryWave(G.wave);
+  ui.showUpgrade(offered, { kicker: "Wave " + G.wave + " cleared", title: nb ? "@" + nb.name + " is next" : "Choose your power", bonus: G.lastBonus, armory: armoryNext });
+  // endless: every Sin and Augment maxed, so there's nothing to pick; carry on
+  if (!offered.length) { ui.toast("Every Sin and Augment maxed"); afterCards(); }
+}
+
+/** After the card: the Armory (if it opens this wave and has anything left for you), else the next wave. */
+function afterCards() {
+  const P = G.player;
+  const skipShop = armorySoldOut() && (!P || P.hp >= P.maxHp);      // still opens to patch you up
+  if (armoryAfter(G.wave) && !skipShop) { openArmory(); return; }
+  if (G.net.role !== "off") {
+    if (G.net.role === "host") hostReady(); else if (!coop.waiting) clientReady();
+    coop.waiting = true;
+    ui.setCardsWaiting(waitingOn());
+    return;
+  }
+  ui.show(null);
+  setState("playing");
+  startWave(G.wave + 1);
 }
 
 function pickCard(id) {
-  if (G.state !== "upgrade" || offered.indexOf(id) === -1) return;
+  if (G.state !== "upgrade" || offered.indexOf(id) === -1 || coop.waiting) return;
   const lvl = applyCard(id);
   const c = CARD_BY_ID[id];
   const P = G.player;
@@ -316,7 +355,7 @@ function pickCard(id) {
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);
   fx.text(P.x, P.y - 40, c.name.toUpperCase() + (lvl >= c.max ? " MAX" : " " + lvl), c.color, 18, 1.3);
-  openArmory();
+  afterCards();
 }
 
 // ---------------------------------------------------------------------------
@@ -325,12 +364,13 @@ function pickCard(id) {
 function openArmory() {
   setState("shop");
   input.releaseAll();
-  seeded("shop" + G.wave, () => rollNewShop());
+  const bounty = G.wave % BALANCE.waves.bossEvery === 0;
+  seeded("shop" + G.wave, () => rollNewShop(bounty));
   const next = G.wave + 1;
   const boss = next % BALANCE.waves.bossEvery === 0;
   const nb = boss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(next)]] : null;
   ui.showShop({
-    kicker: "Wave " + G.wave + " cleared · the Armory",
+    kicker: bounty ? "Boss down · the Armory pays a bounty" : "Wave " + G.wave + " cleared · the Armory",
     next: nb ? "Next: <b>@" + nb.name + "</b>, " + nb.title + ". Stock up." : "Next: wave " + next + (waves.markOf(next) > G.mark ? " · <b>robots evolve</b>" : ""),
     go: nb ? "Face @" + nb.name : "Wave " + next,
   });
@@ -375,6 +415,7 @@ function reroll() {
   const cost = E.reroll + E.rerollStep * G.rerolls;
   if (G.state !== "upgrade" || G.stars < cost) return;
   G.stars -= cost;
+  G.runStats.spent += cost;
   G.rerolls++;
   offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
   ui.renderCards(offered);
@@ -388,6 +429,7 @@ function patchUp() {
   const P = G.player;
   if (G.state !== "shop" || G.stars < cost || P.hp >= P.maxHp) { audio.play("deny"); return; }
   G.stars -= cost;
+  G.runStats.spent += cost;
   G.patches++;
   P.hp = Math.min(P.maxHp, P.hp + BALANCE.shop.patchHeal);
   audio.play("heart");
@@ -415,7 +457,7 @@ function pause() {
   setState("paused");
   input.releaseAll();
   ui.showPause(buildSummary());
-  audio.musicIntensity(0);
+  audio.muffle(true);
 }
 function resume() {
   if (G.netMenu) {
@@ -429,7 +471,7 @@ function resume() {
   setState(prevState);
   loop.resetClock();
   audio.resume();
-  audio.musicIntensity(waves.boss && G.boss ? 2 : 1);
+  audio.muffle(false);
 }
 
 G.on("playerDown", () => {
@@ -443,6 +485,15 @@ G.on("playerDown", () => {
 function fmtTime(t) {
   const m = Math.floor(t / 60), s = Math.floor(t % 60);
   return m + ":" + String(s).padStart(2, "0");
+}
+
+// "What got you", for the summary screen.
+const SRC_NAMES = { drone: "a Drone", swarm: "a Swarmling", ripper: "a Ripper's charge", gunner: "a Gunner", splitter: "a Splitter", mini: "a Splitter shard",
+  bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Volatile elite's burst" };
+function sourceName(src) {
+  if (!src) return "";
+  if (BALANCE.bosses[src]) return "@" + BALANCE.bosses[src].name;
+  return SRC_NAMES[src] || src;
 }
 
 const TITLES = [
@@ -461,7 +512,7 @@ async function postRun(sum) {
   ui.setOnline("posting");
   const res = await online.submit({
     score: sum.score, wave: sum.wave, kills: sum.kills, combo: sum.combo, seconds: G.time, won: G.won,
-    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items } },
+    daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items }, difficulty: G.difficulty },
   });
   if (G.state !== "over") return;
   if (res.skipped) ui.setOnline(null);
@@ -481,8 +532,19 @@ function gameOver() {
   const sum = {
     score: Math.floor(G.score), wave: G.wave, kills: G.kills, combo: G.bestCombo, stars: G.starsTotal,
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
-    build: buildSummary(), buildTitle: buildTitle(),
+    build: buildSummary(), buildTitle: buildTitle(), difficulty: G.difficulty,
   };
+  // how the run went: your damage, your best hit, the gun that did the most, what you spent, what got you
+  const rs = G.runStats;
+  if (rs && rs.dmg > 0) {
+    sum.dmg = Math.round(rs.dmg);
+    sum.big = Math.round(rs.big);
+    let top = "", best = 0;
+    for (const k in rs.byGun) if (rs.byGun[k] > best) { best = rs.byGun[k]; top = k; }
+    if (top) sum.topGun = BALANCE.guns[top].name + " (" + Math.round((best / rs.dmg) * 100) + "%)";
+  }
+  if (rs) sum.spent = rs.spent;
+  if (!G.won) sum.killedBy = sourceName(G.me && G.me.killedBy);
   const record = !G.debug.on && G.net.role === "off";    // debug and co-op runs don't count for your solo bests
   sum.newScore = record && sum.score > best.score && sum.score > 0;
   sum.newWave = record && sum.wave > best.wave;
@@ -555,6 +617,36 @@ function update(dt) {
 }
 
 let fpsT = 0, qT = 0, slowWin = 0, fastWin = 0, beatT = 0;
+
+// ---------------------------------------------------------------------------
+// the music director: which theme, which arrangement, how intense (works the same on co-op clients)
+// ---------------------------------------------------------------------------
+let lastBossId = 0, lastBossLive = false;
+function musicDirector() {
+  const s = G.state;
+  if (s === "menu") { audio.musicTheme("menu", "chapter"); audio.musicIntensity(0); return; }
+  const sin = BALANCE.bosses.order[waves.rungOf(Math.max(1, G.wave))];
+  const b = G.boss && !G.boss.dead ? G.boss : null;
+  // a boss arriving: a riser through its entrance, an impact when the fight starts
+  if (b && b.id !== lastBossId) { lastBossId = b.id; lastBossLive = false; audio.riser(2.1); }
+  const live = !!(b && b.state !== -1);
+  if (live && !lastBossLive) audio.impact();
+  lastBossLive = live;
+  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win") {
+    audio.musicTheme(s === "win" ? "envy" : sin, "chapter");
+    audio.musicIntensity(0);
+    return;
+  }
+  if (live) {
+    audio.musicTheme(sin, "boss");
+    audio.musicIntensity(b.hp / b.maxHp < 0.5 || b.b ? 4 : 3);
+    return;
+  }
+  audio.musicTheme(sin, "chapter");
+  const P = G.me;
+  const threat = G.enemies.count > 24 || (P && !P.dead && P.hp <= 2) || (waves.boss && !b);
+  audio.musicIntensity(s === "dying" ? 0 : threat ? 2 : 1);
+}
 function before(dt) {
   input.poll(dt);
 }
@@ -564,6 +656,7 @@ function render(alpha, dt) {
   audio.setListener(G.cam.x, G.cam.y);
   renderer.draw(alpha, dt);
   if (G.state !== "menu") ui.updateHud(dt);
+  musicDirector();
   // low health: a heartbeat
   const Pl = G.player;
   if (Pl && !Pl.dead && Pl.hp <= 2 && G.state === "playing") {
@@ -577,7 +670,7 @@ function render(alpha, dt) {
     if (G.settings.showFps || G.debug.on) {
       const st = loop.stats;
       ui.setFps(Math.round(st.fps) + " fps · " + st.frameMs.toFixed(1) + " ms frame · " + st.workMs.toFixed(1) + " ms work · Q" + G.quality +
-        " · " + G.enemies.count + " bots · " + fx.parts.count + " fx" + (G.debug.god ? " · GOD" : ""));
+        " · " + G.enemies.count + " bots · " + fx.parts.count + " fx" + (G.dynRes < 1 ? " · res " + Math.round(G.dynRes * 100) + "%" : "") + (G.debug.god ? " · GOD" : ""));
     }
   }
   // auto quality: step down if frames stay slow, back up when there's room
@@ -586,16 +679,29 @@ function render(alpha, dt) {
     qT = 0;
     const st = loop.stats;
     const capMs = G.settings.fpsCap ? 1000 / G.settings.fpsCap : 0;      // a capped frame rate isn't "slow"
-    if (st.frameMs > Math.max(23, capMs * 1.35) && G.state === "playing") { slowWin++; fastWin = 0; }
+    if (st.frameMs > Math.max(22, capMs * 1.3) && G.state === "playing") { slowWin++; fastWin = 0; }
     else if (st.frameMs < Math.max(17.5, capMs * 1.1) && st.workMs < 5) { fastWin++; slowWin = 0; }
     else { slowWin = 0; fastWin = 0; }
-    if (slowWin >= 3 && G.quality > 0) { G.quality--; slowWin = 0; applyQuality(); }
-    if (fastWin >= 10 && G.quality < 2) { G.quality++; fastWin = 0; applyQuality(); }
+    if (slowWin >= 2) {
+      // slow frames with little script work: the graphics card is the bottleneck, so draw fewer pixels
+      // (cheap now: no sprites are rebuilt). Script-heavy: cut effects instead.
+      if (G.dynRes > 0.65 && st.workMs < st.frameMs * 0.45) G.dynRes = Math.round((G.dynRes - 0.1) * 100) / 100;
+      else if (G.quality > 0) G.quality--;
+      slowWin = 0;
+      applyQuality();
+    }
+    if (fastWin >= 8) {
+      if (G.dynRes < 1) G.dynRes = Math.min(1, Math.round((G.dynRes + 0.1) * 100) / 100);
+      else if (G.quality < 2) G.quality++;
+      fastWin = 0;
+      applyQuality();
+    }
   }
 }
 
 let autopilot = null;      // debug only: ?debug=1&autoplay=1
 const step = (dt) => {
+  if (G.debug.freeze) return;           // debug ?scene=: a frozen moment for screenshots
   for (let i = 0; i < G.debug.speed; i++) {
     if (autopilot) autopilot.tick();
     update(dt);
@@ -770,7 +876,7 @@ function debugKey(e) {
     }
     case "KeyG": G.debug.god = !G.debug.god; ui.toast("God mode " + (G.debug.god ? "on" : "off")); break;
     case "KeyK": killAll(); break;
-    case "KeyU": { const ids = offerCards(); const id = pick(ids); applyCard(id); ui.toast("+" + CARD_BY_ID[id].name); break; }
+    case "KeyU": { const ids = offerCards(); if (!ids.length) break; const id = pick(ids); applyCard(id); ui.toast("+" + CARD_BY_ID[id].name); break; }
     case "KeyH": if (P) { P.hp = P.maxHp; } break;
     case "KeyJ": for (let i = 0; i < 40; i++) waves.spawnGroup(pick(["drone", "swarm", "gunner", "ripper"]), 1); break;
     case "KeyM": G.stars += 500; ui.toast("+500 stars"); break;
@@ -816,6 +922,9 @@ if (G.debug.on && params.get("cojoin")) {
   setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
 }
 if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
+if (G.debug.on && params.get("scene")) {
+  import("./debug-bot.js").then(({ scene }) => setTimeout(() => scene(params.get("scene"), { startRun, spawnEnemy, waves, input, seedRng }), 900));
+}
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
 }
@@ -888,9 +997,18 @@ initCoop({
     waveIntro(n);
   },
   waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
-  gameOver: (sum) => { lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver"); },
+  gameOver: (sum) => {
+    // the host's numbers are the host's: keep the team ones, put in your own
+    delete sum.dmg; delete sum.big; delete sum.topGun;
+    sum.spent = G.runStats ? G.runStats.spent : 0;
+    sum.killedBy = sourceName(G.me && G.me.killedBy);
+    lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver");
+  },
   showWin: (sum) => { ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
-  readyChanged: () => { if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn()); },
+  readyChanged: () => {
+    if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn());
+    if (G.state === "upgrade" && coop.waiting) ui.setCardsWaiting(waitingOn());
+  },
   nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(G.wave + 1); },
 });
 
@@ -898,6 +1016,8 @@ initCoop({
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (sprites.P) sprites.buildDigits(sprites.P); });
 
 // go
+const verEl = document.getElementById("menu-ver");
+if (verEl) verEl.textContent = "v" + GAME_VERSION + " · " + VERSION_NAME;
 applySettings();
 toMenu();
 playIntro();

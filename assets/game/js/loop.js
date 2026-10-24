@@ -5,8 +5,8 @@ export const STEP = 1 / 60;
 const MAX_STEPS = 5;
 
 export function startLoop({ before, update, render, timer }) {
-  // timer: debug only (?headless=1): tick with setTimeout so tests run even when the page is not painting
-  const next = timer ? (fn) => setTimeout(() => fn(performance.now()), 16) : (fn) => requestAnimationFrame(fn);
+  if (timer) return headless({ before, update, render });
+  const next = (fn) => requestAnimationFrame(fn);
   let last = performance.now();
   let acc = 0;
   let running = true;
@@ -57,6 +57,34 @@ export function startLoop({ before, update, render, timer }) {
     stats,
     resetClock() { last = performance.now(); acc = 0; },
     setCap(fps) { gap = fps > 0 ? 1000 / fps : 0; due = 0; },
+    stop() { running = false; },
+  };
+}
+
+/* Debug only (?headless=1): balance tests and soak runs. Steps as fast as the machine allows on a
+   fixed clock (one 60 Hz step per tick, drawn every 8th), driven by a MessageChannel so it keeps
+   going in a background tab where timers are throttled to once a second. */
+function headless({ before, update, render }) {
+  const ch = new MessageChannel();
+  const stats = { fps: 60, frameMs: 16.7, workMs: 0 };
+  let running = true, n = 0, drawDt = 0;
+  ch.port1.onmessage = () => {
+    if (!running) return;
+    const t0 = performance.now();
+    // a few steps per message, then yield so the page (and test scripts) stay responsive
+    while (performance.now() - t0 < 8) {
+      if (before) before(STEP);
+      update(STEP);
+      drawDt += STEP;
+      if (++n % 8 === 0) { render(0, drawDt); drawDt = 0; }
+    }
+    ch.port2.postMessage(0);
+  };
+  ch.port2.postMessage(0);
+  return {
+    stats,
+    resetClock() {},
+    setCap() {},
     stop() { running = false; },
   };
 }

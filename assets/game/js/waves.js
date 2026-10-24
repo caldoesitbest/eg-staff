@@ -1,7 +1,7 @@
 /* The wave director. Difficulty ramps by WHAT shows up (new robots, nastier mixes, more
    at once) far more than by health. Spawns come from the arena edges with a warning marker. */
 
-import { G } from "./state.js";
+import { G, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { rand, randInt, randRange, chance, TAU, rng } from "./util.js";
 import { fx } from "./fx.js";
@@ -75,6 +75,7 @@ export const waves = {
   lapOf(n) { return Math.floor((n - 1) / 35); },
   markOf(n) {
     const M = BALANCE.marks;
+    n += diff().mark;                 // harder modes: robots evolve earlier
     let m = 0;
     for (const at of M.at) if (n >= at) m++;
     const last = M.at[M.at.length - 1];
@@ -104,16 +105,16 @@ export const waves = {
     if (n <= W.intro.length) {
       const cfg = W.intro[n - 1];
       mix = cfg.mix;
-      budget = cfg.budget * crewBudget();
+      budget = cfg.budget * crewBudget() * diff().budget;
       maxGroup = cfg.group[1];
-      this.maxAlive = Math.round(cfg.maxAlive * crewAlive());
+      this.maxAlive = Math.round(cfg.maxAlive * crewAlive() * diff().alive);
       this.gap = cfg.gap;
     } else {
       mix = {};
       for (const t in W.unlock) if (W.unlock[t] <= n) mix[t] = W.weight[t];
-      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve)) * crewBudget();
+      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve)) * crewBudget() * diff().budget;
       maxGroup = Math.min(W.group.cap, W.group.max + Math.floor(n / W.group.perWaves));
-      this.maxAlive = Math.min(Math.round(W.maxAlive.cap * crewAlive()), Math.round((W.maxAlive.base + n * W.maxAlive.perWave) * crewAlive()));
+      this.maxAlive = Math.min(Math.round(W.maxAlive.cap * crewAlive() * diff().alive), Math.round((W.maxAlive.base + n * W.maxAlive.perWave) * crewAlive() * diff().alive));
       const g = W.gap;
       this.gap = [Math.max(g.floorMin, g.min - n * g.perWave), Math.max(g.floorMax, g.max - n * g.perWave)];
     }
@@ -125,7 +126,17 @@ export const waves = {
         budget -= BALANCE.enemies[t].threat * count;
       }
     }
+    // some groups are squads that work together (more often later, and on harder difficulties)
+    const squads = W.squads.filter((q) => q.from <= n + diff().mark);
+    const squadChance = n >= W.squadFrom ? Math.min(W.squadMax, (n - W.squadFrom + 1) * W.squadPerWave) * diff().squads : 0;
     while (budget > 0.3) {
+      if (squads.length && chance(squadChance)) {
+        const q = squads[randInt(0, squads.length - 1)];
+        const members = q.members.map(([t, c]) => ({ type: t, count: c }));
+        this.queue.push({ squad: q.id, members, split: !!q.split });
+        for (const m of members) budget -= BALANCE.enemies[m.type].threat * m.count;
+        continue;
+      }
       const type = weightedType(mix);
       const count = groupSize(type, maxGroup);
       this.queue.push({ type, count });
@@ -133,9 +144,20 @@ export const waves = {
     }
   },
 
-  /** Puts a warning marker on the edge; the group lands when it runs out. Also used by bosses. */
-  spawnGroup(type, count) {
+  /** A squad lands together from one edge (a split squad: its halves from opposite edges). */
+  spawnSquad(g) {
     const p = edgePoint();
+    g.members.forEach((m, i) => {
+      let x = p[0], y = p[1];
+      if (g.split && i % 2) { x = A.w - x; y = A.h - y; }        // the other side of the arena
+      else if (i) { x += rand(-60, 60); y += rand(-60, 60); }
+      this.spawnGroup(m.type, m.count, [Math.max(46, Math.min(A.w - 46, x)), Math.max(46, Math.min(A.h - 46, y))]);
+    });
+  },
+
+  /** Puts a warning marker on the edge; the group lands when it runs out. Also used by bosses. */
+  spawnGroup(type, count, at) {
+    const p = at || edgePoint();
     const w = G.warnings.get();
     if (!w) return;
     w.dead = false;
@@ -143,13 +165,14 @@ export const waves = {
     w.t = w.max = W.spawnWarn;
     w.type = type; w.count = count;
     const el = BALANCE.elite;
-    w.elite = G.wave >= el.from ? Math.min(el.chanceMax, (G.wave - el.from + 1) * el.chance) : 0;
+    const from = el.from - diff().mark;
+    w.elite = G.wave >= from ? Math.min(el.chanceMax * Math.min(1.6, diff().elite), (G.wave - from + 1) * el.chance * diff().elite) : 0;
     w.spread = 14 + count * 5;
   },
 
   pending() {
     let n = 0;
-    for (let i = 0; i < this.queue.length; i++) n += this.queue[i].count;
+    for (let i = 0; i < this.queue.length; i++) { const q = this.queue[i]; if (q.squad) for (const m of q.members) n += m.count; else n += q.count; }
     for (let i = 0; i < G.warnings.count; i++) n += G.warnings.items[i].count;
     return n;
   },
@@ -196,7 +219,7 @@ export const waves = {
         const lanes = G.wave >= W.lanes.three ? 3 : G.wave >= W.lanes.two ? 2 : 1;
         for (let l = 0; l < lanes && this.queue.length; l++) {
           const g = this.queue.shift();
-          this.spawnGroup(g.type, g.count);
+          if (g.squad) this.spawnSquad(g); else this.spawnGroup(g.type, g.count);
         }
         this.gapT = randRange(this.gap);
         // If the arena is nearly empty, hurry the next group along.

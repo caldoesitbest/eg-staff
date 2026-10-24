@@ -126,6 +126,16 @@ export class SpatialHash {
   }
 }
 
+/** Line-dash arrays, made once and reused (setLineDash copies them), so drawing allocates nothing. */
+export const NO_DASH = [];
+const dashes = new Map();
+export function dash(a, b) {
+  const k = a * 1000 + b;
+  let d = dashes.get(k);
+  if (!d) dashes.set(k, (d = [a, b]));
+  return d;
+}
+
 export function formatScore(n) {
   return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }

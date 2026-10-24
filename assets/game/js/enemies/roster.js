@@ -3,9 +3,9 @@
    Robots evolve with their Mark (e.mark: 0 = Mk I, 1 = Mk II from wave 12, 2 = Mk III from wave 24,
    higher in endless). Every new behaviour gets its own warning, so harder never means unfair. */
 
-import { G } from "../state.js";
+import { G, diff } from "../state.js";
 import { BALANCE } from "../balance.js";
-import { TAU, rand, randRange, angDiff } from "../util.js";
+import { TAU, rand, randRange, angDiff, dash, NO_DASH } from "../util.js";
 import { C, P_DANGER, P_VIOLET, P_AMBER, P_MAGENTA, P_BLUE, P_ORANGE, P_RED, P_GREEN, P_WHITE, P_PRIDE } from "../sprites.js";
 import { fx } from "../fx.js";
 import { audio } from "../audio.js";
@@ -15,14 +15,76 @@ import { fireEnemyBullet, queueBlast, killEnemy } from "../world.js";
 
 const D = BALANCE.enemies;
 const A = BALANCE.arena;
+const AI = BALANCE.ai;
+const GOLDEN = 2.39996;                    // spreads robots evenly around you by id
 
-function chase(e, P, dt, wobAmp, wobFreq, accel) {
+const byMark = (arr, m) => arr[Math.min(arr.length - 1, m)];
+/** Your velocity as the robots read it: your glide, not a boost (nobody predicts a boost). */
+function pv(P) {
+  if (P.boostT > 0) return [0, 0];
+  const v = Math.hypot(P.vx, P.vy), cap = 330;
+  return v > cap ? [P.vx * cap / v, P.vy * cap / v] : [P.vx, P.vy];
+}
+/** How far ahead this robot aims (0..1 of a perfect intercept), by type, Mark and difficulty. */
+export const leadK = (type, e) => Math.min(1, (e ? byMark(AI.lead[type], e.mark) : AI.lead[type]) * diff().lead);
+/** The angle to fire a shot of speed sp from (x, y) so it meets you if you keep going, k of the way.
+    Change direction after it commits and it misses: that's the counterplay. */
+export function leadAngle(x, y, P, sp, k) {
+  const dx = P.x - x, dy = P.y - y;
+  const [vx, vy] = pv(P);
+  if (k <= 0 || !sp) return Math.atan2(dy, dx);
+  const a = vx * vx + vy * vy - sp * sp, b = 2 * (dx * vx + dy * vy), c = dx * dx + dy * dy;
+  let t = 0;
+  if (Math.abs(a) < 1e-6) t = b < 0 ? -c / b : 0;
+  else {
+    const disc = b * b - 4 * a * c;
+    if (disc >= 0) {
+      const r = Math.sqrt(disc), t1 = (-b - r) / (2 * a), t2 = (-b + r) / (2 * a);
+      t = t1 > 0 && t2 > 0 ? Math.min(t1, t2) : Math.max(t1, t2);
+    }
+  }
+  if (!(t > 0)) t = Math.sqrt(c) / sp;
+  t = Math.min(AI.maxLead, t) * k;
+  return Math.atan2(dy + vy * t, dx + vx * t);
+}
+/** Attack cooldowns near you run faster while your boost recharges (a spent boost is a mistake they punish). */
+function urge(e, P) {
+  if (P.boostCdT <= 0.25) return 1;
+  const R = AI.punishRange;
+  return (P.x - e.x) ** 2 + (P.y - e.y) ** 2 < R * R ? AI.punish : 1;
+}
+/** A cooldown, scaled by the difficulty's aggression. */
+const cool = (s) => s * diff().aggro;
+
+/** Chasers cut you off rather than trailing you; flankers swing wide to come in from your side. */
+function chase(e, P, dt, wobAmp, wobFreq, accel, flank) {
   const dx = P.x - e.x, dy = P.y - e.y;
   const d = Math.sqrt(dx * dx + dy * dy) || 1;
+  const [vx, vy] = pv(P);
+  const t = Math.min(AI.maxLead, d / Math.max(80, e.speed)) * Math.min(1, byMark(AI.pursuit, e.mark) * diff().lead);
+  let tx = P.x + vx * t, ty = P.y + vy * t;
+  if (flank && d > 150) {
+    const side = e.id & 1 ? 1 : -1, w = Math.min(AI.flankWide, d * 0.5);
+    tx += (-dy / d) * w * side; ty += (dx / d) * w * side;
+  }
   const k = Math.min(1, d / 220);
   const wob = Math.sin(G.time * wobFreq + e.id * 1.7) * wobAmp * k;
-  seek(e, P.x + (-dy / d) * wob, P.y + (dx / d) * wob, e.speed, accel, dt);
+  seek(e, tx + (-dy / d) * wob, ty + (dx / d) * wob, e.speed, accel, dt);
   faceVel(e, 9, dt);
+}
+const flanker = (e) => (e.id * GOLDEN) % 1 < AI.flank;
+
+/** The nearest live robot of one of these types (for escorts and medics). */
+function nearestOf(e, types, maxD) {
+  let best = null, bd = maxD * maxD;
+  const items = G.enemies.items;
+  for (let i = 0; i < G.enemies.count; i++) {
+    const o = items[i];
+    if (o.dead || o === e || o.ally > 0 || types.indexOf(o.type) < 0) continue;
+    const d2 = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d2 < bd) { bd = d2; best = o; }
+  }
+  return best;
 }
 
 function wander(e, dt) {
@@ -70,7 +132,7 @@ export const ROSTER = {
   // 1. Scrap Drone: chaser. Mk II lunges when close (it squashes first). Mk III also spits a slow orb.
   drone: {
     pal: P_DANGER, accent: C.danger,
-    init(e) { e.cd = rand(1, 3); e.t3 = rand(2, 5); },
+    init(e) { e.cd = rand(1, 3); e.t3 = rand(2, 5); e.b = flanker(e) ? 1 : 0; },
     update(e, dt, P) {
       if (P.dead) return wander(e, dt);
       if (e.state === 1) {                         // lunge windup
@@ -78,19 +140,20 @@ export const ROSTER = {
         e.t -= dt;
         face(e, e.a, 12, dt);
         if (e.t <= 0) { e.state = 2; e.t = 0.2; e.vx = Math.cos(e.a) * 540; e.vy = Math.sin(e.a) * 540; audio.play("charge", e.x, e.y, 0.4); }
+        else if (e.t > 0.15) e.a = leadAngle(e.x, e.y, P, 540, leadK("drone", e));
         return;
       }
-      if (e.state === 2) { e.t -= dt; if (e.t <= 0) { e.state = 0; e.cd = rand(2.2, 3.4); } return; }
-      chase(e, P, dt, 50, 2.2, 3);
-      e.cd -= dt;
+      if (e.state === 2) { e.t -= dt; if (e.t <= 0) { e.state = 0; e.cd = cool(rand(2.2, 3.4)); } return; }
+      chase(e, P, dt, 50, 2.2, 3, e.b);
+      e.cd -= dt * urge(e, P);
       const d2 = (P.x - e.x) ** 2 + (P.y - e.y) ** 2;
       if (e.mark >= 1 && e.cd <= 0 && d2 < 175 * 175) { e.state = 1; e.t = 0.38; e.a = angleToPlayer(e); }
       if (e.mark >= 2) {
         e.t3 -= dt;
         if (e.t3 <= 0.4 && e.t3 + dt > 0.4) e.warnPlayed = true;
         if (e.t3 <= 0 && d2 < 460 * 460 && visible(e, 10)) {
-          e.t3 = rand(4, 6); e.warnPlayed = false;
-          const a = angleToPlayer(e);
+          e.t3 = cool(rand(4, 6)); e.warnPlayed = false;
+          const a = leadAngle(e.x, e.y, P, 200, leadK("drone", e));
           fireEnemyBullet(e.x, e.y, Math.cos(a) * 200, Math.sin(a) * 200, 1, "pink", 6);
         }
       }
@@ -105,14 +168,24 @@ export const ROSTER = {
   swarm: {
     pal: P_VIOLET, accent: "#c86bff",
     init(e) { e.speed *= 1 + Math.min(0.45, e.mark * 0.15); },
-    update(e, dt, P) { if (P.dead) return wander(e, dt); chase(e, P, dt, 85 + e.mark * 15, 5.5, 5); },
+    update(e, dt, P) {
+      if (P.dead) return wander(e, dt);
+      // a pack closes in from all sides: each one heads for its own spot on a shrinking ring
+      const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
+      if (d < 130) return chase(e, P, dt, 40 + e.mark * 10, 5.5, 5);
+      const a = e.id * GOLDEN + G.time * 0.35, r = Math.min(190, d * 0.55);
+      const tx = P.x + Math.cos(a) * r, ty = P.y + Math.sin(a) * r;
+      const wob = Math.sin(G.time * 5.5 + e.id * 1.7) * (40 + e.mark * 10);
+      seek(e, tx + (-dy / d) * wob, ty + (dx / d) * wob, e.speed, 5, dt);
+      faceVel(e, 9, dt);
+    },
   },
 
   // Splitter children.
   mini: {
     pal: P_MAGENTA, accent: C.magenta,
-    init(e) { e.speed *= 1 + Math.min(0.3, e.mark * 0.1); },
-    update(e, dt, P) { if (P.dead) return wander(e, dt); chase(e, P, dt, 40, 3.2, 4); },
+    init(e) { e.speed *= 1 + Math.min(0.3, e.mark * 0.1); e.b = flanker(e) ? 1 : 0; },
+    update(e, dt, P) { if (P.dead) return wander(e, dt); chase(e, P, dt, 40, 3.2, 4, e.b); },
   },
 
   // 2. Ripper: stops, shakes + shows its path, then charges in a straight line.
@@ -125,17 +198,17 @@ export const ROSTER = {
       if (P.dead) return wander(e, dt);
       e.t -= dt;
       if (e.state === 0) {                       // approach
-        e.cd -= dt;
+        e.cd -= dt * urge(e, P);
         chase(e, P, dt, 30, 1.6, 3);
         const dist = Math.hypot(P.x - e.x, P.y - e.y);
         if (e.cd <= 0 && dist < d.range && visible(e, 10)) {
-          e.state = 1; e.t = d.windup; e.a = angleToPlayer(e); e.c = Math.min(3, 1 + e.mark);
+          e.state = 1; e.t = d.windup; e.a = leadAngle(e.x, e.y, P, d.chargeSpeed, leadK("ripper", e)); e.c = Math.min(3, 1 + e.mark);
           audio.play("warn", e.x, e.y, 0.7);
         }
       } else if (e.state === 1) {                // windup: brake, track the player, lock for the last 35%
         brake(e, 10, dt);
         const wind = e.b ? 0.36 : d.windup;
-        if (e.t > wind * 0.35) e.a = angleToPlayer(e);
+        if (e.t > wind * 0.35) e.a = leadAngle(e.x, e.y, P, d.chargeSpeed, leadK("ripper", e));
         face(e, e.a, 14, dt);
         if (e.t <= 0) {
           e.state = 2; e.t = d.chargeTime; e.t3 = 0;
@@ -165,11 +238,11 @@ export const ROSTER = {
           if (e.c > 0 && !hitWall) {             // Mk II+: quick re-aim and go again
             e.state = 1; e.b = 1; e.t = 0.36; e.vx *= 0.2; e.vy *= 0.2;
             audio.play("warn", e.x, e.y, 0.5);
-          } else { e.state = 3; e.b = 0; e.t = randRange(d.rest); }
+          } else { e.state = 3; e.b = 0; e.t = cool(randRange(d.rest)); }
         }
       } else {                                    // rest
         brake(e, 3, dt);
-        if (e.t <= 0) { e.state = 0; e.cd = rand(0.2, 0.8); }
+        if (e.t <= 0) { e.state = 0; e.cd = cool(rand(0.2, 0.8)); }
       }
     },
     onRock(e) { if (e.state === 2) { e.state = 3; e.b = 0; e.t = 0.8; e.contact = D.ripper.contact; fx.shake(0.06); } },
@@ -180,7 +253,7 @@ export const ROSTER = {
       const p = 1 - e.t / wind;
       const len = Math.min(d.chargeSpeed * d.chargeTime, lineToWall(x, y, e.a));
       const locked = e.t <= wind * 0.35;
-      dashedLine(g, x, y, e.a, len, locked ? "#ffffff" : C.amber, 0.35 + p * 0.5, locked ? 3 : 2, [10, 8]);
+      dashedLine(g, x, y, e.a, len, locked ? "#ffffff" : C.amber, 0.35 + p * 0.5, locked ? 3 : 2, dash(10, 8));
       g.save();
       g.globalAlpha = 0.4 + p * 0.5;
       g.strokeStyle = C.amber;
@@ -212,8 +285,13 @@ export const ROSTER = {
       const dist = Math.hypot(dx, dy) || 1;
       const nx = dx / dist, ny = dy / dist;
       let tx, ty;
-      if (dist > d.keep[1]) { tx = nx; ty = ny; }
-      else if (dist < d.keep[0]) { tx = -nx; ty = -ny; }
+      // each gunner wants its own bearing around you, so a few of them make a crossfire
+      const keep = (d.keep[0] + d.keep[1]) / 2, pref = e.id * GOLDEN;
+      const sx = Math.max(60, Math.min(A.w - 60, P.x + Math.cos(pref) * keep)), sy = Math.max(60, Math.min(A.h - 60, P.y + Math.sin(pref) * keep));
+      const mx = sx - e.x, my = sy - e.y, ml = Math.hypot(mx, my) || 1;
+      if (dist < d.keep[0]) { tx = -nx; ty = -ny; }
+      else if (ml > 90) { tx = mx / ml; ty = my / ml; }
+      else if (dist > d.keep[1]) { tx = nx; ty = ny; }
       else { tx = -ny * e.b; ty = nx * e.b; }
       const k = Math.min(1, 3 * dt);
       const sp = e.state === 1 ? e.speed * 0.25 : e.speed;
@@ -221,13 +299,14 @@ export const ROSTER = {
       face(e, Math.atan2(dy, dx), 5, dt);
       if (Math.random() < dt * 0.3) e.b = -e.b;
       if (e.state === 0) {
-        e.cd -= dt;
+        e.cd -= dt * urge(e, P);
         if (e.cd <= 0 && visible(e, 20)) { e.state = 1; e.t = d.windup; e.c = e.mark >= 3 ? 2 : 1; audio.play("warn", e.x, e.y, 0.5); }
       } else {
         e.t -= dt;
         if (e.t <= 0) {
           const shots = e.mark >= 2 ? 5 : e.mark >= 1 ? 3 : 1;
-          const a0 = e.ang;
+          const a0 = leadAngle(e.x, e.y, P, d.shotSpeed, leadK("gunner", e));
+          e.ang = a0;
           for (let i = 0; i < shots; i++) {
             const a = a0 + (i - (shots - 1) / 2) * 0.26;
             fireEnemyBullet(e.x + Math.cos(a0) * 20, e.y + Math.sin(a0) * 20, Math.cos(a) * d.shotSpeed, Math.sin(a) * d.shotSpeed, d.shotDmg, "violet", 7);
@@ -237,7 +316,7 @@ export const ROSTER = {
           e.kx -= Math.cos(a0) * 60; e.ky -= Math.sin(a0) * 60;
           e.c--;
           if (e.c > 0) { e.t = 0.28; }
-          else { e.state = 0; e.cd = randRange(d.reload); }
+          else { e.state = 0; e.cd = cool(randRange(d.reload)); }
         }
       }
     },
@@ -293,8 +372,21 @@ export const ROSTER = {
       }
       face(e, want, d.turn * (1 + Math.min(1.2, e.mark * 0.4)), dt);
       const k = Math.min(1, 2 * dt);
-      e.vx += (Math.cos(e.ang) * e.speed - e.vx) * k;
-      e.vy += (Math.sin(e.ang) * e.speed - e.vy) * k;
+      // escort: guard the nearest gunner, sniper or patch bot by standing between it and you
+      e.t3 = (e.t3 || 0) - dt;
+      if (e.t3 <= 0) { e.t3 = 0.5; e.target = nearestOf(e, ["gunner", "sniper", "patch"], 460); }
+      const ward = e.target && !e.target.dead ? e.target : null;
+      if (ward && (P.x - e.x) ** 2 + (P.y - e.y) ** 2 > 200 * 200) {
+        const wx = P.x - ward.x, wy = P.y - ward.y, wl = Math.hypot(wx, wy) || 1;
+        const gx = ward.x + (wx / wl) * 80, gy = ward.y + (wy / wl) * 80;
+        const mx = gx - e.x, my = gy - e.y, ml = Math.hypot(mx, my) || 1;
+        const sp = Math.min(e.speed * 1.3, ml * 3);
+        e.vx += ((mx / ml) * sp - e.vx) * k;
+        e.vy += ((my / ml) * sp - e.vy) * k;
+      } else {
+        e.vx += (Math.cos(e.ang) * e.speed - e.vx) * k;
+        e.vy += (Math.sin(e.ang) * e.speed - e.vy) * k;
+      }
       e.cd -= dt;
       if (e.mark >= 2 && e.cd <= 0 && Math.abs(angDiff(e.ang, want)) < 0.35 && (P.x - e.x) ** 2 + (P.y - e.y) ** 2 < 230 * 230) {
         e.state = 1; e.t = 0.5; audio.play("warn", e.x, e.y, 0.6);
@@ -307,7 +399,7 @@ export const ROSTER = {
     },
     drawUnder(g, e, x, y) {
       if (e.state !== 1) return;
-      dashedLine(g, x, y, e.ang, 170, C.amber, 0.8, 3, [8, 6]);
+      dashedLine(g, x, y, e.ang, 170, C.amber, 0.8, 3, dash(8, 6));
     },
     drawOver(g, e, x, y) {
       if (e.c <= 0) return;
@@ -321,7 +413,7 @@ export const ROSTER = {
       g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
       g.strokeStyle = "rgba(255,200,97," + (0.15 + Math.random() * 0.25) + ")";
       g.lineWidth = 2;
-      g.setLineDash([4, 6]);
+      g.setLineDash(dash(4, 6));
       g.beginPath(); g.arc(0, 0, 27, -0.98, 0.98); g.stroke();
       g.restore();
     },
@@ -337,8 +429,13 @@ export const ROSTER = {
       if (P.dead) return wander(e, dt);
       const fuse = e.mark >= 1 ? d.fuse * 0.87 : d.fuse;
       if (e.state === 0) {
+        const dist = Math.hypot(P.x - e.x, P.y - e.y);
+        const sprint = e.mark >= 1 && dist < 280 ? 1.55 : 1;
+        e.speed *= sprint;
         chase(e, P, dt, 20, 1.5, 4);
-        if (Math.hypot(P.x - e.x, P.y - e.y) < d.trigger) {
+        e.speed /= sprint;
+        if (sprint > 1 && Math.random() < 0.5) fx.p(0, e.x, e.y, -e.vx * 0.15, -e.vy * 0.15, 0.25, 1.4, P_ORANGE, 3);
+        if (dist < d.trigger) {
           e.state = 1; e.t = fuse;
           audio.play("warn", e.x, e.y);
         }
@@ -375,10 +472,10 @@ export const ROSTER = {
       g.globalAlpha = 0.9;
       g.strokeStyle = C.red;
       g.lineWidth = 3;
-      g.setLineDash([12, 8]);
+      g.setLineDash(dash(12, 8));
       g.lineDashOffset = G.time * 60;
       g.beginPath(); g.arc(x, y, d.blast, 0, TAU); g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
       g.globalAlpha = 0.8;
@@ -404,15 +501,19 @@ export const ROSTER = {
         const k = Math.min(1, 2 * dt);
         e.vx += (tx * e.speed - e.vx) * k; e.vy += (ty * e.speed - e.vy) * k;
         face(e, Math.atan2(dy, dx), 4, dt);
-        e.cd -= dt;
+        e.cd -= dt * urge(e, P);
         if (e.cd <= 0 && visible(e, 30)) {
-          e.state = 1; e.t = d.aim; e.a = Math.atan2(dy, dx); e.c = Math.min(3, 1 + e.mark);
+          e.state = 1; e.t = d.aim; e.a = leadAngle(e.x, e.y, P, d.shotSpeed, leadK("sniper", e)); e.c = Math.min(3, 1 + e.mark);
           audio.play("laser", e.x, e.y, 0.8);
         }
       } else {
         brake(e, 8, dt);
         e.t -= dt;
-        if (e.t > 0.3) e.a = Math.atan2(dy, dx);
+        if (e.t > 0.3) {
+          // track where you're going (less of it in the last moments, so the lock is fair)
+          const want = leadAngle(e.x, e.y, P, d.shotSpeed, leadK("sniper", e));
+          e.a += angDiff(want, e.a) * Math.min(1, 10 * dt);
+        }
         face(e, e.a, 10, dt);
         if (e.t <= 0) {
           const c = Math.cos(e.a), s = Math.sin(e.a);
@@ -423,7 +524,7 @@ export const ROSTER = {
           e.kx -= c * 60; e.ky -= s * 60;
           e.c--;
           if (e.c > 0) e.t = 0.14;                 // follow-up shots down the same (still visible) line
-          else { e.state = 0; e.cd = randRange(d.reload); }
+          else { e.state = 0; e.cd = cool(randRange(d.reload)); e.b = -e.b; e.kx += -Math.sin(e.a) * e.b * 160; e.ky += Math.cos(e.a) * e.b * 160; }   // relocate
         }
       }
     },
@@ -465,6 +566,15 @@ export const ROSTER = {
       const nx = dx / dist, ny = dy / dist;
       let tx = -ny * e.b, ty = nx * e.b;
       if (dist > d.keep + 120) { tx = nx; ty = ny; } else if (dist < d.keep) { tx = -nx; ty = -ny; }
+      // tuck in behind the nearest big robot, out of your line of fire
+      e.t3 = (e.t3 || 0) - dt;
+      if (e.t3 <= 0) { e.t3 = 0.6; e.target = nearestOf(e, ["bulwark", "splitter", "gunner", "drone"], 420); }
+      const cover = e.target && !e.target.dead ? e.target : null;
+      if (cover && dist >= d.keep) {
+        const cx = cover.x - P.x, cy = cover.y - P.y, cl = Math.hypot(cx, cy) || 1;
+        const hx = cover.x + (cx / cl) * 70 - e.x, hy = cover.y + (cy / cl) * 70 - e.y, hl = Math.hypot(hx, hy) || 1;
+        if (hl > 30) { tx = hx / hl; ty = hy / hl; }
+      }
       const k = Math.min(1, 2 * dt);
       e.vx += (tx * e.speed - e.vx) * k; e.vy += (ty * e.speed - e.vy) * k;
       face(e, Math.atan2(dy, dx), 3, dt);
@@ -495,7 +605,7 @@ export const ROSTER = {
       g.globalAlpha = 0.1 + (e.t2 > 0 ? e.t2 : 0);
       g.strokeStyle = C.green;
       g.lineWidth = 2;
-      g.setLineDash([4, 10]);
+      g.setLineDash(dash(4, 10));
       g.lineDashOffset = -G.time * 30;
       g.beginPath(); g.arc(x, y, d.healRadius, 0, TAU); g.stroke();
       g.restore();
@@ -505,10 +615,19 @@ export const ROSTER = {
   // Pride's crown gems: they orbit the boss and soak most of the damage while any are left.
   gem: {
     pal: P_PRIDE, accent: "#a98bff",
-    update(e, dt) {
+    init(e) { e.cd = rand(1.2, 2.8); },
+    update(e, dt, P) {
       const b = e.parent;
       if (!b || b.dead || b.id !== e.parentId) { killEnemy(e, true); return; }
       const g = BALANCE.bosses.pride.gems;
+      // each gem fires now and then (staggered), so breaking the crown takes some footwork
+      const gs = BALANCE.bosses.pride.gemShot;
+      e.cd -= dt;
+      if (e.cd <= 0 && P && !P.dead && e.spawnT <= 0) {
+        e.cd = cool(randRange(gs.every));
+        const a = leadAngle(e.x, e.y, P, gs.speed, leadK("boss"));
+        fireEnemyBullet(e.x, e.y, Math.cos(a) * gs.speed, Math.sin(a) * gs.speed, 1, "pride", 6);
+      }
       const a = G.time * g.spin + (e.slot / g.count) * TAU;
       e.vx = e.vy = 0;
       e.x = b.x + Math.cos(a) * g.radius;
