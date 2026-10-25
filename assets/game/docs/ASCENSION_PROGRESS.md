@@ -19,9 +19,11 @@ tested, **Partial** means some of it shipped, **Next** means not started.
 | Achievements and cosmetics | **Done** | 34 achievements (`progress.js`) across Combat, Builds, Mastery, Bosses and Progress. They unlock suits, visors, jetpack trails, weapon finishes, titles, badges (pin up to 3) and boss victory effects. The Profile screen has Achievements and a Locker with a live preview |
 | Run events | **Done** | Cosmic Cache, Corrupted Armory (6 relics), Sin Altar and Elite Ambush (`events.js`, `balance.events`, `balance.relics`). At most one per chapter from chapter 2 |
 | Harder bosses and robots | **Done** | The user asked for harder bosses and tougher robots mid-phase. Boss health, attack pace, shots and minions ramp from Sloth to Envy (`balance.threat`). Bosses have *resolve*, a damage-rate cap so stacked builds can't delete them. Robots get more health per wave, waves are bigger, and elites arrive earlier. Gluttony's slam stops growing at 1.3×, so it can always be outrun |
-| Saves | **Done** | Save version 2 with `migrate()`: 4.1 saves keep everything. Earlier Ladder wins open Boss Rush and credit the matching achievements |
+| Saves | **Done** | Save version 3 with `migrate()`: 4.1 saves keep everything. Earlier Ladder wins open Boss Rush and credit the matching achievements, and achievements you already have pay their Sigils |
+| Hats and Sigils | **Done** | Nine hats to buy with Sigils, a rare currency, in the Locker (try one on in the preview first). Swap between owned hats any time; the crown is free and the default, and "No hat" is an option. Co-op teammates see your hat |
 | Leaderboards | **Partial** | Ladder runs post as before (difficulty recorded). Boss Rush is scored and stored separately on the device but **not posted online**: that needs a new Supabase table/function outside this repo, so Rush scores can't mix into the Ladder board |
-| Download the app | **Done** | A Download button on the game menu (website only; hidden inside the apps) opens "Get the app": the Windows app (`assets/game/download/EnviousGlider.exe`) with install notes, your own platform listed first, and an Add to Home Screen tip on iPhone and iPad. The Android card stays hidden until an APK is in that folder |
+| Download the app | **Done** | A Download button on the game menu (website only; hidden inside the apps) opens "Get the app": the Windows app and the Android app (`assets/game/download/`) with install notes, your own platform listed first, and an Add to Home Screen tip on iPhone and iPad |
+| Android app | **Partial** | `EnviousGlider.apk` (Android 7+, landscape, 0.8 MB): the game's files ship inside it and are served to a WebView as https://enviousgluttony.com/game/, like the Windows app, so saves, sign-in, the leaderboard and co-op work as on the site. Back closes panels and pauses; leaving the app pauses a solo run. Built and signed (APK Signature Scheme v2 and v3) and checked with Google's tools, but **not yet run on a phone** |
 | Human playtesting | **Next** | Everything below is simulated |
 
 ### Weapon evolutions
@@ -91,6 +93,35 @@ tested, **Partial** means some of it shipped, **Next** means not started.
 - **Display:** they show in the Locker. Each locked item names the achievement that unlocks it.
 - **Co-op:** teammates see your suit. Other cosmetics are local only.
 
+### Hats and Sigils
+
+Sigils (`balance.sigils`) never drop in debug runs. Payouts are multiplied by difficulty (Normal ×1, Hard ×2, Nightmare ×3) except achievements:
+
+| Source | Sigils (Normal) |
+| --- | --- |
+| Each sin boss beaten on the Ladder (endless laps too) | 1 |
+| Beating the Ladder | 5 |
+| Clearing Boss Rush | 3, plus 3 for an S rank or 1 for an A |
+| Each achievement (once) | 2 |
+
+A Normal Ladder win pays about 12, a Nightmare one about 36. Co-op guests are paid from the host's messages, the same amounts.
+
+| Hat | Price |
+| --- | --- |
+| Crown (default) | Free |
+| No hat | Free |
+| Sloth's Nightcap | 30 |
+| Gluttony's Toque | 40 |
+| Greed's Top Hat | 50 |
+| Lust's Heart Boppers | 50 |
+| Wrath's Horns | 70 |
+| Pride's Laurels | 80 |
+| Envy's Serpent | 100 |
+| Machine Antenna | 120 |
+| Halo | 200 |
+
+![](shots/v42-hats_lineup.png)
+
 ### Run events
 
 - **Cosmic Cache:** a passive cache drifts across mid-wave. Crack it before it leaves for stars or a free rare-or-better Armory item.
@@ -137,13 +168,14 @@ tested, **Partial** means some of it shipped, **Next** means not started.
 
 ### Tests
 
-`?debug=1&tests=1` runs 31 deterministic checks (`tests.js`). They cover:
+`?debug=1&tests=1` runs 40 deterministic checks (`tests.js`). They cover:
 - **Fusions:** offer rules, one per run, and every cap.
 - **Evolutions:** every evolution cap, and that kin shots never retrigger.
 - **Mutations:** caps and minimum wave, plus the Armored multipliers.
 - **Boss resolve:** the damage-rate cap.
 - **Boss Rush:** ranks.
-- **Saves:** 4.1 → v2 migration.
+- **Hats and Sigils:** prices, owning and wearing, no earning in debug runs, and the difficulty multiplier.
+- **Saves:** 4.1 → v3 migration, including Sigils for past achievements.
 
 All pass.
 
@@ -161,6 +193,7 @@ All pass.
 | ![](shots/v42-profile.jpg) Achievements | ![](shots/v42-locker.jpg) Locker |
 | ![](shots/v42-event_corrupt.jpg) Corrupted Armory | ![](shots/v42-event_altar.jpg) Sin Altar |
 | ![](shots/v42-event_ambush.jpg) Elite Ambush | ![](shots/v42-download.jpg) Get the app |
+| ![](shots/v42-hats.jpg) Hats in the Locker (trying one on) | |
 
 ### Known limits
 
@@ -169,6 +202,12 @@ All pass.
 - **Co-op tracking:** a few achievements (boss conditions, Rush clears) are tracked on the host only.
 - **Low-damage builds:** they face long late waves (Bulwark and Patch Bot squads).
 - **Unholy Union and Every Path** span many runs by design. They can't be earned quickly.
+- **Android app:**
+  - Not yet tested on a real phone.
+  - Google sign-in refuses to run inside apps, so sign in with Discord there.
+  - Android's installer warns about apps from outside the Play Store.
+- **Windows app:** not code-signed, so SmartScreen warns on first run.
+- **App signing key:** the Android key (`%USERPROFILE%\.android\envious-glider-release.jks` and its `.pass` file) must be kept. Updates signed with any other key won't install over this version.
 
 ## Phase II — 4.1 "Ascension II": challenge, visual refinement, Greed's music
 
