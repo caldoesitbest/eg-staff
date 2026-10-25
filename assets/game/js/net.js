@@ -31,17 +31,30 @@ export const net = {
 
   // ---------------------------------------------------------------- lobby (Realtime)
   async openChannel(code) {
-    const sb = window.EG.sb;
-    const ch = sb.channel("glider-lobby-" + code, { config: { broadcast: { self: false }, presence: { key: this.id } } });
-    ch.on("broadcast", { event: "sig" }, ({ payload }) => this.onSignal(payload));
-    ch.on("presence", { event: "sync" }, () => this.onPresence());
-    const st = await new Promise((res) => {
-      const t = setTimeout(() => res("TIMED_OUT"), 10000);
-      ch.subscribe((s) => { if (s === "SUBSCRIBED" || s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") { clearTimeout(t); res(s); } });
-    });
-    if (st !== "SUBSCRIBED") { try { sb.removeChannel(ch); } catch (e) { /* ignore */ } throw new Error("Couldn't reach the lobby server."); }
-    this.ch = ch;
-    return ch;
+    const sb = window.EG.sb, rt = sb.realtime;
+    // Lobbies never need your account, so they join with the site's public key: the server refuses a
+    // signed-in session whose token has gone stale (a long-open window, a laptop that slept).
+    try { await rt.setAuth(window.EG_CONFIG.SUPABASE_KEY); } catch (e) { /* older client: keeps the session token */ }
+    let why = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) {
+        // start the connection over: a socket left half-open by sleep or a network change stalls every join
+        try { rt.disconnect(); } catch (e) { /* ignore */ }
+        this.status("Retrying the lobby server…");
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+      }
+      const ch = sb.channel("glider-lobby-" + code, { config: { broadcast: { self: false }, presence: { key: this.id } } });
+      ch.on("broadcast", { event: "sig" }, ({ payload }) => this.onSignal(payload));
+      ch.on("presence", { event: "sync" }, () => this.onPresence());
+      const res = await new Promise((done) => {
+        const t = setTimeout(() => done({ s: "TIMED_OUT" }), 10000);
+        ch.subscribe((s, err) => { if (s === "SUBSCRIBED" || s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") { clearTimeout(t); done({ s, err }); } });
+      });
+      if (res.s === "SUBSCRIBED") { this.ch = ch; return ch; }
+      why = res.err && res.err.message ? res.err.message : res.s === "TIMED_OUT" ? "no answer" : res.s.toLowerCase();
+      try { sb.removeChannel(ch); } catch (e) { /* ignore */ }
+    }
+    throw new Error("Couldn't reach the lobby server (" + why + "). Check your connection and try again.");
   },
   signal(to, data) {
     if (!this.ch) return;

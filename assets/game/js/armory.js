@@ -10,8 +10,11 @@ import { audio } from "./audio.js";
 import { C, P_CYAN, P_ORANGE, P_MAGENTA } from "./sprites.js";
 import { computeStats, applyCard, CARDS } from "./upgrades.js";
 import { firePlayerBullet, queueBlast, healPlayer } from "./world.js";
+import { evoCode, evoName, evoCol } from "./evolve.js";
 
 const GUNS = BALANCE.guns, ITEMS = BALANCE.items, SH = BALANCE.shop, T = BALANCE.gunTiers;
+// Corrupted relics (the Corrupted Armory event) are gear too, but the shop never sells them.
+for (const id in BALANCE.relics) ITEMS[id] = { ...BALANCE.relics[id], r: 4, max: 1, price: 0, corrupt: true };
 export const GUN_IDS = Object.keys(GUNS);
 export const ITEM_IDS = Object.keys(ITEMS);
 export const RARITY = [
@@ -19,6 +22,7 @@ export const RARITY = [
   { name: "Rare", col: "#63f4ff" },
   { name: "Epic", col: "#c86bff" },
   { name: "Legendary", col: "#ffc861" },
+  { name: "Corrupted", col: "#ff2a55" },
 ];
 export const TIER_NAMES = ["I", "II", "III", "IV"];
 // Which shot sprite each gun fires (index into sprites.shots) and its colour + bullet size.
@@ -42,6 +46,7 @@ const ITEM_ICON = {
   battery: "#battery", hollow: "circle-dot", fuel: "rocket", coolant: "hourglass", magnet: "#magnet", nanoweave: "heart",
   capbank: "zap", scope: "search", fang: "#fang", thorns: "sparkle", coupon: "tag", piggy: "coins", bubble: "shield-check",
   mines: "#mine", turret: "satellite-dish", glass: "gem", crown: "crown", clover: "#clover", overdrive: "infinity",
+  c_blood: "flame", c_overclock: "zap", c_greedy: "coins", c_crown: "crown", c_halo: "sparkle", c_lead: "shield-half",
 };
 const CUSTOM_ICON = {
   battery: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M10 10v4"/>',
@@ -86,7 +91,29 @@ export function resetArmory() {
 }
 export const itemLvl = (id) => (G.items && G.items[id]) || 0;
 export function activeGun() { return (G.guns && (G.guns[G.gunSlot] || G.guns[0])) || { id: "blaster", tier: 1 }; }
-export const gunName = (g) => GUNS[g.id].name + " " + TIER_NAMES[g.tier - 1];
+/** "Rail Lance III", or an evolved gun's own name ("Annihilator"). */
+export const gunName = (g) => (g.evo ? evoName(evoCode(g.id, g.evo)) : GUNS[g.id].name + " " + TIER_NAMES[g.tier - 1]);
+/** A gun's colour (evolved guns wear their evolution's). */
+export const gunCol = (g) => (g && g.evo ? evoCol(evoCode(g.id, g.evo)) : GUN_COL[(g && g.id) || "blaster"]);
+
+/** The gun ready to evolve: Tier IV, not evolved yet (the one in your hands first). Its slot, or -1. */
+export function evoCandidate() {
+  const guns = G.guns || [];
+  for (const i of [G.gunSlot, 1 - G.gunSlot]) {
+    const g = guns[i];
+    if (g && g.tier >= 4 && !g.evo && BALANCE.evolution[g.id]) return i;
+  }
+  return -1;
+}
+/** Evolves the gun in slot i down path "a" or "b" (one path per gun per run). */
+export function evolveGun(i, path) {
+  const g = G.guns[i];
+  if (!g || g.evo || (path !== "a" && path !== "b")) return false;
+  g.evo = path;
+  computeStats();
+  G.emit("evolve", g);
+  return true;
+}
 
 /** Swaps to the other slot (or a given one). Returns true if the gun changed. */
 export function swapGun(to) {
@@ -98,7 +125,7 @@ export function swapGun(to) {
   if (P && !P.dead) {
     P.fireCd = Math.max(P.fireCd, 0.12);
     const g = activeGun();
-    fx.text(P.x, P.y - 40, gunName(g).toUpperCase(), GUN_COL[g.id], 15, 0.8);
+    fx.text(P.x, P.y - 40, gunName(g).toUpperCase(), gunCol(g), 15, 0.8);
     audio.play("swap", P.x, P.y);
   }
   G.emit("gun");
@@ -142,7 +169,7 @@ function rollRarity() {
   return 0;
 }
 
-const itemOpen = (id) => itemLvl(id) < ITEMS[id].max && (id !== "crown" || crownTarget());
+const itemOpen = (id) => !ITEMS[id].corrupt && itemLvl(id) < ITEMS[id].max && (id !== "crown" || crownTarget());
 
 function rollOffer(taken) {
   const has = (kind, id) => taken.some((o) => o && o.kind === kind && o.id === id);
@@ -152,7 +179,13 @@ function rollOffer(taken) {
       const held = heldGun(id);
       return held ? held.tier < 4 : id !== "blaster";
     });
-    return list.length ? { kind: "gun", id: list[Math.floor(rng() * list.length)], locked: false, sold: false } : null;
+    if (!list.length) return null;
+    // guns you already carry come up more often, so a gun you invest in can reach Tier IV (and evolve)
+    let total = 0;
+    for (const id of list) total += heldGun(id) ? SH.heldWeight : 1;
+    let r = rng() * total;
+    for (const id of list) { r -= heldGun(id) ? SH.heldWeight : 1; if (r <= 0) return { kind: "gun", id, locked: false, sold: false }; }
+    return { kind: "gun", id: list[list.length - 1], locked: false, sold: false };
   };
   if (G.wave >= 2 && rng() < SH.gunChance) { const o = gun(); if (o) return o; }
   // the rolled rarity, then cheaper, then dearer (late in endless whole rarities run out)
@@ -193,6 +226,12 @@ export function openShop(bounty) {
     const pool = ITEM_IDS.filter((id) => ITEMS[id].r >= 2 && itemOpen(id) &&
       !G.shop.offers.some((o) => o && o.kind === "item" && o.id === id));
     if (i >= 0 && pool.length) G.shop.offers[i] = { kind: "item", id: pool[Math.floor(rng() * pool.length)], locked: false, sold: false, bounty: true };
+    // and an upgrade for the gun in your hands, until it's Tier IV
+    const g = activeGun();
+    if (g.tier < 4 && !G.shop.offers.some((o) => o && o.kind === "gun" && o.id === g.id)) {
+      const j = G.shop.offers.findIndex((o) => !o || (!o.locked && !o.bounty));
+      if (j >= 0) G.shop.offers[j] = { kind: "gun", id: g.id, locked: false, sold: false };
+    }
   }
 }
 export function rerollCost() {

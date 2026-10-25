@@ -66,19 +66,27 @@ export function startLoop({ before, update, render, timer }) {
    going in a background tab where timers are throttled to once a second. */
 function headless({ before, update, render }) {
   const ch = new MessageChannel();
-  const stats = { fps: 60, frameMs: 16.7, workMs: 0 };
+  const stats = { fps: 60, frameMs: 16.7, workMs: 0, stepMs: 0, drawMs: 0, steps: 0, draws: 0 };   // stepMs / drawMs: running averages (perf checks)
   let running = true, n = 0, drawDt = 0;
   ch.port1.onmessage = () => {
     if (!running) return;
     const t0 = performance.now();
-    // a few steps per message, then yield so the page (and test scripts) stay responsive
-    while (performance.now() - t0 < 8) {
-      if (before) before(STEP);
-      update(STEP);
-      drawDt += STEP;
-      if (++n % 8 === 0) { render(0, drawDt); drawDt = 0; }
-    }
-    ch.port2.postMessage(0);
+    // a few steps per message, then yield so the page (and test scripts) stay responsive; an error in one
+    // step is reported (window error) and the soak carries on, like the real loop
+    try {
+      while (performance.now() - t0 < 8) {
+        const a = performance.now();
+        if (before) before(STEP);
+        update(STEP);
+        const b = performance.now();
+        stats.stepMs += (b - a - stats.stepMs) * 0.02; stats.steps++;
+        drawDt += STEP;
+        if (++n % 8 === 0) {
+          render(0, drawDt); drawDt = 0;
+          stats.drawMs += (performance.now() - b - stats.drawMs) * 0.1; stats.draws++;
+        }
+      }
+    } finally { ch.port2.postMessage(0); }
   };
   ch.port2.postMessage(0);
   return {

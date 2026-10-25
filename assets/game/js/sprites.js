@@ -2,6 +2,7 @@
    so the hot loop only does drawImage. Rebuilt when the zoom/pixel ratio changes. */
 
 import { TAU } from "./util.js";
+import { BALANCE } from "./balance.js";
 
 export const C = {
   bg: "#030518", bg2: "#04050f",
@@ -18,6 +19,8 @@ export const SIN = {
 };
 export const PAL = [C.cyan, C.violet2, C.magenta, C.mint, C.amber, C.danger, C.white, C.orange, C.red, C.green, C.violet, C.heart, C.blue,
   SIN.sloth, SIN.glutton, SIN.greed, SIN.lust, SIN.wrath, SIN.pride, SIN.envy];
+// Weapon evolutions bring their own colours (evolve.js looks them up by colour).
+for (const gun in BALANCE.evolution) for (const path of ["a", "b"]) { const c = BALANCE.evolution[gun][path].col; if (PAL.indexOf(c) < 0) PAL.push(c); }
 export const P_CYAN = 0, P_VIOLET = 1, P_MAGENTA = 2, P_MINT = 3, P_AMBER = 4, P_DANGER = 5, P_WHITE = 6,
   P_ORANGE = 7, P_RED = 8, P_GREEN = 9, P_DVIOLET = 10, P_HEART = 11, P_BLUE = 12,
   P_SLOTH = 13, P_GLUT = 14, P_GREED = 15, P_LUST = 16, P_WRATH = 17, P_PRIDE = 18, P_ENVY = 19;
@@ -204,7 +207,7 @@ export const ROBOT_ART = {
 // ---------- the crowned astronaut (faces right; flipped when aiming left) ----------
 function drawAstronaut(g, P, suit) {
   const s = suit.suit, trim = suit.trim, visor = suit.visor;
-  const dark = suit.id === "void" ? "#14183a" : "#8a93c2";
+  const dark = suit.dark || suit.id === "void" ? "#14183a" : "#8a93c2";
   // jetpack
   rrect(g, -15, -6, 9, 19, 3); g.fillStyle = dark; g.fill();
   glow(g, P, trim, 6); g.strokeStyle = trim; g.lineWidth = 1.2; g.stroke(); noGlow(g);
@@ -217,7 +220,7 @@ function drawAstronaut(g, P, suit) {
   rrect(g, -9, -3, 18, 16, 6); g.fillStyle = s; g.fill();
   g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 1; g.stroke();
   g.fillStyle = trim; g.fillRect(-4, 2, 8, 3);
-  glow(g, P, trim, 6); g.fillStyle = trim; circle(g, 3, 8, 1.4); g.fill(); noGlow(g);
+  drawMark(g, P, suit.mark, trim, s);
   // back arm
   g.fillStyle = s; rrect(g, -11, 0, 5, 10, 2.5); g.fill();
   // helmet
@@ -231,15 +234,387 @@ function drawAstronaut(g, P, suit) {
   grd.addColorStop(1, "#14082e");
   g.beginPath(); g.ellipse(3.2, -10, 7.4, 6.4, 0, 0, TAU); g.fillStyle = grd; g.fill();
   g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1; g.stroke();
+  if (suit.visorFx) drawVisorFx(g, P, suit.visorFx);
   g.fillStyle = "rgba(255,255,255,0.85)";
   g.beginPath(); g.ellipse(5.6, -13, 2.2, 1.3, -0.5, 0, TAU); g.fill();
-  // crown
-  glow(g, P, C.amber, 10);
-  g.fillStyle = C.amber;
-  shapeFromPoints(g, [-6, -21, -6, -27, -3, -24, 0, -29, 3, -24, 6, -27, 6, -21]);
-  g.fill();
+  drawHat(g, P, suit.hat);
+}
+
+// ---------- suit emblems: a small mark on the chest in the trim colour (catalog.js picks one per suit) ----------
+function drawMark(g, P, mark, col, bg) {
+  const x = 3, y = 8.4;
+  glow(g, P, col, 6);
+  g.fillStyle = col; g.strokeStyle = col; g.lineWidth = 0.9;
+  if (mark === "moon") {
+    circle(g, x, y, 2.5); g.fill(); noGlow(g);
+    g.fillStyle = bg; circle(g, x + 1.3, y - 0.9, 2.1); g.fill();
+  } else if (mark === "core") {
+    circle(g, x, y, 2.6); g.stroke(); circle(g, x, y, 1.2); g.fill();
+    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; g.fillRect(x + Math.cos(a) * 3.3 - 0.4, y + Math.sin(a) * 3.3 - 0.4, 0.8, 0.8); }
+  } else if (mark === "coin") {
+    circle(g, x, y, 2.6); g.fill(); noGlow(g);
+    g.strokeStyle = bg; g.lineWidth = 0.6; circle(g, x, y, 1.7); g.stroke();
+    g.fillStyle = bg; g.fillRect(x - 0.35, y - 1.3, 0.7, 2.6);
+  } else if (mark === "heart") {
+    g.save(); g.translate(x, y + 0.2); heartPath(g, 2.5); g.fill(); g.restore();
+  } else if (mark === "flame") {
+    g.beginPath(); g.moveTo(x, y - 3.2); g.quadraticCurveTo(x + 3, y + 0.2, x, y + 2.8); g.quadraticCurveTo(x - 3, y + 0.2, x, y - 3.2); g.fill();
+    noGlow(g); g.fillStyle = "#ffd45c";
+    g.beginPath(); g.moveTo(x, y - 0.6); g.quadraticCurveTo(x + 1.4, y + 1, x, y + 2.2); g.quadraticCurveTo(x - 1.4, y + 1, x, y - 0.6); g.fill();
+  } else if (mark === "crown") {
+    shapeFromPoints(g, [x - 2.7, y + 1.9, x - 2.7, y - 1.3, x - 1.3, y + 0.1, x, y - 2.4, x + 1.3, y + 0.1, x + 2.7, y - 1.3, x + 2.7, y + 1.9]); g.fill();
+  } else if (mark === "eye") {
+    g.beginPath(); g.ellipse(x, y, 2.9, 1.6, 0, 0, TAU); g.fill(); noGlow(g);
+    g.fillStyle = "#14082e"; circle(g, x, y, 0.95); g.fill();
+    g.fillStyle = "#ffffff"; circle(g, x - 0.35, y - 0.4, 0.3); g.fill();
+  } else if (mark === "star") {
+    g.save(); g.translate(x, y); starPath(g, 2.8, 1.15); g.fill(); g.restore();
+  } else if (mark === "spark") {
+    g.beginPath(); g.moveTo(x, y - 3.2);
+    g.quadraticCurveTo(x + 0.5, y - 0.5, x + 3.2, y); g.quadraticCurveTo(x + 0.5, y + 0.5, x, y + 3.2);
+    g.quadraticCurveTo(x - 0.5, y + 0.5, x - 3.2, y); g.quadraticCurveTo(x - 0.5, y - 0.5, x, y - 3.2); g.fill();
+  } else if (mark === "swirl") {
+    g.lineWidth = 0.8; g.lineCap = "round";
+    g.beginPath(); g.arc(x, y, 2.6, 0.2, Math.PI * 1.5); g.stroke();
+    g.beginPath(); g.arc(x + 0.5, y + 0.3, 1.3, Math.PI * 0.8, Math.PI * 2.4); g.stroke();
+    g.lineCap = "butt";
+    circle(g, x + 0.4, y + 0.2, 0.5); g.fill();
+  } else {
+    circle(g, x, y, 1.4); g.fill();      // the original glow dot
+  }
   noGlow(g);
-  g.fillStyle = C.magenta; circle(g, 0, -23.6, 1.3); g.fill();
+}
+
+// ---------- visor effects (catalog.js visors with fx) ----------
+function drawVisorFx(g, P, fxId) {
+  g.save();
+  g.beginPath(); g.ellipse(3.2, -10, 7.4, 6.4, 0, 0, TAU); g.clip();
+  if (fxId === "stars") {
+    const neb = g.createRadialGradient(6, -7, 0, 6, -7, 6);
+    neb.addColorStop(0, "rgba(255,66,208,0.45)"); neb.addColorStop(1, "rgba(255,66,208,0)");
+    g.fillStyle = neb; g.fillRect(-5, -17, 16, 14);
+    g.fillStyle = "#ffffff";
+    for (const [sx, sy, r] of [[0, -12.5, 0.55], [5.2, -8, 0.45], [2, -5.6, 0.35], [7, -12.8, 0.4], [-1.6, -8.6, 0.3], [8.6, -7.4, 0.3]]) { circle(g, sx, sy, r); g.fill(); }
+  } else if (fxId === "crack") {
+    g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 0.55;
+    g.beginPath();
+    g.moveTo(5.6, -8.2); g.lineTo(9.6, -11.6); g.moveTo(5.6, -8.2); g.lineTo(1.6, -4.4);
+    g.moveTo(5.6, -8.2); g.lineTo(1.4, -11.6); g.lineTo(-1.2, -11.2); g.moveTo(5.6, -8.2); g.lineTo(8.4, -3.8);
+    g.moveTo(3.2, -6.6); g.lineTo(2.2, -8.4);
+    g.stroke();
+  } else if (fxId === "rim") {
+    g.fillStyle = "rgba(99,244,255,0.22)";
+    g.beginPath(); g.ellipse(1, -12.5, 7, 1.6, -0.35, 0, TAU); g.fill();
+  }
+  g.restore();
+  if (fxId === "rim") {
+    glow(g, P, "#63f4ff", 6);
+    g.strokeStyle = "#63f4ff"; g.lineWidth = 1.1;
+    g.beginPath(); g.ellipse(3.2, -10, 7.4, 6.4, 0, 0, TAU); g.stroke();
+    noGlow(g);
+  }
+}
+
+// ---------- hats (bought with Sigils; the crown is everyone's). The helmet is a circle at (0, -10), r 11.5;
+// everything stays inside the sprite's box (y >= -32). ----------
+const HAT_ART = {
+  crown(g, P) {
+    glow(g, P, C.amber, 10);
+    g.fillStyle = C.amber;
+    shapeFromPoints(g, [-6, -21, -6, -27, -3, -24, 0, -29, 3, -24, 6, -27, 6, -21]);
+    g.fill();
+    noGlow(g);
+    g.fillStyle = C.magenta; circle(g, 0, -23.6, 1.3); g.fill();
+  },
+  none() {},
+  nightcap(g, P) {
+    // a floppy cap that slumps over the back of the helmet, pom-pom and all
+    g.fillStyle = SIN.sloth;
+    g.beginPath();
+    g.moveTo(8, -20);
+    g.quadraticCurveTo(6, -30.5, -3, -30);
+    g.quadraticCurveTo(-12, -29.5, -15, -22);
+    g.lineTo(-12.4, -21.4);
+    g.quadraticCurveTo(-10, -25.5, -6, -24.2);
+    g.lineTo(-8.6, -20);
+    g.closePath(); g.fill();
+    g.fillStyle = "rgba(60,64,110,0.35)";
+    g.beginPath(); g.moveTo(2.5, -29.6); g.quadraticCurveTo(-1, -26, -6.5, -26.8); g.lineTo(-6, -24.2); g.quadraticCurveTo(-1, -23.6, 4.6, -27.8); g.closePath(); g.fill();
+    g.fillStyle = "#8a90b8"; rrect(g, -9.5, -22.6, 18.5, 3.6, 1.8); g.fill();
+    glow(g, P, "#ffffff", 6);
+    g.fillStyle = "#ffffff"; circle(g, -15.4, -21, 2.6); g.fill();
+    noGlow(g);
+  },
+  toque(g, P) {
+    // the chef's hat: puffy top, a band in Gluttony's pink
+    glow(g, P, "#ffffff", 6);
+    g.fillStyle = "#f4f6ff";
+    circle(g, -4.4, -25.6, 3.8); g.fill();
+    circle(g, 4.4, -25.6, 3.8); g.fill();
+    circle(g, 0, -27.4, 4.2); g.fill();
+    rrect(g, -6.2, -25.6, 12.4, 5.2, 1.4); g.fill();
+    noGlow(g);
+    g.strokeStyle = "rgba(20,24,60,0.22)"; g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-2.1, -25.2); g.lineTo(-2.1, -21.6); g.moveTo(2.1, -25.2); g.lineTo(2.1, -21.6); g.stroke();
+    g.fillStyle = SIN.glutton; g.fillRect(-6.2, -22.2, 12.4, 1.7);
+  },
+  tophat(g, P) {
+    // black silk with a gold band: Greed dresses for the occasion
+    g.fillStyle = "#1a1530";
+    rrect(g, -6, -31, 12, 10.2, 1.2); g.fill();
+    g.beginPath(); g.ellipse(0, -21, 10.5, 2.2, 0, 0, TAU); g.fill();
+    g.strokeStyle = "rgba(255,212,92,0.5)"; g.lineWidth = 0.8;
+    rrect(g, -6, -31, 12, 10.2, 1.2); g.stroke();
+    g.beginPath(); g.ellipse(0, -21, 10.5, 2.2, 0, 0, TAU); g.stroke();
+    glow(g, P, SIN.greed, 8);
+    g.fillStyle = SIN.greed; g.fillRect(-6, -24.8, 12, 2.4);
+    noGlow(g);
+    g.fillStyle = "rgba(255,255,255,0.14)"; g.fillRect(2.4, -30, 1.6, 4.6);
+  },
+  boppers(g, P) {
+    // a headband with two hearts on springs
+    g.strokeStyle = SIN.lust; g.lineWidth = 1.6;
+    g.beginPath(); g.arc(0, -10, 12.4, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+    g.strokeStyle = "#f2b8d8"; g.lineWidth = 1.1;
+    g.beginPath();
+    g.moveTo(-4.4, -21.6); g.quadraticCurveTo(-5.6, -25.5, -8.6, -26.6);
+    g.moveTo(4.4, -21.6); g.quadraticCurveTo(5.6, -25.5, 8.6, -26.6);
+    g.stroke();
+    glow(g, P, SIN.lust, 8);
+    g.fillStyle = "#ff6fb5";
+    for (const x of [-8.8, 8.8]) { g.save(); g.translate(x, -27.6); heartPath(g, 3); g.fill(); g.restore(); }
+    noGlow(g);
+  },
+  horns(g, P) {
+    // Wrath's horns, curling up off the helmet
+    glow(g, P, "#ff3b3b", 8);
+    g.fillStyle = "#ff4a3d";
+    g.beginPath(); g.moveTo(-8.5, -17.5); g.quadraticCurveTo(-12.8, -24, -10.6, -30.6); g.quadraticCurveTo(-8.4, -24.6, -3.8, -20.6); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(3.8, -20.6); g.quadraticCurveTo(8.4, -24.6, 10.6, -30.6); g.quadraticCurveTo(12.8, -24, 8.5, -17.5); g.closePath(); g.fill();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,214,190,0.6)"; g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-7.4, -19.6); g.quadraticCurveTo(-10, -24, -10, -28); g.moveTo(7.4, -19.6); g.quadraticCurveTo(10, -24, 10, -28); g.stroke();
+  },
+  laurels(g, P) {
+    // a victor's wreath around the top of the helmet, a Pride gem where the branches meet
+    const R = 12.2;
+    g.strokeStyle = "#c9962e"; g.lineWidth = 0.9;
+    g.beginPath(); g.arc(0, -10, R, Math.PI * 1.13, Math.PI * 1.45); g.stroke();
+    g.beginPath(); g.arc(0, -10, R, Math.PI * 1.55, Math.PI * 1.87); g.stroke();
+    glow(g, P, C.amber, 5);
+    g.fillStyle = "#ffd45c";
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 4; k++) {
+        // pairs of leaves along each stem, angled up toward the front of the wreath
+        const a = -Math.PI / 2 + side * (0.2 + k * 0.3);
+        const x = Math.cos(a) * R, y = -10 + Math.sin(a) * R, t = a - side * Math.PI / 2;
+        for (const off of [-0.55, 0.55]) {
+          g.beginPath();
+          g.ellipse(x + Math.cos(t + off * 2) * 1.6, y + Math.sin(t + off * 2) * 1.6, 2.2, 0.95, t + off, 0, TAU);
+          g.fill();
+        }
+      }
+    }
+    noGlow(g);
+    g.fillStyle = SIN.pride; circle(g, 0, -23.2, 1.6); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.8)"; circle(g, -0.5, -23.7, 0.5); g.fill();
+  },
+  serpent(g, P) {
+    // Envy's snake: a tapering tail down the back of the helmet, one coil over the top, then the neck rears
+    // up in an S to a wedge head over the visor, slit-eyed with its tongue out. The body is a smooth tube
+    // along that spine (thin at the tail) with a diamond-back pattern and a lit top edge.
+    const R = 12.3, pts = [];
+    for (let i = 0; i < 10; i++) {                                        // the tail
+      const t = i / 10, u = 1 - t;
+      pts.push([u * u * -12.6 + 2 * u * t * -14.8 + t * t * -R, u * u * -2.2 + 2 * u * t * -6.4 + t * t * -10]);
+    }
+    for (let i = 0; i < 30; i++) {                                        // the coil
+      const a = Math.PI * (1 + 0.78 * i / 30);
+      pts.push([Math.cos(a) * R, -10 + Math.sin(a) * R]);
+    }
+    const a1 = Math.PI * 1.78, x1 = Math.cos(a1) * R, y1 = -10 + Math.sin(a1) * R;
+    const hx = 10.6, hy = -27.9;
+    for (let i = 0; i <= 18; i++) {                                       // the neck's S
+      const t = i / 18, u = 1 - t;
+      pts.push([u * u * u * x1 + 3 * u * u * t * 13.8 + 3 * u * t * t * 6.6 + t * t * t * hx,
+        u * u * u * y1 + 3 * u * u * t * -21.2 + 3 * u * t * t * -24 + t * t * t * hy]);
+    }
+    const n = pts.length;
+    const rad = (i) => { const s = i / (n - 1); return s < 0.3 ? 0.4 + (s / 0.3) * 1.5 : 1.9 - (s - 0.3) * 0.55; };
+    const tube = (extra, col, dx, dy, k) => {
+      g.strokeStyle = col; g.lineCap = "round";
+      for (let i = 1; i < n; i++) {
+        g.lineWidth = Math.max(0.3, (rad(i) * k + extra) * 2);
+        g.beginPath(); g.moveTo(pts[i - 1][0] + dx * rad(i), pts[i - 1][1] + dy * rad(i)); g.lineTo(pts[i][0] + dx * rad(i), pts[i][1] + dy * rad(i)); g.stroke();
+      }
+    };
+    tube(0.55, "#1d2160", 0, 0, 1);                                       // outline
+    tube(0, SIN.envy, 0, 0, 1);                                           // body
+    tube(0, "rgba(190,200,255,0.55)", -0.25, -0.4, 0.38);                 // light along the top
+    // diamond-back: a dark rhombus every few units along the body, turned with it
+    g.fillStyle = "#2f379c";
+    let len = 0, next = 2.4;
+    for (let i = 1; i < n - 3; i++) {
+      const dx = pts[i][0] - pts[i - 1][0], dy = pts[i][1] - pts[i - 1][1];
+      len += Math.hypot(dx, dy);
+      if (len < next) continue;
+      next += 2.4;
+      const r = rad(i), a = Math.atan2(dy, dx);
+      g.save(); g.translate(pts[i][0], pts[i][1]); g.rotate(a);
+      g.beginPath(); g.moveTo(-r * 0.75, 0); g.lineTo(0, -r * 0.62); g.lineTo(r * 0.75, 0); g.lineTo(0, r * 0.62); g.closePath(); g.fill();
+      g.restore();
+    }
+    g.lineCap = "butt";
+    // the head
+    g.beginPath();
+    g.moveTo(hx - 1.2, hy - 2.1);
+    g.quadraticCurveTo(hx + 2.8, hy - 3.3, hx + 6.2, hy - 0.2);
+    g.quadraticCurveTo(hx + 2.8, hy + 2.6, hx - 1.2, hy + 2.0);
+    g.closePath();
+    g.lineWidth = 1.1; g.strokeStyle = "#1d2160"; g.stroke();
+    g.fillStyle = SIN.envy; g.fill();
+    g.fillStyle = "#2f379c";
+    g.beginPath(); g.moveTo(hx + 0.2, hy - 1.2); g.lineTo(hx + 1.4, hy - 1.9); g.lineTo(hx + 1.4, hy - 0.5); g.closePath(); g.fill();
+    g.fillStyle = "#a9b4ff";
+    g.beginPath(); g.moveTo(hx, hy + 0.8); g.quadraticCurveTo(hx + 3, hy + 1.9, hx + 5.6, hy + 0.3); g.quadraticCurveTo(hx + 3, hy + 1.0, hx, hy + 0.8); g.fill();
+    g.fillStyle = "#ffe45c"; circle(g, hx + 2.6, hy - 0.9, 0.95); g.fill();
+    g.fillStyle = "#14082e"; g.beginPath(); g.ellipse(hx + 2.7, hy - 0.9, 0.28, 0.8, 0, 0, TAU); g.fill();
+    g.fillStyle = "#14082e"; circle(g, hx + 5.2, hy - 0.6, 0.3); g.fill();      // nostril
+    g.strokeStyle = "#ff4f8b"; g.lineWidth = 0.7;
+    g.beginPath(); g.moveTo(hx + 6, hy); g.lineTo(hx + 8.2, hy + 0.1); g.lineTo(hx + 9.3, hy - 0.8); g.moveTo(hx + 8.2, hy + 0.1); g.lineTo(hx + 9.3, hy + 0.9); g.stroke();
+  },
+  antenna(g, P) {
+    // one of theirs: a bent robot antenna with a glowing tip
+    g.fillStyle = "#8a93c2"; rrect(g, -3.4, -23, 4.6, 2.4, 1); g.fill();
+    g.strokeStyle = "#8a93c2"; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(-1.1, -22); g.lineTo(-1.1, -25.6); g.lineTo(2.6, -28.6); g.stroke();
+    glow(g, P, C.cyan, 10);
+    g.fillStyle = C.cyan; circle(g, 2.8, -29.2, 2.3); g.fill();
+    noGlow(g);
+    g.fillStyle = "#ffffff"; circle(g, 2.2, -29.8, 0.8); g.fill();
+  },
+  starcap(g, P) {
+    // a cap worn backwards: the brim sticks out behind, a star logo up front
+    g.fillStyle = "#232c5e";
+    g.beginPath(); g.arc(0, -10, 12.1, Math.PI * 1.15, Math.PI * 1.85); g.closePath(); g.fill();
+    g.strokeStyle = "rgba(201,210,240,0.35)"; g.lineWidth = 0.7;
+    g.beginPath(); g.arc(0, -10, 12.1, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+    g.beginPath(); g.moveTo(0, -22); g.quadraticCurveTo(-1.6, -18.6, -1.2, -15.6); g.stroke();
+    g.fillStyle = C.magenta;
+    g.beginPath(); g.ellipse(-12.4, -14.8, 6, 1.7, 0.35, 0, TAU); g.fill();
+    circle(g, 0, -22.1, 1); g.fill();
+    glow(g, P, C.cyan, 6);
+    g.fillStyle = C.cyan; g.save(); g.translate(6.2, -17.6); starPath(g, 2.3, 0.95); g.fill(); g.restore();
+    noGlow(g);
+  },
+  bandit(g, P) {
+    // a space outlaw's hat: a wide brim curling up at both ends, a dented crown, a cyan band with a star buckle
+    g.fillStyle = "#3b2752";
+    g.beginPath();
+    g.moveTo(-15.5, -22.6);
+    g.quadraticCurveTo(-11.5, -18.4, 0, -18.9);
+    g.quadraticCurveTo(11.5, -18.4, 15.5, -22.6);
+    g.quadraticCurveTo(11, -20.4, 0, -20.9);
+    g.quadraticCurveTo(-11, -20.4, -15.5, -22.6);
+    g.fill();
+    g.fillStyle = "#4a3166";
+    g.beginPath();
+    g.moveTo(-7, -20.6); g.lineTo(-6.2, -28);
+    g.quadraticCurveTo(-3.2, -31, 0, -28.6);
+    g.quadraticCurveTo(3.2, -31, 6.2, -28);
+    g.lineTo(7, -20.6); g.closePath(); g.fill();
+    g.strokeStyle = "#1d1430"; g.lineWidth = 0.7; g.stroke();
+    glow(g, P, C.cyan, 6);
+    g.fillStyle = C.cyan; g.fillRect(-6.9, -23.6, 13.8, 2.1);
+    noGlow(g);
+    g.fillStyle = C.amber; g.save(); g.translate(0, -22.55); starPath(g, 1.6, 0.7); g.fill(); g.restore();
+  },
+  voidhalo(g, P) {
+    glow(g, P, C.violet2, 10);
+    g.strokeStyle = "#1a0f2e"; g.lineWidth = 3;
+    g.beginPath(); g.ellipse(0, -27, 8.6, 2.7, 0, 0, TAU); g.stroke();
+    noGlow(g);
+    g.strokeStyle = C.violet2; g.lineWidth = 0.8;
+    g.beginPath(); g.ellipse(0, -27, 10.1, 3.6, 0, 0, TAU); g.stroke();
+    g.beginPath(); g.ellipse(0, -27, 7.1, 1.8, 0, 0, TAU); g.stroke();
+    g.fillStyle = "#e3d1ff";
+    circle(g, -9.8, -29.6, 0.7); g.fill(); circle(g, 9, -24.4, 0.6); g.fill(); circle(g, 3, -30.6, 0.5); g.fill();
+  },
+  brokenhalo(g, P) {
+    // the halo in pieces, each knocked a little out of line
+    glow(g, P, "#fff3c4", 10);
+    g.strokeStyle = "#ffe9a8"; g.lineWidth = 2.1; g.lineCap = "round";
+    const parts = [[0.15, 1.05, 0, 0, 0], [1.35, 2.25, 0.7, -0.8, 0.06], [2.55, 3.5, -0.5, 0.7, -0.05], [3.85, 4.85, 0.9, 0.5, 0.08], [5.15, 6.0, -0.8, -0.6, -0.06]];
+    for (const [a0, a1, dx, dy, rot] of parts) { g.beginPath(); g.ellipse(dx, -27 + dy, 8.5, 2.6, rot, a0, a1); g.stroke(); }
+    noGlow(g);
+    g.lineCap = "butt";
+    g.fillStyle = "#fff3c4";
+    shapeFromPoints(g, [-12, -30.4, -10.6, -31.4, -10.9, -29.4]); g.fill();
+    shapeFromPoints(g, [11.4, -23.6, 12.8, -22.6, 11.2, -22]); g.fill();
+  },
+  overlord(g, P) {
+    // a machine crown: plated blades, a dark band, a red eye across the front
+    g.fillStyle = "#2a3366";
+    shapeFromPoints(g, [-8.5, -19.8, -9.4, -27.6, -5, -24, 0, -31.5, 5, -24, 9.4, -27.6, 8.5, -19.8]);
+    g.fill();
+    g.strokeStyle = "#8a93c2"; g.lineWidth = 0.8; g.stroke();
+    g.fillStyle = "#141a3c"; rrect(g, -8.7, -23.4, 17.4, 3.7, 1); g.fill();
+    glow(g, P, "#ff3b3b", 9);
+    g.fillStyle = "#ff3b3b"; rrect(g, -4, -22.3, 8, 1.5, 0.7); g.fill();
+    noGlow(g);
+    g.fillStyle = "#ffd0d0"; circle(g, 0, -21.55, 0.55); g.fill();
+    g.fillStyle = "#c9d0f2"; circle(g, -7, -21.55, 0.6); g.fill(); circle(g, 7, -21.55, 0.6); g.fill();
+    g.strokeStyle = "rgba(255,255,255,0.3)"; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(-0.6, -29.6); g.lineTo(-2.6, -24.6); g.moveTo(-8.3, -26.2); g.lineTo(-7.6, -24.2); g.stroke();
+  },
+  astral(g, P) {
+    // floats just above the helmet: a crown in cyan fading to violet, a white star set in it, a star in orbit
+    g.strokeStyle = "rgba(159,232,255,0.45)"; g.lineWidth = 0.6;
+    g.beginPath(); g.ellipse(0, -26, 12.5, 3.2, -0.12, Math.PI, TAU); g.stroke();
+    const grd = g.createLinearGradient(0, -31.5, 0, -23);
+    grd.addColorStop(0, "#9fe8ff"); grd.addColorStop(1, "#a57bff");
+    glow(g, P, C.cyan, 12);
+    g.fillStyle = grd;
+    shapeFromPoints(g, [-7.5, -23.2, -8.4, -29, -4.4, -26, 0, -31.6, 4.4, -26, 8.4, -29, 7.5, -23.2]);
+    g.fill();
+    noGlow(g);
+    g.fillStyle = "#e9f1ff"; rrect(g, -7.6, -24.6, 15.2, 1.6, 0.8); g.fill();
+    glow(g, P, "#ffffff", 8);
+    g.fillStyle = "#ffffff"; g.save(); g.translate(0, -26.8); starPath(g, 2, 0.85); g.fill(); g.restore();
+    noGlow(g);
+    g.strokeStyle = "rgba(159,232,255,0.45)"; g.lineWidth = 0.6;
+    g.beginPath(); g.ellipse(0, -26, 12.5, 3.2, -0.12, 0, Math.PI); g.stroke();
+    glow(g, P, "#ffe08a", 6);
+    g.fillStyle = "#ffe08a"; g.save(); g.translate(11.6, -24.4); starPath(g, 1.5, 0.65); g.fill(); g.restore();
+    noGlow(g);
+  },
+  blackhole(g, P) {
+    // a tiny singularity: a hot disk, the dark at its middle, light bent over the top
+    g.save(); g.translate(0, -26.6); g.rotate(-0.18);
+    const disk = g.createRadialGradient(0, 0, 2, 0, 0, 10.5);
+    disk.addColorStop(0, "#ffe2c4"); disk.addColorStop(0.35, "#ff8a3d"); disk.addColorStop(0.75, "#ff42d0"); disk.addColorStop(1, "rgba(255,66,208,0)");
+    glow(g, P, "#ff8a3d", 10);
+    g.fillStyle = disk;
+    g.beginPath(); g.ellipse(0, 0, 10.5, 2.8, 0, 0, TAU); g.fill();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,226,196,0.85)"; g.lineWidth = 0.9;
+    g.beginPath(); g.ellipse(0, -0.4, 5.2, 4.3, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+    g.fillStyle = "#000000"; g.beginPath(); g.arc(0, 0, 3.4, 0, TAU); g.fill();
+    g.strokeStyle = "#ffd9b0"; g.lineWidth = 0.8; g.beginPath(); g.arc(0, 0, 3.8, 0, TAU); g.stroke();
+    g.fillStyle = disk; g.beginPath(); g.ellipse(0, 0, 10.5, 2.8, 0, 0, Math.PI); g.closePath(); g.fill();
+    g.restore();
+  },
+  halo(g, P) {
+    glow(g, P, "#fff3c4", 12);
+    g.strokeStyle = "#ffe9a8"; g.lineWidth = 2.2;
+    g.beginPath(); g.ellipse(0, -27, 8.5, 2.6, 0, 0, TAU); g.stroke();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 0.8;
+    g.beginPath(); g.ellipse(0, -27, 8.5, 2.6, 0, Math.PI * 1.1, Math.PI * 1.6); g.stroke();
+  },
+};
+function drawHat(g, P, id) {
+  (HAT_ART[id] || HAT_ART.crown)(g, P);
 }
 
 // ---------- pickups + bullets ----------
@@ -277,7 +652,7 @@ export const sprites = {
   P: 0,
   robots: {},          // type → { base, flash, ally }
   player: null, playerFlash: null,
-  star: null, gold: null, heart: null,
+  star: null, gold: null, heart: null, covet: null,
   bullet: null, bulletCrit: null, bulletEnvy: null,
   shots: [],           // player shots by bullet kind (0 blaster, 1 crit, 2 charged orb, 3 envy, 4.. one per gun)
   orbs: {},            // color → sprite
@@ -310,6 +685,10 @@ export const sprites = {
       glow(g, P, C.amber, 10); g.fillStyle = C.amber; starPath(g, 9, 4); g.fill(); noGlow(g);
       g.fillStyle = "#fff7e0"; starPath(g, 4.5, 2); g.fill();
     });
+    this.covet = make(28, P, (g) => {        // a Covetous King star: stolen mint, a gold heart
+      glow(g, P, C.mint, 10); g.fillStyle = C.mint; starPath(g, 9, 4); g.fill(); noGlow(g);
+      g.fillStyle = C.amber; starPath(g, 4.5, 2); g.fill();
+    });
     this.heart = make(34, P, (g) => {
       glow(g, P, C.heart, 12); g.fillStyle = C.heart; heartPath(g, 11); g.fill(); noGlow(g);
       g.fillStyle = "rgba(255,255,255,0.6)"; g.beginPath(); g.ellipse(-4, -3, 2.4, 1.6, -0.6, 0, TAU); g.fill();
@@ -330,17 +709,20 @@ export const sprites = {
       noGlow(g);
       g.fillStyle = "#fff"; circle(g, 0, 0, r * 0.55); g.fill();
     });
-    const heartShot = make(30, P, (g) => {
-      glow(g, P, "#ff6fb5", 10); g.fillStyle = "#ff6fb5"; heartPath(g, 7); g.fill(); noGlow(g);
-      g.fillStyle = "#fff"; heartPath(g, 3.4); g.fill();
+    const hearty = (col, s) => make(30, P, (g) => {
+      glow(g, P, col, 10); g.fillStyle = col; heartPath(g, s); g.fill(); noGlow(g);
+      g.fillStyle = "#fff"; heartPath(g, s * 0.49); g.fill();
     });
-    const arcShot = make(30, P, (g) => {
-      glow(g, P, C.blue, 12);
-      g.strokeStyle = C.blue; g.lineWidth = 2.4;
+    const zappy = (col) => make(30, P, (g) => {
+      glow(g, P, col, 12);
+      g.strokeStyle = col; g.lineWidth = 2.4;
       g.beginPath(); g.moveTo(-9, 0); g.lineTo(-4, -4); g.lineTo(0, 3); g.lineTo(4, -3); g.lineTo(9, 0); g.stroke();
       noGlow(g);
       g.fillStyle = "#e6ecff"; circle(g, 0, 0, 3); g.fill();
     });
+    const heartShot = hearty("#ff6fb5", 7);
+    const arcShot = zappy(C.blue);
+    const EV = BALANCE.evolution;
     this.shots = [
       this.bullet, this.bulletCrit, ball(C.cyan, 7, 34), this.bulletEnvy,
       capsule(C.amber, 10, 5),          // scatter pellet
@@ -349,6 +731,16 @@ export const sprites = {
       ball(C.orange, 6.5, 30),          // nova grenade
       arcShot,                          // arc bolt
       heartShot,                        // heartseeker
+      // 10-23: evolved guns (evolve.js: 9 + evolution code)
+      capsule(EV.blaster.a.col, 22, 6.2), capsule(EV.blaster.b.col, 19, 5.6),
+      capsule(EV.scatter.a.col, 11, 5.6), capsule(EV.scatter.b.col, 10, 4.6),
+      capsule(EV.smg.a.col, 15, 4.6), capsule(EV.smg.b.col, 13, 4.6),
+      capsule(EV.rail.a.col, 38, 5.6), capsule(EV.rail.b.col, 36, 5.2),
+      ball(EV.nova.a.col, 7, 32), ball(EV.nova.b.col, 7, 32),
+      zappy(EV.arc.a.col), zappy(EV.arc.b.col),
+      hearty(EV.heart.a.col, 7.4), hearty(EV.heart.b.col, 7.4),
+      // 24-27: spectral bolt, blood dart, shrapnel, bomblet
+      capsule(EV.blaster.b.col, 17, 7.5), capsule(EV.heart.a.col, 12, 4), capsule("#ffa3a3", 7, 3.4), ball(EV.nova.a.col, 4, 22),
     ];
     const orb = (col) => make(28, P, (g) => {
       glow(g, P, col, 12);

@@ -10,7 +10,7 @@ import { BALANCE } from "./balance.js";
 import { net } from "./net.js";
 import { fx } from "./fx.js";
 import { audio } from "./audio.js";
-import { sprites } from "./sprites.js";
+import { sprites, PAL } from "./sprites.js";
 import { updatePlayer } from "./player.js";
 import { computeStats } from "./upgrades.js";
 import { ROSTER } from "./enemies/roster.js";
@@ -19,6 +19,8 @@ import { collideRocks, newBoostSerial, haptic } from "./world.js";
 import { updateDrones } from "./armory.js";
 import { waves } from "./waves.js";
 import { TAU } from "./util.js";
+import { evoCode, evoTick } from "./evolve.js";
+import { mutVis, M as MUT } from "./mutations.js";
 
 const TYPES = [...Object.keys(ROSTER), ...Object.keys(BOSS_MINIONS)];
 const TYPE_IX = Object.fromEntries(TYPES.map((t, i) => [t, i]));
@@ -120,7 +122,8 @@ function playerRow(P) {
     P.dead ? 1 : 0, r1(P.boostT * 10) / 10, Math.round(P.iframes * 100) / 100, P.charging ? 1 : 0, Math.round(P.charge * 100) / 100,
     g ? GUNS.indexOf(g.id) : 0, g ? g.tier : 1, ctx ? ctx.stars : 0, Math.round(P.reviveT * 100) / 100, r1(P.impX), r1(P.impY), Math.round(P.slowMul * 100) / 100,
     P.hurtSeq, P.orbN, P.slowR, P.turrets, Math.round(P.recoil * 10) / 10, P.perfSeq || 0, P.bubble ? 1 : 0, envy, P.gone ? 1 : 0, Math.round(P.grace * 100) / 100,
-    Math.round((P.hurtAng || 0) * 100) / 100, P.killedBy || ""];
+    Math.round((P.hurtAng || 0) * 100) / 100, P.killedBy || "", g ? evoCode(g.id, g.evo) : 0, Math.round((P.rep || 0) * 10) / 10, Math.round((P.soul || 0) * 10) / 10,
+    P.gorge || 0, Math.round((P.frenzy || 0) * 10) / 10, Math.round((P.goldT || 0) * 10) / 10, Math.round((P.judgeT || 0) * 10) / 10];
 }
 
 /** Host: everything a client needs to draw this moment. */
@@ -153,6 +156,8 @@ function encodeSnapshot() {
     w16(q100(e.t)); w16(q100(e.t2)); w16(q100(e.t3)); w16(Math.max(-32768, Math.min(32767, Math.round(e.a * 1000))));
     w16(q100(e.b)); w16(q100(e.c));
     w8(u8((e.spawnT / 0.35) * 255)); w8(u8(e.allyMax > 0 ? (e.ally / e.allyMax) * 255 : 0)); w8(u8(e.shieldMax > 0 ? (e.shield / e.shieldMax) * 255 : 0));
+    w8(Math.min(15, e.tox) | (e.vuln > 0 ? 16 : 0) | (e.moon > 0 ? 32 : 0) | (e.phased ? 64 : 0) | (e.chill > 0 ? 128 : 0));
+    w8((e.mut || 0) | (e.berserk ? 128 : 0) | (e.mutN === 1 && e.mut === MUT.PHANTOM ? 64 : 0)); w8(u8(mutVis(e) * 255));
   }
   dv.setUint16(nAt, n);
   // robot shots
@@ -209,6 +214,18 @@ function encodeSnapshot() {
   const mn = G.mines;
   w8(Math.min(255, mn.count));
   for (let i = 0; i < mn.count && i < 255; i++) { const q = mn.items[i]; w16(qp(q.x)); w16(qp(q.y)); w8(u8(q.t * 10)); w8(u8(q.life * 10)); }
+  // zones (evolution effects, mutation blasts): enough to draw them
+  const zs = G.zones;
+  let zn = 0;
+  const znAt = o; w8(0);
+  for (let i = 0; i < zs.count && zn < 120; i++) {
+    const z = zs.items[i];
+    if (z.dead) continue;
+    zn++;
+    w8(z.type); w16(qp(z.x)); w16(qp(z.y)); wu16(Math.round(z.r)); w16(qv(z.r0 * 100)); w16(qv(z.x2)); w16(qv(z.y2)); wu16(qa(z.a));
+    wu16(Math.round(z.t * 1000)); wu16(Math.round(z.life * 1000)); w8(z.pal); w8(z.big ? 1 : 0);
+  }
+  dv.setUint8(znAt, zn);
   return buf.slice(0, o);
 }
 
@@ -259,6 +276,7 @@ function applySnapshot(data) {
     const scale = r8() / 50, hpF = r8() / 255, flags = r8(), traits = r8(), mark = r8(), state = r8() - 1;
     const t = r16() / 100, t2 = r16() / 100, t3 = r16() / 100, a = r16() / 1000, b = r16() / 100, c = r16() / 100;
     const spawnT = (r8() / 255) * 0.35, allyF = r8() / 255, shF = r8() / 255;
+    const st = r8(), mut = r8(), mv = r8();
     const e = en.get();
     if (!e) continue;
     const kind = ROSTER[type] || BOSS_MINIONS[type];
@@ -279,6 +297,8 @@ function applySnapshot(data) {
     e.traits = traits; e.mark = mark; e.state = state; e.t = t; e.t2 = t2; e.t3 = t3; e.a = a; e.b = b; e.c = c;
     e.spawnT = spawnT; e.shieldMax = shF > 0 ? 1 : 0; e.shield = shF;
     e.vx = e.vy = 0; e.slowMul = 1; e.alpha = 1; e.beat = G.time * 8;
+    e.tox = st & 15; e.vuln = st & 16 ? 1 : 0; e.moon = st & 32 ? 1 : 0; e.phased = !!(st & 64); e.chill = st & 128 ? 1 : 0;
+    e.mut = mut & 31; e.berserk = !!(mut & 128); e.mutN = mut & 64 ? 1 : 0; e.mutVisNet = mv / 255;
     seen.add(id);
   }
   for (const id of prevEnemy.keys()) if (!seen.has(id)) prevEnemy.delete(id);
@@ -374,6 +394,17 @@ function applySnapshot(data) {
     if (!q) continue;
     q.dead = false; q.x = x; q.y = y; q.t = t; q.life = life;
   }
+  const zs = G.zones;
+  zs.clear();
+  n = r8();
+  for (let i = 0; i < n; i++) {
+    const z = zs.get();
+    const type = r8(), x = r16() / 4, y = r16() / 4, r = ru16(), r0 = r16() / 100, x2 = r16(), y2 = r16(), a = ua(ru16());
+    const t = ru16() / 1000, life = ru16() / 1000, pal = r8(), big = r8();
+    if (!z) continue;
+    z.dead = false; z.type = type; z.x = x; z.y = y; z.r = r; z.r0 = r0; z.x2 = x2; z.y2 = y2; z.a = a;
+    z.t = t; z.life = life || 1; z.pal = pal; z.col = PAL[pal] || "#ffffff"; z.big = !!big;
+  }
 
   replay(meta.fx || [], meta.au || []);
 }
@@ -404,6 +435,8 @@ function applyPlayer(row) {
       P.hurtSeqSeen = row[23];
     }
     P.killedBy = row[34] || "";
+    P.rep = row[36] || 0; P.soul = row[37] || 0;
+    P.gorge = row[38] || 0; P.frenzy = row[39] || 0; P.goldT = row[40] || 0; P.judgeT = row[41] || 0;
     if (row[28] > (P.perfSeen || 0)) {
       if (P.perfSeen !== undefined) P.boostCdT *= 1 - BALANCE.player.boost.perfectRefund;
       P.perfSeen = row[28];
@@ -422,6 +455,8 @@ function applyPlayer(row) {
   P.boostT = row[12]; P.iframes = row[13]; P.charging = !!row[14]; P.charge = row[15];
   P.gunId = GUNS[row[16]] || "blaster"; P.gunTier = row[17];
   P.orbN = row[24]; P.slowR = row[25]; P.turrets = row[26]; P.recoil = row[27]; P.bubble = !!row[29]; P.grace = row[32];
+  P.gunEv = row[35] || 0;
+  P.gorge = row[38] || 0; P.frenzy = row[39] || 0; P.goldT = row[40] || 0; P.judgeT = row[41] || 0;
 }
 
 function hurtFeedback(P) {
@@ -488,7 +523,9 @@ export function clientStep(dt) {
   if (live) {
     updatePlayer(dt, P);
     collideRocks(P, false);
+    evoTick(P, G.stats, dt);
   }
+  for (let i = 0; i < G.zones.count; i++) G.zones.items[i].t += dt;
   for (const Q of G.players) updateDrones(Q, Q === G.me ? G.stats : { turrets: Q.turrets }, dt);
   smooth();
   fx.update(dt);
@@ -571,6 +608,7 @@ function onMessage(from, msg) {
     case "ready": coop.readySlots = msg.slots; if (H.readyChanged) H.readyChanged(); break;
     case "over": H.gameOver(msg.sum); break;
     case "win": H.showWin(msg.sum); break;
+    case "rushdone": H.rushDone(msg.sum); break;
     case "bye": net.lost(from); break;
   }
 }
@@ -645,8 +683,11 @@ export function startHost() {
   coop.ready.clear();
   coop.readySlots = [];
   net.closeChannel();
-  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty }, true);
-  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty });
+  // the host's pick of mode (Boss Rush needs the host to have unlocked it) and difficulty goes to everyone
+  const rush = coop.mode === "rush";
+  const mods = rush ? coop.mods || [] : [];
+  net.broadcast({ k: "start", members: net.members, diff: G.settings.difficulty, rush, mods }, true);
+  coop.hooks.startRun({ coop: true, difficulty: G.settings.difficulty, rush, mods });
 }
 
 function startClient(msg) {
@@ -660,7 +701,7 @@ function startClient(msg) {
   coop.waiting = false;
   prevEnemy.clear(); prevRock.clear();
   net.closeChannel();
-  coop.hooks.startRun({ coop: true, difficulty: msg.diff });     // everyone plays the host's difficulty
+  coop.hooks.startRun({ coop: true, difficulty: msg.diff, rush: !!msg.rush, mods: msg.mods || [] });     // everyone plays the host's mode and difficulty
 }
 
 /** Players for a run: [{slot, name, suit}] → G.players with a build each; G.me is yours. */

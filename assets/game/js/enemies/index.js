@@ -1,7 +1,7 @@
 /* Robot spawning, the shared update loop (slow fields, knockback, charm), separation
    and the steering helpers every robot uses. */
 
-import { G, usePlayer } from "../state.js";
+import { G, usePlayer, threat, resolveRate } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, turnTowards, rand } from "../util.js";
 import { sprites, C, P_HEART, P_WHITE, P_ORANGE, PAL } from "../sprites.js";
@@ -10,6 +10,9 @@ import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
 import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
+import { evoRobot } from "../evolve.js";
+import { bloodRamp, allyHit, allyPop } from "../fusion.js";
+import { mutate, mutTick, mutBusy } from "../mutations.js";
 
 const A = BALANCE.arena;
 const W = BALANCE.waves;
@@ -69,7 +72,8 @@ export function spawnEnemy(type, x, y, opts) {
   const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
   // Boss health is fixed by the boss, the chapter, the endless lap and the team size. It never looks
   // at your build: a strong build is supposed to shorten the fight.
-  e.maxHp = e.hp = def.hp * hpMul * crewMul * (elite ? E.hp : 1);
+  const rushMul = boss || type === "gem" ? threat("bossHp") * (G.mode === "rush" ? BALANCE.rush.bossHp : 1) : 1;      // Boss Rush: you have fewer cards
+  e.maxHp = e.hp = def.hp * hpMul * crewMul * rushMul * (elite ? E.hp : 1);
   e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
   e.contact = def.contact === undefined ? 1 : def.contact;
@@ -84,9 +88,32 @@ export function spawnEnemy(type, x, y, opts) {
   e.ramStamp = 0; e.target = null; e.tgtP = null; e.tgtT = 0; e.allyBy = null;
   e.mark = boss ? (G.lap || 0) : G.mark;
   e.traits = 0; e.shield = e.shieldMax = 0; e.haste = 1; e.numAcc = 0; e.numCd = 0; e.parent = null; e.parentId = 0; e.slot = 0;
+  e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
+  e.chill = 0; e.chillMul = 1; e.shatterCd = 0; e.passive = false; e.lastCrit = false;
+  e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0; e.berserk = false;
+  e.res = 0; e.resT = 0;
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
+  if (opts && opts.mut && !boss) mutate(e, opts.mut);
+  if (opts && opts.copy) {
+    // a Replicator's copy: smaller, weaker, worth less, and it doesn't copy itself
+    e.scale = BALANCE.mutations.types.replicator.copyScale;
+    e.maxHp *= BALANCE.mutations.types.replicator.copyHp; e.hp = e.maxHp;
+    e.score *= 0.3; e.stars *= 0.3;
+  }
   return e;
+}
+
+/** Replicator: a copy pops out of it. */
+export function spawnCopy(e) {
+  const a = rand(0, TAU);
+  const c = spawnEnemy(e.type, e.x + Math.cos(a) * e.r * 1.6, e.y + Math.sin(a) * e.r * 1.6, { spawnT: 0.2, copy: true });
+  if (!c) return;
+  c.kx = Math.cos(a) * 260; c.ky = Math.sin(a) * 260;
+  const col = BALANCE.mutations.types.replicator.col;
+  fx.ring(e.x, e.y, e.r, e.r * 2.6, 0.3, col, 3);
+  fx.text(e.x, e.y - e.r - 10, "REPLICATED", col, 13, 0.8);
+  audio.play("spawn", e.x, e.y, 0.7);
 }
 
 /** Which player a robot is after: the nearest, re-picked every second or two so a crowd spreads out. */
@@ -149,7 +176,7 @@ function bossMoments(e, dt) {
 export function hostileCount() {
   let n = 0;
   const items = G.enemies.items;
-  for (let i = 0; i < G.enemies.count; i++) { const e = items[i]; if (!e.dead && e.ally <= 0) n++; }
+  for (let i = 0; i < G.enemies.count; i++) { const e = items[i]; if (!e.dead && e.ally <= 0 && !e.passive) n++; }
   return n;
 }
 
@@ -157,7 +184,8 @@ export function hostileCount() {
 function popAlly(e) {
   if (e.allyBy && e.allyBy !== G.player) usePlayer(e.allyBy);
   const s = G.stats;
-  queueBlast(e.x, e.y, (s.lustBurst || 40) + e.r, 22 + G.wave * 3, true, false, 0, C.magenta, P_HEART);
+  const blood = allyPop(e);          // Bloodlust: a blood nova; Parasitic Heart: a shield pip
+  queueBlast(e.x, e.y, ((s.lustBurst || 40) + e.r) * (blood ? blood.radius : 1), (22 + G.wave * 3) * (blood ? blood.blast : 1), true, false, 0, blood ? C.red : C.magenta, P_HEART);
   fx.burst(e.x, e.y, 10, P_HEART, 200, 0.6, 1.6);
   killEnemy(e, true);
 }
@@ -185,13 +213,15 @@ function updateAlly(e, dt, realDt) {
   }
   const P = e.allyBy || G.me;
   if (e.target) {
-    const d = seek(e, e.target.x, e.target.y, Math.max(140, e.speed * 1.3), 5, dt);
+    const ramp = bloodRamp(e);          // Bloodlust: more vicious the longer the charm lasts
+    const d = seek(e, e.target.x, e.target.y, Math.max(140, e.speed * 1.3) * (1 + ramp * 0.4), 5, dt);
     e.cd -= dt;
     if (d < e.r * e.scale + e.target.r * e.target.scale + 4 && e.cd <= 0) {
-      e.cd = 0.35;
+      e.cd = 0.35 / (1 + ramp * 0.6);
       const o = e.target;
       const dx = o.x - e.x, dy = o.y - e.y, dd = Math.hypot(dx, dy) || 1;
-      damageEnemy(o, 10 + e.maxHp * 0.3 + G.wave * 1.5, false, dx / dd, dy / dd, 200);
+      damageEnemy(o, (10 + e.maxHp * 0.3 + G.wave * 1.5) * (1 + ramp), false, dx / dd, dy / dd, 200);
+      allyHit(e);
       fx.burst(o.x, o.y, 4, P_HEART, 140, 0.3, 1.2);
       audio.play("hit", o.x, o.y, 0.5);
     }
@@ -222,7 +252,13 @@ export function updateEnemies(dt) {
     if (e.flash > 0) e.flash -= dt;
     if (e.pop > 0) e.pop -= dt;
     if (e.orbCd > 0) e.orbCd -= dt;
-    if (e.boss) bossMoments(e, dt);
+    evoRobot(e, dt);                 // Neurotoxin, Gravity Well, Blood Moon timers
+    if (e.dead) continue;
+    if (e.boss) {
+      bossMoments(e, dt);
+      if (e.res > 0) e.res = Math.max(0, e.res - e.maxHp * resolveRate() * dt);   // resolve drains back
+      if (e.resT > 0) e.resT -= dt;
+    }
     else if (e.maxHp >= 60 && e.hp < e.maxHp * 0.35 && e.ally <= 0 && Math.random() < dt * 5) {
       // a badly hurt big robot sheds sparks: you can see it's nearly done
       const a = rand(0, TAU);
@@ -242,6 +278,7 @@ export function updateEnemies(dt) {
         if ((e.x - q.x) ** 2 + (e.y - q.y) ** 2 < q.r * q.r) { m *= trailSlow; break; }
       }
     }
+    if (e.chill > 0) m *= e.boss ? Math.max(0.7, e.chillMul) : e.chillMul;
     if (e.boss) m = Math.max(m, 0.5);       // bosses resist slows a bit
     e.slowMul = m;
     const edt = dt * m;
@@ -255,7 +292,8 @@ export function updateEnemies(dt) {
       const T = targetOf(e);
       usePlayer(T);
       G.curEnemy = e;            // its shots and blasts remember who fired them
-      e.kind.update(e, edt * e.haste, T);
+      if (e.mut) mutTick(e, edt, T);
+      if (!mutBusy(e)) e.kind.update(e, edt * e.haste, T);
       G.curEnemy = null;
       if (e.dead) continue;
     }

@@ -89,16 +89,52 @@ export const BALANCE = {
     patch:    { hp: 50, r: 15, speed: 92, contact: 1, score: 40, stars: 3, mass: 1.2, threat: 4,
                 healRadius: 160, healEvery: 1.4, healPct: 0.12, keep: 300 },
     decoy:    { hp: 1, r: 40, speed: 125, contact: 0, score: 15, stars: 0.5, mass: 3, threat: 0 },   // Lust's fakes: one hit pops them
+    cache:    { hp: 520, r: 26, speed: 0, contact: 0, score: 250, stars: 0, mass: 99, threat: 0 },  // the Cosmic Cache event (events.js)
   },
 
   elite: {                   // "overcharged" robots from this wave on, each with a trait you can see
-    from: 10, chance: 0.035, chanceMax: 0.3, hp: 1.6, speed: 1.1, score: 2.5, stars: 2,
+    from: 8, minFrom: 5, chance: 0.04, chanceMax: 0.3, hp: 1.6, speed: 1.1, score: 2.5, stars: 2,
     twoTraitsFrom: 30,       // from this wave, elites roll two traits
     traits: {
       shielded: { label: "Shielded", share: 0.4 },        // a shield worth 40% of its health takes hits first
       hasted:   { label: "Hasted", speed: 1.35, attack: 1.35 },
-      volatile: { label: "Volatile", count: 10, speed: 190 },   // bursts into a ring of shots when it dies
+      volatile: { label: "Shrapnel", count: 10, speed: 190 },   // bursts into a ring of shots when it dies (4.2: renamed from "Volatile" for the mutation)
       regen:    { label: "Regenerating", perSec: 0.05 },
+    },
+  },
+
+  // Elite mutations: rarer than overcharged elites and never on the same robot. Each changes how you fight
+  // it (where to shoot, when to dodge, when to kill it) rather than just adding health. Chance per robot
+  // from `from`, growing per wave up to `max` (x the difficulty's elite chance^0.6); a few at a time at most.
+  // Harder difficulties bring each one in earlier (half their Mark offset).
+  mutations: {
+    chance: 0.03, perWave: 0.003, max: 0.12, maxAlive: 5, hp: 1.2, score: 1.8, stars: 1.5, minFrom: 6,
+    types: {
+      volatile:   { name: "Volatile", col: "#ff5a3c", from: 8, weight: 1, fuse: 0.9, r: 105, dmg: 2, robotDmg: 60,
+                    hint: "It bursts when it dies: leave the ring (or kill it next to its friends)." },
+      berserker:  { name: "Berserker", col: "#ff3b3b", from: 8, weight: 1, at: 0.5, speed: 1.5, attack: 1.65,
+                    hint: "Below half health it goes berserk: faster, angrier. Finish it quickly." },
+      armored:    { name: "Armored", col: "#c9d2f0", from: 13, weight: 0.9, front: 0.4, back: 1.6, frontArc: 1.15, backArc: 0.9,
+                    hint: "Plated in front, a glowing weak spot behind. Get round it." },
+      shockwave:  { name: "Shockwave", col: "#6ad8ff", from: 13, weight: 0.8, every: [3.6, 4.6], windup: 0.75, speed: 230, reach: 280, dmg: 1,
+                    hint: "It sends out rings: step out of reach or boost through them." },
+      phantom:    { name: "Phantom", col: "#b58cff", from: 18, weight: 0.7, every: [3.4, 4.8], shimmer: 0.45, phase: 0.7, blink: [130, 210],
+                    hint: "It shimmers, slips out of reach and reappears at your side. Track the shimmer." },
+      vampiric:   { name: "Vampiric", col: "#ff2d6a", from: 18, weight: 0.6, heal: 0.25, healCap: 1,
+                    hint: "Every hit it lands on you heals it. Don't trade blows with it." },
+      replicator: { name: "Replicator", col: "#3ff0c8", from: 23, weight: 0.5, at: [0.6, 0.3], copyHp: 0.4, copyScale: 0.78,
+                    hint: "Wounded, it copies itself (twice at most). Burst it down." },
+    },
+    // which robots can carry which mutation (swarmlings and minis never mutate)
+    on: {
+      drone:    ["volatile", "berserker", "armored", "shockwave", "phantom", "vampiric", "replicator"],
+      ripper:   ["volatile", "berserker", "armored", "phantom", "vampiric", "replicator"],
+      gunner:   ["volatile", "berserker", "armored", "shockwave", "phantom", "vampiric", "replicator"],
+      splitter: ["volatile", "berserker", "armored", "shockwave"],
+      bulwark:  ["volatile", "berserker", "shockwave", "vampiric", "replicator"],
+      boomer:   ["berserker", "armored", "phantom"],
+      sniper:   ["volatile", "armored", "phantom", "vampiric", "replicator"],
+      patch:    ["volatile", "shockwave", "phantom"],
     },
   },
 
@@ -116,6 +152,15 @@ export const BALANCE = {
     punishRange: 520,
   },
 
+  // 4.2: everything a notch harder on every difficulty (players asked for it, and weapon evolutions and Sin
+  // Fusions add power). Bosses ramp up the Ladder, [first rung, last rung] (Sloth stays a teacher, Envy doesn't):
+  // health, attack cadence (x pace), shot speed, minions. Robots: aggression and crowd size (health is in waves).
+  threat: { bossHp: [1, 1.25], bossPace: [0.95, 0.84], bossShot: [1, 1.1], bossMinions: [1, 1.3], aggro: 0.95, budget: 1.05, alive: 1.05 },
+  // Boss resolve: a boss can lose about `rate` of its health a second at full speed; damage beyond that pace
+  // lands at `over`. Weak and average builds never reach it (it never touches them); strong ones still kill
+  // fastest, just not in four seconds. A shimmer shows when it's resisting.
+  resolve: { rate: [0.08, 0.04], over: 0.35 },                   // [Sloth, Envy]: early bosses are teachers, late ones walls
+
   // Difficulty: chosen before a run (the Daily Challenge is always Normal). Harder modes change how
   // robots behave and how much room you get, never by inflating health.
   //   aggro: robot attack cooldowns ×    lead: aim-ahead ×           iframes: your invulnerability after a hit ×
@@ -126,7 +171,29 @@ export const BALANCE = {
   difficulty: {
     normal:    { name: "Normal", aggro: 1, lead: 1, iframes: 1, budget: 1, alive: 1, elite: 1, mark: 0, boss: 1, heal: 1, shot: 1, squads: 1, score: 1 },
     hard:      { name: "Hard", aggro: 0.85, lead: 1.2, iframes: 0.85, budget: 1.15, alive: 1.15, elite: 1.6, mark: 6, boss: 0.86, heal: 0.75, shot: 1.06, squads: 1.5, score: 1.3 },
-    nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.74, heal: 0.5, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4
+    nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.8, heal: 0.6, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4 (4.2: bosses x0.8 and heal x0.6, as the 4.2 threat sits on top)
+  },
+
+  // Boss Rush (unlocked by beating Envy): the seven sin bosses back to back. You open with a draft
+  // (cards + the Armory), then get a short break after each boss: a couple of cards and the Armory.
+  // Bosses fight as they would on their rung of the Ladder, a little lighter because you have fewer cards.
+  rush: {
+    draft: 4, picks: 3,                  // cards to open with / after each boss
+    stars: 130, stipend: 55,             // stars to open with / added after each boss
+    heal: 4,                             // health back after each boss (½💜 units: two hearts)
+    hp: 2,                               // +1 💜 max for the whole Rush (you'd have Thick Suits by now on the Ladder)
+    bossHp: 0.8,                         // x the boss's Ladder health
+    resolve: [0.1, 0.06],                // bosses' resolve rate here, [Sloth, Envy] (balance.resolve): the Rush is meant to be fast
+    rank: { par: [240, 330, 450, 600], hits: 8, slower: { hard: 1.15, nightmare: 1.3 } },   // S/A/B/C within these many seconds of fighting; every 8 hits costs a grade
+    timeScore: { base: 30000, perSec: 25 },        // score for speed: base - seconds x perSec (never below 0)
+    hitless: 1500,                                 // per boss beaten without a hit
+    mods: {
+      starved:  { name: "Starved", text: "No healing between bosses, and a third of the usual healing in fights", score: 0.2, heal: 0.35 },
+      hell:     { name: "Bullet Hell", text: "Every robot and boss shot flies 20% faster", score: 0.15, shot: 1.2 },
+      sealed:   { name: "Sealed Armory", text: "The Armory only opens after every other boss", score: 0.15 },
+      entourage:{ name: "Entourage", text: "Bosses bring twice the minions, and some are elites and mutants", score: 0.2, minions: 2, elite: 2 },
+      fury:     { name: "Fury", text: "Bosses attack 15% faster from the start", score: 0.2, boss: 0.85 },
+    },
   },
 
   // Robots evolve as you climb: Mk I → Mk II → Mk III, then another Mark every 12 waves in endless.
@@ -150,7 +217,7 @@ export const BALANCE = {
     gap: { min: 1.5, max: 2.2, perWave: 0.06, floorMin: 0.4, floorMax: 0.75 },
     lanes: { two: 9, three: 20 },                       // from these waves, 2 / 3 groups land at once (from different edges)
     group: { max: 2, perWaves: 4, cap: 5 },             // biggest spawn group grows by 1 every N waves
-    hpPerWave: 0.06, hpCurve: 0.0012,                   // robot health: 1 + 6%·(wave-1) + 0.12%·(wave-1)²  (≈1.6× at 10, 2.6× at 20, 3.8× at 30)
+    hpPerWave: 0.065, hpCurve: 0.0014,                  // robot health: 1 + 6.5%·(wave-1) + 0.14%·(wave-1)²  (≈1.7× at 10, 2.7× at 20, 4.1× at 30)
     shotSpeedPerWave: 0.01, shotSpeedCap: 0.3,          // robot shots get a little faster (not the sniper's)
     speedPerWave: 0.01, speedCap: 0.25,
     spawnWarn: 0.8,                                     // seconds a spawn marker shows before the robot lands
@@ -202,12 +269,76 @@ export const BALANCE = {
   },
   gunTiers: { dmg: [1, 1.25, 1.55, 1.9], rate: [1, 1.05, 1.1, 1.18], upgradeCost: [0, 0.8, 1.1, 1.5] },   // upgrade price = gun price x this
 
+  // Weapon evolutions: a Tier IV gun can evolve once the next sin boss falls (one evolution per boss).
+  // Every gun has two paths; choosing one locks the other for that gun for the rest of the run.
+  // Damage numbers are multiples of the shot that triggered them unless noted.
+  evolution: {
+    blaster: {
+      a: { name: "Starbreaker", col: "#ffe9a8", tag: "Precision",
+           pierce: 1,                                                            // +1 pierce
+           trail: { every: 26, r: 13, life: 0.35, dmg: 0.3, cd: 0.25 },          // a bolt that has pierced a robot leaves a burning trail
+           implode: { min: 0.5, r: 170, force: 900, time: 0.45, blast: 125, dmg: 0.9, life: 0.55 } },   // charged orb: flies half as far, implodes, then bursts (x the orb)
+      b: { name: "Phantom Repeater", col: "#c5a8ff", tag: "Accuracy",
+           perHit: 0.025, cap: 18, decay: 10, idle: 1.4,                         // +2.5% fire rate per hit in a row (up to 18 = +45%); misses halve it
+           ghostEvery: 5, ghost: 0.6, ghostHoming: 7 },                          // every 5th hit fires a homing spectral bolt (60% damage)
+    },
+    scatter: {
+      a: { name: "Supernova", col: "#ffb35c", tag: "Point blank",
+           close: 0.13, boom: { r: 56, dmg: 2.2, cd: 0.3 },                      // a pellet landing in its first 0.13s bursts (x the pellet)
+           wave: { r: 360, arc: 1.25, time: 0.38, dmg: 1.6, knock: 520 } },      // charged: a cone shockwave (x the charge) that erases robot shots
+      b: { name: "Shredder", col: "#ff6b6b", tag: "Crowds",
+           crit: 0.1, bounce: { range: 230, dmg: 0.7 },                          // +10% crit; a pellet ricochets once to the nearest robot
+           frag: { n: 3, range: 210, dmg: 0.4 } },                               // a crit throws 3 fragments at nearby robots
+    },
+    smg: {
+      a: { name: "Overdrive", col: "#ff7a3d", tag: "Sustained fire",
+           fill: 70, drain: 25, idle: 0.5,                                       // 70 shots fill the meter; it drains when you stop
+           time: 3.5, rate: 1.8, spread: 0.45, heat: 2.2, heatRate: 0.6,         // overdrive: x1.8 fire rate, tighter, +1 pierce; then it overheats
+           chargeFill: 0.35 },                                                   // a charged burst adds 35% to the meter
+      b: { name: "Neurotoxin", col: "#9dff5c", tag: "Corruption",
+           max: 8, time: 3, every: 1, charged: 2,                                // stacks (cap 8), 3s each; charged bolts add 2
+           dot: 0.14, pulse: { r: 52, perStack: 6, dmg: 0.32 } },                // per stack per second: 14% to itself, 32% to robots around it
+    },
+    rail: {
+      a: { name: "Annihilator", col: "#ff5ce1", tag: "Penetration",
+           ramp: 1.25, rampCap: 2.5, max: 5, impact: { r: 95, dmg: 0.5 },        // each robot the beam passes hits 25% harder (x2.5 max); 5 = annihilation
+           boltPierce: 1, boltRamp: 0.15 },                                      // bolts: +1 pierce and +15% per robot pierced
+      b: { name: "Singularity", col: "#7b8cff", tag: "Positioning",
+           pull: { width: 190, time: 0.42, force: 700 }, near: 1.35,             // charged: the beam's path pulls robots in first, then fires (x1.35)
+           boltPierce: 1, snag: { r: 120, force: 320 } },                        // bolts tug robots near the hit toward it
+    },
+    nova: {
+      a: { name: "Cataclysm", col: "#ff4a3d", tag: "Chain blasts",
+           bomblets: 3, bomb: { r: 42, dmg: 0.45, life: [0.22, 0.4] },           // a grenade's burst throws 3 bomblets (they don't throw more)
+           cluster: { n: 8, ring: 95, delay: 0.5, final: 210, finalDelay: 0.68, dmg: 1.15 } },   // charged: a ring of 8 goes off together, then the core
+      b: { name: "Gravity Well", col: "#b06bff", tag: "Control",
+           well: { r: 95, life: 1.3, force: 260, max: 10 },                      // a burst leaves a gravity well
+           vuln: 1.25, vulnTime: 1.6,                                            // robots in it take 25% more damage
+           big: { r: 180, life: 2.6, force: 380 } },                             // charged: one huge well
+    },
+    arc: {
+      a: { name: "Thunderlord", col: "#8fe9ff", tag: "Chain lightning",
+           chain: 1, ramp: 1.25, crit: 0.08, fork: 2 },                          // +1 jump, each jump 25% stronger; +8% crit; a crit forks 2 more jumps
+      b: { name: "Tempest", col: "#5b6bff", tag: "Storms",
+           storm: { r: 200, life: 4.2, every: 0.32, dmg: 0.22, max: 2, orbLife: 1 },   // charged: the storm orb leaves a storm (x the orb per strike)
+           static: { every: 1.5, range: 270, dmg: 1.2 } },                       // lightning strikes the nearest robot every 1.5s (x a bolt)
+    },
+    heart: {
+      a: { name: "Blood Moon", col: "#ff3b6b", tag: "Marks",
+           mark: 4, darts: 3, dartDmg: 0.6, maxDarts: 24 },                      // hits mark for 4s; a marked robot's death looses 3 darts (they don't mark)
+      b: { name: "Soulbound", col: "#ffd1f0", tag: "Tracking",
+           perHit: 0.12, cap: 8, speed: 0.035, idle: 2,                          // hits in a row: +12% homing, +3.5% speed each (up to 8)
+           swarm: 10, swarmHoming: 9 },                                          // charged: 10 hearts, each bound to a different dangerous target
+    },
+  },
+
   // The shop between waves. Rarity: 0 common, 1 rare, 2 epic, 3 legendary.
   shop: {
     slots: 4,
     priceGrowth: 0.09,       // prices x (1 + this x (wave - 1))
     reroll: { base: 4, perWave: 0.8, step: 3 },
     gunChance: 0.3,          // chance each slot is a gun (from wave 2)
+    heldWeight: 3,           // a gun you carry is this many times likelier to be the gun offered (so it can reach Tier IV)
     rarity: { rare: [2, 0.04, 0.35], epic: [5, 0.016, 0.2], legendary: [10, 0.006, 0.08] },   // [from wave, + per wave, max]
     patch: 18, patchStep: 14, patchHeal: 2,
     openAfter: [2, 4, 5],    // the Armory opens after these waves of each 5-wave chapter (5 = the boss: a bounty)
@@ -232,6 +363,37 @@ export const BALANCE = {
     crown:     { name: "Crown of Sins", r: 3, price: 150, max: 1, text: "Your strongest unfinished sin gains a level" },
     clover:    { name: "Four-Leaf Chip", r: 3, price: 120, max: 1, text: "Pick from 4 cards instead of 3. Shops lean rarer" },
     overdrive: { name: "Overdrive Core", r: 3, price: 140, max: 1, echo: 0.6, text: "Full charges fire twice (the echo hits for 60%)" },
+  },
+
+  // Corrupted relics: only from the Corrupted Armory event (never the shop). Strong, with a price you can see.
+  relics: {
+    c_blood:     { name: "Blood Pact", dmg: 0.4, hp: -2, text: "+40% damage", cost: "−1 💜 max health" },
+    c_overclock: { name: "Overclocked Core", rate: 0.3, boostCd: 0.3, text: "+30% fire rate", cost: "Your boost recharges 30% slower" },
+    c_greedy:    { name: "Greedy Gears", starMul: 2, heal: 0.5, text: "Every star is worth double", cost: "Hearts heal half as much" },
+    c_crown:     { name: "Hollow Crown", sins: 2, dmg: -0.15, text: "+1 level to your two lowest sins", cost: "−15% damage" },
+    c_halo:      { name: "Glass Halo", crit: 0.2, iframes: 0.6, text: "+20% crit chance", cost: "40% less safety time after a hit" },
+    c_lead:      { name: "Leaden Wings", chargeDmg: 0.6, speed: -0.15, text: "Charged shots +60% damage", cost: "You move 15% slower" },
+  },
+
+  // Sigils: the Hangar's currency (catalog.js), for cosmetics in the Item Shop. Earned from sin bosses on the
+  // Ladder, Ladder wins and Boss Rush clears (all x the difficulty: Normal 1, Hard 2, Nightmare 3), achievements
+  // and daily contracts (contracts.js); never in debug runs. A Normal Ladder win pays about 20 and a day's three
+  // contracts about 18: a Rare item every few days of play, a Legendary in a week or two.
+  sigils: {
+    boss: 2, win: 6, rush: 4, rank: { S: 4, A: 2 }, achievement: 3,
+    diff: { normal: 1, hard: 2, nightmare: 3 },
+    price: [20, 40, 75, 120, 200, 320],      // Item Shop prices by rarity: Common, Uncommon, Rare, Epic, Legendary, Mythic
+    contracts: [4, 6, 8],                    // a daily contract's reward: easy, medium, hard
+  },
+
+  // Special events on the Ladder: at most one per chapter (from chapter 2), on one of its first three waves.
+  // The Cosmic Cache drifts through mid-wave; the others are a choice between waves. Stars are the only currency.
+  events: {
+    from: 6, chance: 0.45,
+    weight: { cache: 1, corrupt: 1, altar: 1, ambush: 0.9 },
+    cache: { hp: 520, speed: 78, life: 15, stars: 12, at: [5, 10], reward: [30, 2] },      // reward: ★ base + per wave (or a free rare+ item)
+    altar: { offering: [20, 2], fuse: [40, 3] },                                         // ★ base + per wave
+    ambush: { time: 25, count: 3, reward: [40, 3], types: ["gunner", "ripper", "drone", "bulwark", "sniper"] },
   },
 
   // The Sin Ladder: the same seven rungs, colours and order as the Ladder on the homepage.
@@ -261,7 +423,7 @@ export const BALANCE = {
       hp: 2000, r: 58, speed: 52, contact: 2, score: 1800,
       mealHeal: 0.035, mealFalloff: 0.12, healCap: 0.4, mealGrow: 0.05, maxGrow: 1.6,   // each meal heals less; never more than 40% back per fight
       inhaleEvery: [6, 8], inhaleTime: 2.4, inhaleRange: 540, pull: 300, playerPull: 85,
-      slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2, aftershock: { windup: 0.55, scale: 1.3 },   // starving: a second, wider slam
+      slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2, slamGrowCap: 1.3, aftershock: { windup: 0.55, scale: 1.25 },   // starving: a second, wider slam
       spit: { count: 9, speed: 250, arc: 1.1, every: [2.6, 3.6] },
       minionEvery: 1.9, minionMax: 12,
     },
@@ -335,6 +497,19 @@ export const BALANCE = {
     rear:     { max: 1 },
     overcharge: { max: 3, dmg: [0.35, 0.7, 1.0], speed: [0.2, 0.35, 0.5] },   // charged-shot damage, charge speed
     capacitor:  { max: 2 },
+  },
+
+  // Sin Fusions: two sins at level `need` or higher unlock a fusion card. One per run (a second in endless,
+  // after you win). Once you qualify it shows up in half your card hands (always the first time).
+  fusions: {
+    need: 3, chance: 0.5, max: 1, maxEndless: 2,
+    covetous:  { a: "greed", b: "envy", stars: 2, extend: 0.5, extendCap: 1 },          // kills while holding a stolen power drop 2 stars; each adds 0.5s (up to +100% of its time)
+    bloodlust: { a: "wrath", b: "lust", ramp: 0.15, rampCap: 1, blast: 2, radius: 1.3, ring: 8, ringDmg: 0.5 },   // charmed robots: +15%/s (up to +100%); their pop: x2 blast, x1.3 wider, 8 shots
+    feast:     { a: "gluttony", b: "pride", critFeast: 3, capBonus: 2, gorgeMax: 3, gorge: 1, blast: 60 },          // crit kills count 3 to Gluttony, +2 heals a wave; overheal stores a gorge (+100% on a crit)
+    judgment:  { a: "sloth", b: "pride", shatter: { r: 75, dmg: 0.5, cd: 0.5, chill: 0.8, slow: 0.35 }, ready: 3, critMul: 1.5 },   // crits on slowed robots shatter; a perfect boost readies Judgment
+    frenzy:    { a: "greed", b: "wrath", per: 0.01, cap: 25, idle: 1.5, decay: 2, burst: { time: 4, dmg: 0.4, cd: 10, blast: 50, blastDmg: 0.6 } },   // each star +1% damage and fire rate (up to 25); 25 = Golden Frenzy
+    parasite:  { a: "lust", b: "gluttony", per: 12, heals: 2, shields: 3 },              // 12 ally hits heal ½💜 (2 a wave); a charm ending gives a shield pip (3 a wave)
+    stolen:    { a: "envy", b: "sloth", chill: 1.5, slow: 0.7, perfect: 2, extends: 3 },  // stolen powers make your hits slow robots 30%; perfect boosts add 2s (3 times per power)
   },
 
   // What Envy steals from each robot (lasts upgrades.envy.time seconds).

@@ -4,9 +4,14 @@
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { input } from "./input.js";
-import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
+import { store, GFX_PRESETS, GFX_KEYS } from "./storage.js";
 import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
-import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, GUN_COL, TIER_NAMES } from "./armory.js";
+import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
+import { evoChoices } from "./evolve.js";
+import { ACHIEVEMENTS, ACH_BY_ID, unlockedAch, rewardNames } from "./progress.js";
+import { equipped } from "./catalog.js";
+import { hangar, lookArt } from "./hangar.js";
+import { sprites, PAL } from "./sprites.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
 import { formatScore } from "./util.js";
@@ -28,7 +33,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "" };
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "", fusion: "" };
 let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
 let boardKind = "all";
 
@@ -45,7 +50,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 5;
+const NEWS_VERSION = 7;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
@@ -60,7 +65,7 @@ export const ui = {
     const ids = ["game", "hud", "hearts", "hud-wave", "hud-left", "envy-chips", "boss-bar", "boss-name", "boss-fill", "boss-ghost",
       "hud-score", "hud-combo", "combo-x", "combo-fill", "hud-stars", "pause-btn", "fps", "banner", "banner-kicker", "banner-title",
       "banner-sub", "toast", "stick-move", "stick-aim", "ghost-move", "ghost-aim", "boost-btn", "charge-btn", "cards", "rotate-hint",
-      "gun-chip", "gun-main", "gun-alt", "team"];
+      "gun-chip", "gun-main", "gun-alt", "team", "fusion-chip", "rush-chip", "rush-time", "ambush-chip"];
     for (const id of ids) this.els[id] = $(id);
 
     // half-heart clip, shared by every heart icon
@@ -71,7 +76,7 @@ export const ui = {
     document.body.appendChild(defs);
 
     const click = (id, fn) => { const n = $(id); if (n) n.addEventListener("click", (e) => { handlers.onClick && handlers.onClick(); fn(e); }); };
-    click("play-btn", () => handlers.onPlay());
+    click("play-btn", () => hangar.play());
     for (const b of document.querySelectorAll(".diff-opt")) {
       b.addEventListener("click", () => { store.data.settings.difficulty = b.dataset.diff; store.save(); this.renderDifficulty(); });
     }
@@ -88,8 +93,22 @@ export const ui = {
     click("shop-reroll", () => handlers.onShopReroll());
     click("shop-patch", () => handlers.onPatch());
     click("shop-go", () => { if (armed()) handlers.onShopGo(); });
+    click("evo-later", () => { if (armed()) handlers.onEvoLater(); });
+    click("event-leave", () => { if (armed()) handlers.onEvent(-1); });
     click("news-btn", () => this.show("news"));
-    click("coop-btn", () => handlers.onCoop());
+    click("download-btn", () => this.show("download"));
+    click("download-done", () => this.show("menu"));
+    G.on("achv", (a) => this.achvPop(a));
+    hangar.init({ ui: this, handlers, sfx: (n) => handlers.onSfx && handlers.onSfx(n), name: () => (online.user ? "@" + online.name : "Pilot") });
+    G.on("sigils", (s) => {
+      if (s.quiet) return;
+      const why = s.why === "win" ? " · the Ladder is yours" : s.why === "rush" ? " · Boss Rush cleared" : "";
+      this.toast("+" + s.n + " \u25c6 " + (s.n === 1 ? "Sigil" : "Sigils") + why, 2200);
+    });
+    click("rush-back", () => this.show("menu"));
+    click("rush-start", () => handlers.onRushStart(this.rushMods()));
+    click("rushdone-again", () => { if (armed()) handlers.onRushAgain(); });
+    click("rushdone-menu", () => { if (armed()) handlers.onQuit(); });
     click("lobby-host", () => { const n = this.lobbyName(); if (n) handlers.onLobbyHost(n); });
     click("lobby-join", () => { const n = this.lobbyName(); const c = ($("lobby-code-in").value || "").trim(); if (!n) return; if (c.length < 5) { this.lobbyStatus("Type the 5-letter code your host gave you.", "bad"); return; } handlers.onLobbyJoin(c, n); });
     click("lobby-go", () => handlers.onLobbyStart());
@@ -104,12 +123,19 @@ export const ui = {
       codeIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("lobby-join").click(); } });
     }
     click("news-done", () => { store.data.seenNews = NEWS_VERSION; store.save(); this.show("menu"); });
+    // the fusion chip flashes whenever your Sin Fusion does something (throttled)
+    let pulseAt = 0;
+    G.on("fusionPulse", () => {
+      const n = this.els["fusion-chip"], t = performance.now();
+      if (!n || n.hidden || t - pulseAt < 250) return;
+      pulseAt = t;
+      n.classList.remove("pulse"); void n.offsetWidth; n.classList.add("pulse");
+    });
     const gunChip = $("gun-chip");
     if (gunChip) gunChip.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); handlers.onSwap && handlers.onSwap(); });
     document.querySelectorAll("#settings-form .tab").forEach((t) => t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.settingsTab(t.dataset.tab); }));
     click("settings-done", () => this.closeSettings());
     click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
-    click("daily-btn", () => handlers.onDaily());
     click("board-btn", () => this.openBoard("all", "menu"));
     click("board-done", () => this.show(this.boardBack || "menu"));
     click("board-signin", () => online.signIn());
@@ -176,14 +202,13 @@ export const ui = {
     detail("set-trails", "change", (n) => { s().trails = n.checked; });
     detail("set-grid", "change", (n) => { s().grid = n.checked; });
 
-    this.renderSuits();
     this.syncSettings();
     this.syncMute();
   },
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "event", "download"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -192,10 +217,11 @@ export const ui = {
       else if (!on) node.hidden = true;
     }
     screen = name;
-    if (name === "upgrade" || name === "over" || name === "win" || name === "shop") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : 800);
+    if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo" || name === "rushdone" || name === "event") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
     if (name === "how") this.renderHow();
-    if (name === "menu") this.refreshMenu();
-    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
+    if (name === "download") this.renderDownload();
+    if (name === "menu") { this.refreshMenu(); hangar.show(); }
+    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
   },
@@ -205,9 +231,9 @@ export const ui = {
 
   setState(state) {
     const g = this.els.game;
-    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win");
+    g.classList.remove("state-menu", "state-playing", "state-paused", "state-clear", "state-upgrade", "state-shop", "state-dying", "state-over", "state-win", "state-evolve", "state-event");
     g.classList.add("state-" + state);
-    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win");
+    this.els.hud.hidden = !(state === "playing" || state === "clear" || state === "dying" || state === "paused" || state === "upgrade" || state === "shop" || state === "win" || state === "evolve" || state === "event");
     this.updateRotateHint();
   },
 
@@ -317,13 +343,10 @@ export const ui = {
       add("Best score", "—");
       add("Best wave", "—");
     }
-    this.renderSuits();
     this.renderDifficulty();
     this.renderControlsHint();
     this.renderLadder($("mini-ladder"), b.rung || 0, (b.wins || 0) > 0);
-    const daily = store.data.daily;
-    const today = todayUTC();
-    $("daily-label").textContent = daily.date === today && daily.score > 0 ? "Daily · best " + formatScore(daily.score) : "Daily Challenge";
+    this.renderProfileStrip();
     const nb = $("news-btn");
     if (nb) nb.classList.toggle("fresh", store.data.seenNews !== NEWS_VERSION);
     this.renderAccount();
@@ -407,7 +430,7 @@ export const ui = {
       b.type = "button"; b.addEventListener("click", () => this.openBoard(detail && detail.daily ? "daily" : "all", "over"));
       box.append(b);
     } else if (state === "signin") {
-      box.append(el("span", "", "Sign in with Discord to put this run on the leaderboard."));
+      box.append(el("span", "", detail === "expired" ? "Your sign-in expired, so this run wasn't posted. Sign in again to post the next one." : "Sign in with Discord to put this run on the leaderboard."));
       const b = el("button", "btn btn-primary btn-sm", "Sign in");
       b.type = "button"; b.addEventListener("click", () => online.signIn());
       box.append(b);
@@ -424,6 +447,7 @@ export const ui = {
     add("Time", sum.time);
     add("Kills", String(sum.kills));
     add("Hits taken", String(sum.hits));
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
     const client = G.net.role === "client";
     $("win-endless").hidden = client;
     $("win-finish").hidden = client;
@@ -435,33 +459,32 @@ export const ui = {
     for (const id of ["exit-btn", "pause-exit-btn"]) { const n = $(id); if (n) n.hidden = !on; }
   },
 
+  /** Inside the Windows or Android app there's nothing to download. */
+  setApp(on) {
+    const b = $("download-btn");
+    if (b) b.hidden = on;
+  },
+
+  /** The download screen: your own platform's app first; iPhone and iPad get the Home Screen tip instead. */
+  renderDownload() {
+    const ua = navigator.userAgent || "";
+    const apk = $("dl-android"), win = $("dl-win"), grid = $("dl-grid");
+    const hasApk = !!(apk && $("dl-apk-size").textContent);
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (apk) apk.hidden = !hasApk;
+    $("dl-note-android").hidden = !hasApk;
+    $("dl-note-ios").hidden = !ios;
+    if (grid && apk && win) { if (/Android/.test(ua)) grid.prepend(apk); else grid.prepend(win); }
+    const an = $("dl-note-android");
+    if (/Android/.test(ua) && an) an.parentNode.prepend(an);
+  },
+
   /** The menu's difficulty picker (applies to the Ladder and to co-op games you host). */
   renderDifficulty() {
     const cur = BALANCE.difficulty[store.data.settings.difficulty] ? store.data.settings.difficulty : "normal";
     for (const b of document.querySelectorAll(".diff-opt")) b.setAttribute("aria-checked", b.dataset.diff === cur ? "true" : "false");
     const note = $("diff-note");
     if (note) note.textContent = DIFF_NOTES[cur];
-  },
-
-  renderSuits() {
-    const list = $("suit-list");
-    if (!list) return;
-    list.replaceChildren();
-    const cur = store.data.settings.suit;
-    for (const s of SUITS) {
-      const unlocked = store.suitUnlocked(s);
-      const b = el("button", "suit");
-      b.type = "button";
-      b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", s.id === cur ? "true" : "false");
-      b.setAttribute("aria-label", s.name + (unlocked ? "" : " (reach wave " + s.wave + ")"));
-      b.title = unlocked ? s.name : "Reach wave " + s.wave + " to unlock";
-      b.style.setProperty("--suit", s.suit);
-      b.style.setProperty("--trim", s.trim);
-      if (!unlocked) { b.disabled = true; b.append(el("span", "lock", "W" + s.wave)); }
-      b.addEventListener("click", () => { handlers.onSuit(s.id); this.renderSuits(); });
-      list.append(b);
-    }
   },
 
   renderControlsHint() {
@@ -545,7 +568,8 @@ export const ui = {
     if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
     if (G.wave !== last.wave) {
       last.wave = G.wave;
-      E["hud-wave"].textContent = "Wave " + G.wave;
+      E["hud-wave"].textContent = G.mode === "rush" ? "Boss " + Math.min(7, Math.max(1, G.wave / BALANCE.waves.bossEvery)) + "/7" : "Wave " + G.wave;
+      E["rush-chip"].hidden = G.mode !== "rush";
       const r = ladderRungs()[waves.rungOf(Math.max(1, G.wave))];
       const rung = $("hud-rung");
       rung.textContent = r.name + (G.lap ? " · lap " + (G.lap + 1) : "");
@@ -570,6 +594,12 @@ export const ui = {
     hudSlowT -= dt;
     const slowTick = hudSlowT <= 0;
     if (slowTick) hudSlowT = 1 / 20;
+    if (slowTick) {
+      const a = G.ambush, on = !!(a && a.t > 0);
+      E["ambush-chip"].hidden = !on;
+      if (on) E["ambush-chip"].textContent = "Ambush " + Math.ceil(a.t) + "s · " + a.left + " left";
+    }
+    if (slowTick && G.mode === "rush" && G.rush) E["rush-time"].textContent = fmtClock(G.rush.t0 >= 0 ? G.time - G.rush.t0 : 0);
     if (slowTick) E["combo-fill"].style.transform = "scaleX(" + (G.combo > 0 ? Math.max(0, G.comboTimer / BALANCE.combo.window).toFixed(2) : 0) + ")";
 
     // boss bar
@@ -593,16 +623,34 @@ export const ui = {
     if (slowTick) this.renderTeam();
 
     // guns
-    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier : "") + "|" + G.gunSlot;
+    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier + (G.guns[0].evo || "") : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier + (G.guns[1].evo || "") : "") + "|" + G.gunSlot;
     if (gk !== last.gun) {
       last.gun = gk;
       const a = G.guns[G.gunSlot] || G.guns[0], b = G.guns[1 - G.gunSlot];
       E["gun-main"].replaceChildren(gunArt(a.id), el("b", "", gunName(a)));
-      E["gun-chip"].style.setProperty("--gun-col", GUN_COL[a.id]);
+      E["gun-chip"].style.setProperty("--gun-col", gunCol(a));
+      E["gun-chip"].classList.toggle("evolved", !!a.evo);
       E["gun-alt"].replaceChildren();
       if (b) E["gun-alt"].append(gunArt(b.id), el("span", "", input.mode === "kbm" ? "Q" : input.mode === "gamepad" ? "Y" : "tap"));
       E["gun-alt"].hidden = !b;
       E["gun-chip"].classList.toggle("solo", !b);
+    }
+
+    // Sin Fusion
+    const fk = (P.fusions || []).join(",");
+    if (fk !== last.fusion) {
+      last.fusion = fk;
+      const n = E["fusion-chip"];
+      n.replaceChildren();
+      n.hidden = !fk;
+      for (const id of P.fusions || []) {
+        const c = CARD_BY_ID[id];
+        const s = el("span", "fusion-one");
+        s.style.setProperty("--c1", c.color); s.style.setProperty("--c2", c.color2);
+        for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; img.width = 18; img.height = 18; s.append(img); }
+        s.append(el("b", "", c.name));
+        n.append(s);
+      }
     }
 
     // envy powers
@@ -707,12 +755,31 @@ export const ui = {
     ids.forEach((id, i) => {
       const c = CARD_BY_ID[id];
       const lvl = G.up[id] || 0;
-      const b = el("button", "card");
+      const b = el("button", "card" + (c.kind === "fusion" ? " fusion" : ""));
       b.type = "button";
       b.setAttribute("role", "listitem");
       b.dataset.id = id;
       b.style.setProperty("--card-col", c.color);
       b.append(el("span", "card-key", String(i + 1)));
+      if (c.kind === "fusion") {
+        // a Sin Fusion: both sins' emblems, the pair it needs, what it does
+        b.style.setProperty("--card-col2", c.color2);
+        b.append(el("span", "card-tag fusion", "Sin Fusion"));
+        const art = el("span", "card-art fusion-art");
+        for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; img.width = 60; img.height = 60; art.append(img); }
+        art.append(el("i", "fusion-spark"));
+        b.append(art);
+        b.append(el("span", "card-name", c.name));
+        b.append(el("span", "fusion-need", CARD_BY_ID[c.need[0]].name + " + " + CARD_BY_ID[c.need[1]].name));
+        const desc = el("p", "card-desc", c.levels[0]);
+        desc.append(el("small", "", "One fusion per run"));
+        b.append(desc);
+        b.setAttribute("aria-label", "Sin Fusion: " + c.name + " (" + c.need.join(" and ") + "). " + c.levels[0]);
+        b.addEventListener("click", () => { if (armed()) handlers.onPick(id); });
+        b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+        box.append(b);
+        return;
+      }
       b.append(el("span", "card-tag" + (c.kind === "gear" ? " gear" : ""), c.kind === "sin" ? "Sin" : "Augment"));
       const art = el("span", "card-art");
       if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; img.width = 76; img.height = 76; art.append(img); }
@@ -751,6 +818,259 @@ export const ui = {
     n.innerHTML = input.mode === "kbm" ? "Press " + keys + " to pick" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to pick" : "Tap a card to pick it";
   },
 
+  // ---------------- achievements + the locker ----------------
+  /** Under the menu's bests: your title and the badges you pinned. */
+  renderProfileStrip() {
+    const box = $("profile-strip");
+    if (!box) return;
+    box.replaceChildren();
+    const c = store.data.cos;
+    const title = equipped("title");
+    for (const id of c.badges || []) {
+      const a = ACH_BY_ID[id];
+      if (!a || !unlockedAch(id)) continue;
+      const b = el("span", "badge");
+      b.style.setProperty("--b", a.col);
+      b.title = a.name;
+      b.append(icon(a.icon));
+      box.append(b);
+    }
+    if (title.id) box.append(el("span", "player-title", title.name));
+    const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
+    const lab = $("profile-label");
+    if (lab) lab.title = n + " of " + ACHIEVEMENTS.length + " achievements";
+  },
+
+  openProfile(tab) {
+    this.hangarTab(tab === "locker" ? "locker" : "profile");
+  },
+  /** Opens the Hangar on one of its tabs (play, locker, shop, challenges, profile). */
+  hangarTab(t) {
+    if (screen !== "menu") this.show("menu");
+    hangar.tab(t, true);
+  },
+
+  /** Every achievement: unlocked ones show when, locked ones what to do (and how far along you are). Tap an unlocked one to pin its badge (3 at most). */
+  renderAchievements() {
+    const list = $("achv-list");
+    list.replaceChildren();
+    const pins = store.data.cos.badges || (store.data.cos.badges = []);
+    const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
+    $("achv-summary").textContent = n + " of " + ACHIEVEMENTS.length + " unlocked · tap one you've earned to pin its badge to your profile (3 at most)";
+    let cat = "";
+    for (const a of ACHIEVEMENTS) {
+      if (a.cat !== cat) { cat = a.cat; list.append(el("h3", "achv-cat", cat)); }
+      const got = unlockedAch(a.id);
+      const b = el("button", "achv" + (got ? " got" : "") + (pins.includes(a.id) ? " pinned" : ""));
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      b.style.setProperty("--b", a.col);
+      const badge = el("span", "badge");
+      badge.append(icon(a.icon));
+      b.append(badge);
+      const txt = el("span", "achv-txt");
+      txt.append(el("b", "", a.name), el("span", "", a.desc));
+      const rw = rewardNames(a);
+      if (rw.length) txt.append(el("small", "", "Unlocks: " + rw.join(", ")));
+      if (a.goal && !got) {
+        const [have, need] = a.goal();
+        const bar = el("i", "achv-bar");
+        bar.style.setProperty("--p", Math.min(1, have / need).toFixed(3));
+        txt.append(bar, el("small", "", Math.min(have, need) + " / " + need));
+      }
+      b.append(txt);
+      if (got) b.append(el("span", "achv-when", new Date(store.data.achv[a.id]).toLocaleDateString()));
+      b.disabled = !got;
+      b.setAttribute("aria-label", a.name + (got ? ", unlocked" : ", locked") + ". " + a.desc);
+      b.addEventListener("click", () => {
+        const i = pins.indexOf(a.id);
+        if (i >= 0) pins.splice(i, 1); else { pins.push(a.id); if (pins.length > 3) pins.shift(); }
+        store.save();
+        handlers.onClick && handlers.onClick();
+        this.renderAchievements();
+      });
+      list.append(b);
+    }
+  },
+
+  /** An achievement just unlocked: a card slides in at the top (several queue up). */
+  achvPop(a) {
+    (this.achvQ || (this.achvQ = [])).push(a);
+    if (this.achvBusy) return;
+    const next = () => {
+      const x = this.achvQ.shift();
+      const box = $("achv-pop");
+      if (!x || !box) { this.achvBusy = false; return; }
+      this.achvBusy = true;
+      box.replaceChildren();
+      box.style.setProperty("--b", x.col);
+      const badge = el("span", "badge");
+      badge.append(icon(x.icon));
+      const txt = el("span", "achv-txt");
+      const rw = rewardNames(x);
+      txt.append(el("small", "", "Achievement unlocked"), el("b", "", x.name), el("span", "", (rw.length ? "Unlocked: " + rw.join(", ") : x.desc) + (x.sig ? " · +" + x.sig + " \u25c6" : "")));
+      box.append(badge, txt);
+      box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
+      handlers.onAchv && handlers.onAchv();
+      setTimeout(() => { box.classList.remove("show"); setTimeout(next, 350); }, 3600);
+    };
+    next();
+  },
+
+  // ---------------- Boss Rush ----------------
+  /** The Rush setup: the seven, your bests, difficulty, modifiers (they unlock after your first clear). */
+  openRush() {
+    const rs = store.data.rush;
+    const d = BALANCE.difficulty[store.data.settings.difficulty] ? store.data.settings.difficulty : "normal";
+    const splits = rs.splits[d] || {};
+    const order = $("rush-order");
+    order.replaceChildren();
+    for (const r of ladderRungs()) {
+      const li = el("li", "rush-boss");
+      li.style.setProperty("--c1", r.c1);
+      const img = el("img"); img.src = "/assets/home/emoji/" + r.emoji + ".webp"; img.alt = ""; img.width = 40; img.height = 40;
+      li.append(img, el("b", "", "@" + r.name), el("span", "", splits[r.id] ? fmtClock(splits[r.id]) : "—"));
+      order.append(li);
+    }
+    const box = $("rush-mods");
+    box.replaceChildren();
+    const open = rs.clears > 0;
+    $("rush-mods-note").textContent = open ? "each one adds to your score" : "clear the Rush once to unlock them";
+    const on = new Set(rs.mods || []);
+    for (const id in BALANCE.rush.mods) {
+      const m = BALANCE.rush.mods[id];
+      const b = el("button", "rush-mod");
+      b.type = "button";
+      b.dataset.mod = id;
+      b.disabled = !open;
+      b.setAttribute("role", "switch");
+      b.setAttribute("aria-checked", open && on.has(id) ? "true" : "false");
+      b.append(el("b", "", m.name), el("span", "", m.text), el("small", "", "+" + Math.round(m.score * 100) + "% score"));
+      b.addEventListener("click", () => { b.setAttribute("aria-checked", b.getAttribute("aria-checked") === "true" ? "false" : "true"); handlers.onClick && handlers.onClick(); });
+      box.append(b);
+    }
+    const dl = $("rush-best");
+    dl.replaceChildren();
+    const best = rs.best[d];
+    const add = (k, v) => { const x = el("div"); x.append(el("dt", "", k), el("dd", "", v)); dl.append(x); };
+    add("Best time (" + BALANCE.difficulty[d].name + ")", best ? fmtClock(best.time) : "—");
+    add("Best rank", best && best.rank ? best.rank : "—");
+    add("Best score", best ? formatScore(best.score) : "—");
+    add("Clears", String(rs.clears || 0));
+    this.renderDifficulty();
+    this.show("rush");
+  },
+  rushMods() {
+    return Array.from(document.querySelectorAll("#rush-mods .rush-mod")).filter((b) => !b.disabled && b.getAttribute("aria-checked") === "true").map((b) => b.dataset.mod);
+  },
+
+  /** Boss Rush results: rank, time against your best, every split. */
+  showRushDone(sum) {
+    const dn = BALANCE.difficulty[sum.difficulty] ? BALANCE.difficulty[sum.difficulty].name : "Normal";
+    const mods = (sum.mods || []).map((m) => BALANCE.rush.mods[m] && BALANCE.rush.mods[m].name).filter(Boolean);
+    $("rushdone-kicker").textContent = "Boss Rush · " + dn + (mods.length ? " · " + mods.join(", ") : "");
+    const fell = sum.next && BALANCE.bosses[sum.next] ? BALANCE.bosses[sum.next].name : "";
+    $("rushdone-title").textContent = sum.cleared ? "Seven sins. One sitting." : "Fell to @" + fell + " (" + sum.beaten + " of 7)";
+    const rank = $("rush-rank");
+    rank.textContent = sum.cleared ? sum.rank : "\u2715";
+    rank.className = "rush-rank rank-" + (sum.cleared ? sum.rank : "x");
+    const nb = $("rushdone-best");
+    nb.hidden = !(sum.newTime || sum.newScore);
+    nb.textContent = sum.newTime ? "New best time!" : "New best score!";
+    const dl = $("rushdone-stats");
+    dl.replaceChildren();
+    const add = (k, v, isNew) => { const x = el("div"); const dd = el("dd", isNew ? "new" : "", v); x.append(el("dt", "", k), dd); dl.append(x); };
+    add("Fighting time", fmtClock(sum.time) + (sum.prevTime && sum.cleared ? " (" + (sum.time <= sum.prevTime ? "−" : "+") + fmtClock(Math.abs(sum.time - sum.prevTime)) + ")" : ""), sum.newTime);
+    add("Hits taken", String(sum.hits));
+    add("Score", formatScore(sum.score), sum.newScore);
+    add("Bosses", sum.beaten + " / 7");
+    if (sum.killedBy) add("Got you", sum.killedBy);
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
+    for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
+    const tb = $("rush-splits").tBodies[0];
+    tb.replaceChildren();
+    for (const s of sum.splits || []) {
+      const b = BALANCE.bosses[s.type];
+      const tr = el("tr");
+      tr.style.setProperty("--c1", b.c1);
+      const d = s.pb ? s.t - s.pb : 0;
+      tr.append(el("td", "", "@" + b.name), el("td", "", fmtClock(s.t)),
+        el("td", s.pb ? (d <= 0 ? "good" : "bad") : "", s.pb ? (d <= 0 ? "−" : "+") + fmtClock(Math.abs(d)) : "first"), el("td", s.hits ? "" : "good", s.hits ? String(s.hits) : "none"));
+      tb.append(tr);
+    }
+    renderBuild($("rushdone-build"), sum.build, sum.buildTitle + (sum.recordNote ? " · " + sum.recordNote : ""));
+    const client = G.net.role === "client";
+    $("rushdone-again").disabled = client;
+    $("rushdone-again").lastChild.textContent = client ? "Waiting for the host" : G.net.role === "host" ? "Run it back (everyone)" : "Run it back";
+    $("rushdone-menu").lastChild.textContent = G.net.role !== "off" ? "Leave co-op" : "Menu";
+    this.show("rushdone");
+  },
+
+  // ---------------- special events ----------------
+  /** info: { kicker, title, sub, col, options: [{ name, text, cost, col, disabled }], leave: label | false } */
+  showEvent(info) {
+    $("event-kicker").textContent = info.kicker;
+    $("event-title").textContent = info.title;
+    $("event-sub").textContent = info.sub || "";
+    $("screen-event").style.setProperty("--ev-col", info.col || "#a57bff");
+    const box = $("event-opts");
+    box.replaceChildren();
+    box.classList.toggle("two", info.options.length === 2);
+    info.options.forEach((o, i) => {
+      const b = el("button", "event-opt");
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      if (o.col) b.style.setProperty("--opt-col", o.col);
+      b.append(el("span", "card-key", String(i + 1)), el("b", "", o.name), el("span", "event-text", o.text));
+      if (o.cost) b.append(el("span", "event-cost", o.cost));
+      b.disabled = !!o.disabled;
+      b.addEventListener("click", () => { if (armed()) handlers.onEvent(i); });
+      box.append(b);
+    });
+    const lv = $("event-leave");
+    lv.hidden = !info.leave;
+    $("event-leave-label").textContent = info.leave || "";
+    const n = $("event-hint");
+    if (n) n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd>–<kbd>" + info.options.length + "</kbd> to choose" : "";
+    this.show("event");
+  },
+
+  // ---------------- weapon evolution ----------------
+  /** Two paths for the gun in slot i: pick one (it's locked in for this gun) or decide after the next boss. */
+  showEvo(i) {
+    const g = G.guns[i];
+    if (!g) return;
+    const base = BALANCE.guns[g.id];
+    $("evo-kicker").textContent = "Weapon evolution · " + base.name + " IV";
+    $("evo-title").textContent = "Evolve your " + base.name;
+    $("evo-sub").innerHTML = "Pick a path. It's locked in for this gun for the rest of the run.";
+    const box = $("evo-cards");
+    box.replaceChildren();
+    evoChoices(g.id).forEach((c, k) => {
+      const b = el("button", "evo-card");
+      b.type = "button";
+      b.setAttribute("role", "listitem");
+      b.dataset.path = c.path;
+      b.style.setProperty("--evo-col", c.col);
+      b.append(el("span", "card-key", String(k + 1)));
+      b.append(el("span", "evo-path", "Path " + c.path.toUpperCase() + " · " + c.tag));
+      const art = el("span", "evo-art");
+      art.append(gunArt(g.id), el("i", "evo-spark"));
+      b.append(art);
+      b.append(el("span", "evo-name", c.name));
+      const ul = el("ul", "evo-lines");
+      for (const line of c.lines) ul.append(el("li", "", line));
+      b.append(ul);
+      b.setAttribute("aria-label", "Path " + c.path.toUpperCase() + ": " + c.name + ". " + c.lines.join(" "));
+      b.addEventListener("click", () => { if (armed()) handlers.onEvo(c.path); });
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") handlers.onHover && handlers.onHover(); });
+      box.append(b);
+    });
+    const n = $("evo-hint");
+    if (n) n.innerHTML = input.mode === "kbm" ? "Press <kbd>1</kbd> or <kbd>2</kbd> to evolve" : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to evolve" : "Tap a path to evolve";
+    this.show("evo");
+  },
+
   // ---------------- co-op ----------------
   openLobby(name) {
     $("lobby-start").hidden = false;
@@ -768,6 +1088,14 @@ export const ui = {
   lobbyRoom(code, host) {
     $("lobby-start").hidden = true;
     $("lobby-room").hidden = false;
+    // the host picks the mode: the Ladder, or Boss Rush once they've unlocked it
+    const row = $("lobby-mode-row"), sel = $("lobby-mode");
+    row.hidden = !host || !store.rushUnlocked();
+    if (host) {
+      sel.value = store.rushUnlocked() && store.data.coopMode === "rush" ? "rush" : "ladder";
+      handlers.onLobbyMode && handlers.onLobbyMode(sel.value);
+      sel.onchange = () => { store.data.coopMode = sel.value; store.save(); handlers.onLobbyMode && handlers.onLobbyMode(sel.value); };
+    }
     $("lobby-code-show").textContent = code;
     $("lobby-go").hidden = !host;
     $("lobby-wait").hidden = host;
@@ -780,7 +1108,8 @@ export const ui = {
       const m = members.find((x) => x.slot === i);
       const li = el("li", "lobby-slot" + (m ? "" : " empty"));
       li.style.setProperty("--slot", SLOT_COL[i]);
-      li.append(el("span", "lobby-dot"));
+      if (m) { const art = el("span", "lobby-astro"); art.append(lookArt(m.suit, 46, 52)); li.append(art); }
+      else li.append(el("span", "lobby-dot"));
       li.append(el("span", "lobby-pname", m ? m.name : "Waiting for a player…"));
       if (m && m.slot === 0) li.append(el("span", "lobby-tag", "Host"));
       list.append(li);
@@ -918,10 +1247,13 @@ export const ui = {
       const b = el("button", "slot" + (i === G.gunSlot ? " active" : "") + (g ? "" : " empty"));
       b.type = "button";
       if (g) {
-        b.style.setProperty("--gun-col", GUN_COL[g.id]);
+        b.style.setProperty("--gun-col", gunCol(g));
+        b.classList.toggle("evolved", !!g.evo);
         b.append(gunArt(g.id), el("span", "slot-name", gunName(g)));
         const pips = el("span", "slot-pips");
         for (let k = 0; k < 4; k++) pips.append(el("i", k < g.tier ? "on" : ""));
+        if (g.evo) pips.append(el("b", "slot-evo", "✦"));
+        else if (g.tier >= 4) pips.title = "Tier IV: beat the next boss to evolve it";
         b.append(pips);
         b.title = i === G.gunSlot ? "Equipped. New guns replace this one when both slots are full" : "Click to equip";
       } else b.append(el("span", "slot-name", "Empty slot"));
@@ -1007,6 +1339,8 @@ export const ui = {
     if (sum.topGun) add("Top gun", sum.topGun);
     if (sum.spent) add("Stars spent", String(sum.spent));
     if (sum.killedBy) add("Got you", sum.killedBy);
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
+    for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
     renderArsenal(buildBox);
@@ -1027,7 +1361,9 @@ export const ui = {
 
   // ---------------- gamepad menu navigation ----------------
   navigate(dir) {
-    const root = screen && $("screen-" + screen);
+    let root = screen && $("screen-" + screen);
+    // in the Hangar, an open item panel or reveal keeps the focus to itself
+    if (screen === "menu") { const ov = [$("reveal"), $("item-detail")].find((n) => n && !n.hidden); if (ov) root = ov; }
     if (!root) return;
     const list = Array.from(root.querySelectorAll("button:not([disabled]), input, select")).filter((n) => n.offsetParent !== null);
     if (!list.length) return;
@@ -1058,6 +1394,13 @@ export const ui = {
   },
 };
 
+/** 83.4 → "1:23.4" */
+function fmtClock(t) {
+  t = Math.max(0, t || 0);
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1);
+}
+
 function heartSvg(v, shield) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   s.setAttribute("viewBox", "0 0 24 24");
@@ -1075,8 +1418,8 @@ function renderArsenal(box) {
   for (const g of G.guns) {
     if (!g) continue;
     const chip = el("span", "build-chip gun");
-    chip.style.setProperty("--chip-col", GUN_COL[g.id]);
-    chip.append(gunArt(g.id), document.createTextNode(gunName(g)));
+    chip.style.setProperty("--chip-col", gunCol(g));
+    chip.append(gunArt(g.id), document.createTextNode((g.evo ? "✦ " : "") + gunName(g)));
     box.append(chip);
   }
   for (const it of ownedItems()) {
@@ -1093,8 +1436,16 @@ function renderBuild(box, build, title) {
   if (title) { const t = el("p", "set-note", title); t.style.width = "100%"; box.append(t); }
   if (!build || !build.length) { if (!title) box.append(el("span", "set-note", "No upgrades yet.")); return; }
   for (const c of build) {
-    const chip = el("span", "build-chip");
+    const chip = el("span", "build-chip" + (c.kind === "fusion" ? " fusion" : ""));
     chip.style.setProperty("--chip-col", c.color);
+    if (c.kind === "fusion") {
+      chip.style.setProperty("--chip-col2", c.color2);
+      for (const src of c.imgs) { const img = el("img"); img.src = src; img.alt = ""; chip.append(img); }
+      chip.append(document.createTextNode(c.name + " "));
+      chip.append(el("b", "", "FUSION"));
+      box.append(chip);
+      continue;
+    }
     if (c.img) { const img = el("img"); img.src = c.img; img.alt = ""; chip.append(img); }
     else chip.append(icon(c.icon));
     chip.append(document.createTextNode(c.name + " "));

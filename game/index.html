@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=6">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=6">
+<link rel="stylesheet" href="../assets/game/game.css?v=9">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -63,7 +63,10 @@
       <div class="wave-chip" id="wave-chip"><span id="hud-wave">Wave 1</span><span class="hud-rung" id="hud-rung"></span><span class="hud-dim" id="hud-left"></span></div>
       <div class="daily-chip" id="daily-chip" hidden>Daily</div>
       <div class="daily-chip diff-chip" id="diff-chip" hidden></div>
+      <div class="daily-chip rush-chip" id="rush-chip" hidden><span id="rush-time">0:00.0</span></div>
+      <div class="daily-chip ambush-chip" id="ambush-chip" hidden></div>
       <button class="gun-chip" id="gun-chip" type="button" tabindex="-1" aria-label="Your guns (tap to swap)"><span class="gun-main" id="gun-main"></span><span class="gun-alt" id="gun-alt"></span></button>
+      <div class="fusion-chip" id="fusion-chip" hidden aria-label="Your Sin Fusion"></div>
       <div class="team" id="team" hidden aria-label="Teammates"></div>
       <div class="envy-chips" id="envy-chips"></div>
     </div>
@@ -86,53 +89,133 @@
     <div class="banner-sub" id="banner-sub"></div>
   </div>
   <div class="toast" id="toast" role="status"></div>
+  <div class="achv-pop" id="achv-pop" role="status" aria-live="polite"></div>
 
-  <!-- start menu -->
-  <section class="screen screen-menu" id="screen-menu" aria-labelledby="menu-title">
-    <header class="menu-top">
+  <!-- the Cosmic Hangar: the lobby (Play, Locker, Item Shop, Challenges, Profile) -->
+  <section class="screen screen-menu hangar" id="screen-menu" data-tab="play" aria-labelledby="menu-title">
+    <header class="hangar-top">
       <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
+      <nav class="hangar-nav" aria-label="Hangar">
+        <button class="hnav on" type="button" data-tab="play" aria-current="page"><i data-icon="zap"></i><span>Play</span></button>
+        <button class="hnav" type="button" data-tab="locker"><i data-icon="shirt"></i><span>Locker</span></button>
+        <button class="hnav" type="button" data-tab="shop"><i data-icon="shopping-bag"></i><span>Item Shop</span><b class="hnav-dot" id="shop-dot" hidden></b></button>
+        <button class="hnav" type="button" data-tab="challenges"><i data-icon="list-checks"></i><span>Challenges</span><b class="hnav-dot" id="contract-dot" hidden></b></button>
+        <button class="hnav" type="button" data-tab="profile" id="profile-btn"><i data-icon="badge-check"></i><span id="profile-label">Profile</span></button>
+      </nav>
       <div class="menu-tools">
+        <span class="hangar-sigils" id="hangar-sigils"></span>
         <button class="account-chip" id="account-chip" type="button" hidden></button>
+        <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings"><i data-icon="settings"></i></button>
         <button class="icon-btn" id="menu-fullscreen" type="button" aria-label="Fullscreen" hidden><i data-icon="maximize"></i></button>
         <button class="icon-btn" id="menu-mute" type="button" aria-label="Mute sound"><i data-icon="volume-2"></i></button>
       </div>
     </header>
-    <div class="menu-main">
-      <p class="kicker"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
-      <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
-      <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
-      <div class="menu-actions">
-        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
-        <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
-        <button class="btn btn-ghost btn-coop" id="coop-btn" type="button"><i data-icon="users"></i>Co-op <small>2–4</small></button>
+
+    <div class="hangar-body">
+      <!-- Play -->
+      <div class="hpane hpane-play" id="hpane-play">
+        <div class="hp-left">
+          <p class="kicker"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
+          <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
+          <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
+          <div class="pilot-card">
+            <div class="profile-strip" id="profile-strip"></div>
+            <dl class="bests" id="bests"></dl>
+          </div>
+          <div class="ladder-panel">
+            <p class="kicker"><span>The Sin Ladder</span></p>
+            <ol class="mini-ladder" id="mini-ladder"></ol>
+          </div>
+        </div>
+        <div class="hp-stage">
+          <canvas class="stage-canvas" id="stage-play" aria-label="Your astronaut"></canvas>
+          <div class="stage-plate"><b id="stage-name">Pilot</b><span id="stage-title" hidden></span></div>
+          <button class="stage-edit" type="button" data-goto="locker"><i data-icon="shirt"></i>Change your look</button>
+        </div>
+        <div class="hp-right">
+          <h2 class="hp-h">Mode</h2>
+          <div class="mode-list" role="radiogroup" aria-label="Mode">
+            <button class="mode-card" id="mode-ladder" type="button" role="radio" data-mode="ladder"><i data-icon="zap"></i><span class="mode-txt"><b>The Sin Ladder</b><small id="ladder-label">Seven sins, one climb</small></span></button>
+            <button class="mode-card mode-daily" id="daily-btn" type="button" role="radio" data-mode="daily"><i data-icon="calendar-days"></i><span class="mode-txt"><b>Daily Challenge</b><small id="daily-label">Same seed for everyone today</small></span></button>
+            <button class="mode-card mode-rush" id="rush-btn" type="button" role="radio" data-mode="rush"><i data-icon="flame"></i><span class="mode-txt"><b>Boss Rush</b><small id="rush-label">Seven sins, back to back</small></span></button>
+            <button class="mode-card mode-coop" id="coop-btn" type="button" role="radio" data-mode="coop"><i data-icon="users"></i><span class="mode-txt"><b>Co-op <em>2–4</em></b><small>Host a lobby or join a friend's</small></span></button>
+          </div>
+          <div class="diff-pick" role="radiogroup" aria-label="Difficulty" aria-describedby="diff-note">
+            <span class="diff-label">Difficulty</span>
+            <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
+            <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
+            <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
+            <span class="diff-note" id="diff-note"></span>
+          </div>
+          <button class="feat-card" id="hangar-feat" type="button"></button>
+        </div>
       </div>
-      <div class="diff-pick" role="radiogroup" aria-label="Difficulty" aria-describedby="diff-note">
-        <span class="diff-label">Difficulty</span>
-        <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
-        <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
-        <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
-        <span class="diff-note" id="diff-note"></span>
-      </div>
-      <div class="menu-actions menu-actions-2">
-        <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
-        <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
-        <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
-        <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
-        <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
-      </div>
-      <p class="controls-hint" id="menu-controls"></p>
-      <dl class="bests" id="bests"></dl>
-      <div class="suits">
-        <span class="suits-label">Suit</span>
-        <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
+      <!-- Locker, Item Shop, Challenges: built by hangar.js -->
+      <div class="hpane hpane-locker" id="hpane-locker" hidden></div>
+      <div class="hpane hpane-shop" id="hpane-shop" hidden></div>
+      <div class="hpane hpane-challenges" id="hpane-challenges" hidden></div>
+      <!-- Profile -->
+      <div class="hpane hpane-profile" id="hpane-profile" hidden>
+        <div class="prof">
+          <aside class="prof-card">
+            <canvas class="stage-canvas" id="stage-profile" aria-label="Your astronaut"></canvas>
+            <h2 class="prof-name" id="prof-name">Pilot</h2>
+            <p class="prof-title" id="prof-title"></p>
+            <dl class="prof-stats" id="prof-stats"></dl>
+          </aside>
+          <section class="prof-achv">
+            <h2 class="chal-h">Achievements</h2>
+            <p class="set-note" id="achv-summary"></p>
+            <div class="achv-list" id="achv-list" role="list"></div>
+          </section>
+        </div>
       </div>
     </div>
-    <aside class="ladder-panel" aria-labelledby="ladder-title">
-      <p class="kicker"><span>The Sin Ladder</span></p>
-      <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
-      <ol class="mini-ladder" id="mini-ladder"></ol>
-    </aside>
-    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v4.1 · Ascension II</span><span>Same planet.</span> <span>Different breed.</span></footer>
+
+    <footer class="hangar-foot">
+      <div class="foot-links">
+        <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
+        <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
+        <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
+        <button class="btn btn-ghost btn-sm" id="download-btn" type="button"><i data-icon="download"></i>Download</button>
+        <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
+        <span class="menu-ver" id="menu-ver">v4.3 · Cosmic Hangar</span>
+      </div>
+      <p class="controls-hint" id="menu-controls"></p>
+      <button class="btn btn-primary btn-xl play-big" id="play-btn" type="button"><i data-icon="zap"></i><span class="play-txt"><b>Play</b><small id="play-sub">The Sin Ladder · Normal</small></span></button>
+    </footer>
+
+    <!-- one item, up close: try it on, buy it, wear it -->
+    <div class="item-detail" id="item-detail" hidden role="dialog" aria-modal="true" aria-labelledby="idet-name">
+      <div class="idet-panel" id="idet-panel">
+        <button class="icon-btn idet-close" id="idet-close" type="button" aria-label="Close"><i data-icon="x"></i></button>
+        <div class="idet-stage">
+          <canvas class="stage-canvas" id="stage-detail" aria-label="Trying it on"></canvas>
+          <div class="stage-plate"><span id="idet-plate" hidden></span></div>
+        </div>
+        <div class="idet-info">
+          <p class="idet-kicker" id="idet-kicker"></p>
+          <h3 class="idet-name" id="idet-name"></h3>
+          <p class="idet-desc" id="idet-desc"></p>
+          <div class="idet-src" id="idet-src"></div>
+          <div class="idet-actions" id="idet-actions"></div>
+          <p class="idet-bal" id="idet-bal"></p>
+        </div>
+      </div>
+    </div>
+    <!-- bought it: a short, skippable reveal -->
+    <div class="reveal" id="reveal" hidden role="dialog" aria-modal="true" aria-labelledby="reveal-name">
+      <div class="reveal-rays" aria-hidden="true"></div>
+      <div class="reveal-card">
+        <p class="reveal-k" id="reveal-k"></p>
+        <div class="reveal-art" id="reveal-art"></div>
+        <h3 class="reveal-name" id="reveal-name"></h3>
+        <div class="reveal-actions">
+          <button class="btn btn-primary" id="reveal-wear" type="button"><i data-icon="shirt"></i>Wear it now</button>
+          <button class="btn btn-ghost" id="reveal-keep" type="button">Keep browsing</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- pause -->
@@ -164,6 +247,32 @@
         <span class="up-stars" id="up-stars"></span>
       </div>
       <p class="up-hint" id="up-hint"></p>
+    </div>
+  </section>
+
+  <!-- weapon evolution (after a sin boss falls, when a gun is at Tier IV) -->
+  <section class="screen screen-evo" id="screen-evo" hidden aria-labelledby="evo-title">
+    <div class="up-wrap evo-wrap">
+      <p class="kicker" id="evo-kicker">Weapon evolution</p>
+      <h2 class="up-title" id="evo-title">Evolve your gun</h2>
+      <p class="up-bonus" id="evo-sub"></p>
+      <div class="evo-cards" id="evo-cards" role="list"></div>
+      <div class="up-econ">
+        <button class="btn btn-ghost btn-sm" id="evo-later" type="button"><i data-icon="clock"></i>Decide after the next boss</button>
+      </div>
+      <p class="up-hint" id="evo-hint"></p>
+    </div>
+  </section>
+
+  <!-- special events (between waves) -->
+  <section class="screen screen-event" id="screen-event" hidden aria-labelledby="event-title">
+    <div class="up-wrap event-wrap">
+      <p class="kicker" id="event-kicker">Event</p>
+      <h2 class="up-title" id="event-title">Something stirs</h2>
+      <p class="up-bonus" id="event-sub"></p>
+      <div class="event-opts" id="event-opts" role="list"></div>
+      <div class="up-econ"><button class="btn btn-ghost btn-sm" id="event-leave" type="button"><i data-icon="log-out"></i><span id="event-leave-label">Leave</span></button></div>
+      <p class="up-hint" id="event-hint"></p>
     </div>
   </section>
 
@@ -212,6 +321,46 @@
         <button class="btn btn-ghost" id="over-menu-btn" type="button"><i data-icon="house"></i>Menu</button>
       </div>
       <p class="up-hint" id="over-hint"></p>
+    </div>
+  </section>
+
+  <!-- Boss Rush: set up a run -->
+  <section class="screen screen-rush" id="screen-rush" hidden aria-labelledby="rush-title">
+    <div class="panel panel-wide glow-card rush">
+      <p class="kicker"><span>Boss Rush</span><i>&#10022;</i><span>Seven sins, back to back</span></p>
+      <h2 class="panel-title" id="rush-title">Boss Rush</h2>
+      <p class="set-note">Sloth to Envy with no waves in between. Draft a build, then after each boss pick a few more cards and visit the Armory. Your clock only runs while you fight. Scored on its own board.</p>
+      <ol class="rush-order" id="rush-order"></ol>
+      <div class="diff-pick" role="radiogroup" aria-label="Difficulty">
+        <span class="diff-label">Difficulty</span>
+        <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
+        <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
+        <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
+      </div>
+      <h3 class="set-h">Modifiers <small id="rush-mods-note"></small></h3>
+      <div class="rush-mods" id="rush-mods"></div>
+      <dl class="over-stats rush-best" id="rush-best"></dl>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="rush-start" type="button"><i data-icon="flame"></i>Start the Rush</button>
+        <button class="btn btn-ghost" id="rush-back" type="button">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Boss Rush: results -->
+  <section class="screen screen-rushdone" id="screen-rushdone" hidden aria-labelledby="rushdone-title">
+    <div class="panel panel-wide glow-card rushdone">
+      <p class="kicker" id="rushdone-kicker">Boss Rush</p>
+      <div class="rush-rank" id="rush-rank">S</div>
+      <h2 class="over-title" id="rushdone-title">Seven sins. One sitting.</h2>
+      <div class="over-best" id="rushdone-best" hidden></div>
+      <dl class="over-stats" id="rushdone-stats"></dl>
+      <table class="rush-splits" id="rush-splits"><thead><tr><th>Boss</th><th>Split</th><th>vs best</th><th>Hits</th></tr></thead><tbody></tbody></table>
+      <div class="build" id="rushdone-build"></div>
+      <div class="over-actions">
+        <button class="btn btn-primary btn-xl" id="rushdone-again" type="button"><i data-icon="refresh-cw"></i>Run it back</button>
+        <button class="btn btn-ghost" id="rushdone-menu" type="button"><i data-icon="house"></i>Menu</button>
+      </div>
     </div>
   </section>
 
@@ -350,6 +499,9 @@
           <button class="icon-btn" id="lobby-copy" type="button" aria-label="Copy the code"><i data-icon="copy"></i></button>
         </div>
         <ol class="lobby-list" id="lobby-list"></ol>
+        <label class="set-row lobby-mode" id="lobby-mode-row" hidden><span>Mode <small>Boss Rush uses your saved modifiers</small></span>
+          <select id="lobby-mode"><option value="ladder">The Sin Ladder</option><option value="rush">Boss Rush</option></select>
+        </label>
         <button class="btn btn-primary btn-xl" id="lobby-go" type="button" disabled><i data-icon="zap"></i>Waiting for players</button>
         <p class="set-note" id="lobby-wait" hidden>You're in. The host starts the run.</p>
       </div>
@@ -362,19 +514,46 @@
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 4.1</span><i>&#10022;</i><span>Ascension II</span></p>
+      <p class="kicker"><span>Update 4.3</span><i>&#10022;</i><span>Cosmic Hangar</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
-        <li><b>Difficulty: Normal, Hard, Nightmare.</b> Pick it on the main menu. Harder modes make robots smarter and faster, evolve them sooner and give you less room; scores count ×1.3 on Hard and ×1.7 on Nightmare. The Daily Challenge is always Normal, and co-op plays the host's pick.</li>
-        <li><b>Smarter robots.</b> They aim where you're heading (change direction after they commit and you're clear), cut you off instead of trailing you, and swing round to your side. Swarms surround you, gunners spread into a crossfire, bulwarks guard the robots shooting at you, patch bots hide behind them, snipers relocate. Burn your boost carelessly and they punish it.</li>
-        <li><b>Squads.</b> Robots now arrive in teams that cover each other: shield walls with guns behind them, pincers from both sides, a sniper screened by swarmlings, a field medic with a bodyguard, and more.</li>
-        <li><b>Every boss fights back harder.</b> Sloth reaches for anyone kiting it and snores while it naps. Gluttony's meals stop healing it and it slams twice. Greed makes it rain gold. Lust fires hearts while it lures you. Wrath dashes faster and lands in a burst. Pride's gems shoot and its decree comes in pairs. Envy leads its shots. Bosses still die faster to stronger builds.</li>
-        <li><b>A power check.</b> Twin Barrel's extra shots share the damage, Seeker Rounds curve less, the charged-shot stack and Overdrive's echo are trimmed, Pride and Wrath top out lower, Heartseeker is a touch weaker. Gluttony heals a few times a wave, hearts drop less, the flash of invulnerability after a hit is shorter, and Lust charms a few robots at a time.</li>
-        <li><b>Greed's music, darker.</b> Still a casino, now a dangerous one: harmonic minor, a slow swing, sub bass and coins on steel. The boss track is the same room with the lights off.</li>
-        <li><b>Polish everywhere.</b> A jetpack flame that answers your thrust, a squash into every boost, a visor glint, sharper muzzle flashes and shot trails. Robots jolt when hit and spark when they're nearly done. Bosses arrive in cinematic bars and a shockwave, and every phase change lands. A richer planet and nebula, twinkling stars, smoother cards and buttons.</li>
-        <li><b>Also in 4.0:</b> boss music for every Sin, a crosshair you can always see, seven chapter looks, fewer between-wave stops, endless runs that skip maxed cards.</li>
+        <li><b>The Cosmic Hangar.</b> The menu is now a lobby: your astronaut, big, on its own platform, wearing everything you've picked and aiming where you point. Pick a mode and a difficulty on the right, then hit Play.</li>
+        <li><b>The Item Shop.</b> Over 50 cosmetics for Sigils you earn in play: hats, suits with chest emblems, visors (a starfield, cracked glass, black mirror), jetpack trails that move differently, weapon finishes, victory effects and titles. Four featured picks a day; everything else is always there. Try anything on before you buy it. No real money, ever.</li>
+        <li><b>Seven new hats.</b> Starforged Cap, Cosmic Bandit, Void Halo, Broken Halo, Overlord, Astral Crown, and the Mythic Black Hole.</li>
+        <li><b>Collections.</b> A set for each sin, plus Void and Astral. Own a whole set for its title.</li>
+        <li><b>The Locker.</b> Every slot in one place, filters and sorting, and three saved loadouts.</li>
+        <li><b>Challenges.</b> Three daily contracts that pay Sigils, today's Daily Challenge, and the achievements you're closest to.</li>
+        <li><b>Your Profile.</b> Your stats, your achievements, your astronaut.</li>
+        <li><b>Co-op.</b> Teammates see your suit, hat, visor, trail and finish, in the lobby and in the run.</li>
+        <li><b>From 4.2:</b> weapon evolutions, Sin Fusions, Boss Rush, elite mutations, achievements, events, and harder bosses.</li>
       </ul>
       <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
+    </div>
+  </section>
+
+  <!-- download the app (website only: hidden inside the apps) -->
+  <section class="screen screen-download" id="screen-download" hidden aria-labelledby="download-title">
+    <div class="panel panel-wide glow-card download">
+      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.3</span></p>
+      <h2 class="panel-title" id="download-title">Get the app</h2>
+      <p class="set-note">The same game as this page, in its own full-screen app. Leaderboards, sign-in and co-op work whenever you're online.</p>
+      <div class="dl-grid" id="dl-grid">
+        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.3" download="EnviousGlider.exe">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+          <b>Windows</b><span>Windows 10 or 11 &middot; <span id="dl-win-size">1.9 MB</span></span><em><i data-icon="download"></i>Download .exe</em>
+        </a>
+        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.3" download="EnviousGlider.apk" hidden>
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+          <b>Android</b><span>Android 7 or later &middot; <span id="dl-apk-size">0.9 MB</span></span><em><i data-icon="download"></i>Download .apk</em>
+        </a>
+      </div>
+      <ul class="news-list dl-notes">
+        <li><b>Windows:</b> the app isn't code-signed yet, so Windows may say <em>&ldquo;Windows protected your PC&rdquo;</em>. Choose <b>More info</b>, then <b>Run anyway</b>. It uses Microsoft Edge WebView2, which Windows 10 and 11 already have.</li>
+        <li id="dl-note-android" hidden><b>Android:</b> open the file when it finishes downloading. The first time, your phone asks you to allow installs from your browser. To update, install the new version over the old one: your progress stays. Sign in with Discord in the app (Google doesn't allow its sign-in inside apps).</li>
+        <li id="dl-note-ios"><b>iPhone and iPad:</b> play right here. In Safari, tap <b>Share</b>, then <b>Add to Home Screen</b> for a full-screen icon.</li>
+        <li>The app keeps its own save, separate from this browser's.</li>
+      </ul>
+      <button class="btn btn-primary" id="download-done" type="button">Back</button>
     </div>
   </section>
 
@@ -387,11 +566,15 @@
         <ul class="how-tips">
           <li>Climb the <b>Sin Ladder</b>: a sin boss every 5 waves, from <b>@Sloth</b> to <b>@Envy</b> on wave 35. Beat Envy to win, then keep climbing in endless.</li>
           <li><b>Boost</b> makes you untouchable for a moment. Boost <em>through</em> an attack at the last second for a <b>Perfect</b>: slow-mo, combo and a faster recharge.</li>
-          <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24; sooner on Hard and Nightmare). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Volatile (bursts when it dies), <em>green +</em> Regenerating.</li>
+          <li>Robots <b>evolve</b> (Mk II at wave 12, Mk III at 24; sooner on Hard and Nightmare). Overcharged elites carry a trait: <em>cyan ring</em> Shielded, <em>white streaks</em> Hasted, <em>orange halo</em> Shrapnel (bursts into shots when it dies), <em>green +</em> Regenerating.</li>
+          <li>Rarer <b>mutants</b> change how you fight them, and their name flashes when they land: <em>Volatile</em> bursts where it dies, <em>Berserker</em> snaps at half health, <em>Armored</em> has a weak spot behind, <em>Shockwave</em> sends out rings (boost through), <em>Phantom</em> shimmers then blinks to your side, <em>Vampiric</em> heals when it hits you, <em>Replicator</em> copies itself.</li>
           <li>Robots <b>telegraph</b>: rippers show their charge path, gunners glow, boomers ring the blast, snipers paint a laser. They aim where you're heading: <b>change direction</b> once they commit.</li>
           <li>Grab <b>stars</b>. After every wave you pick a <b>Sin</b> or an <b>Augment</b>. After the 2nd and 4th wave of each chapter, and after every boss, <b>the Armory</b> opens: guns, gear, patch-ups. Lock offers you can't afford yet.</li>
           <li><b>Charged shot</b>: hold, then let go. Every gun charges into something different. Normal fire stops while you charge (until you get Capacitor).</li>
           <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
+          <li>Take a gun to <b>Tier IV</b> and beat the next sin boss: it <b>evolves</b> down one of two paths. Take two <b>sins to level 3</b> and a <b>Sin Fusion</b> card can turn up.</li>
+          <li>Now and then something unusual happens: a <b>Cosmic Cache</b> to crack, a <b>Corrupted Armory</b>, a <b>Sin Altar</b>, an <b>Elite Ambush</b>.</li>
+          <li>Beat <b>@Envy</b> to open <b>Boss Rush</b>. Sin bosses, wins, Boss Rush, achievements and daily contracts earn <b>Sigils</b>: spend them in the <b>Item Shop</b>, and dress your astronaut in the <b>Locker</b>.</li>
           <li>Stack <b>Sins</b> and gear that combo: cards and offers say when they synergise with what you have.</li>
           <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
@@ -414,40 +597,50 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=6",
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=6",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=6",
-    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=6",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=6",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=6",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=6",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=6",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=6",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=6",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=6",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=6",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=6",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=6",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=6",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=6",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=6",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=6",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=6",
-    "/assets/game/js/music.js": "/assets/game/js/music.js?v=6",
-    "/assets/game/js/net.js": "/assets/game/js/net.js?v=6",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=6",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=6",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=6",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=6",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=6",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=6",
-    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=6",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=6",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=6",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=6",
-    "/assets/game/js/version.js": "/assets/game/js/version.js?v=6",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=6",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=6"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=9",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=9",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=9",
+    "/assets/game/js/catalog.js": "/assets/game/js/catalog.js?v=9",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=9",
+    "/assets/game/js/contracts.js": "/assets/game/js/contracts.js?v=9",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=9",
+    "/assets/game/js/events.js": "/assets/game/js/events.js?v=9",
+    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=9",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=9",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=9",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=9",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=9",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=9",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=9",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=9",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=9",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=9",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=9",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=9",
+    "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=9",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=9",
+    "/assets/game/js/hangar.js": "/assets/game/js/hangar.js?v=9",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=9",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=9",
+    "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=9",
+    "/assets/game/js/music.js": "/assets/game/js/music.js?v=9",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=9",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=9",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=9",
+    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=9",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=9",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=9",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=9",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=9",
+    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=9",
+    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=9",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=9",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=9",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=9",
+    "/assets/game/js/version.js": "/assets/game/js/version.js?v=9",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=9",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=9",
+    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=9"
   }
 }
 </script>
@@ -456,6 +649,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=9" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=6"></script>
+<script type="module" src="../assets/game/js/main.js?v=9"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { sprites, C, P_CYAN, P_VIOLET, P_WHITE } from "./sprites.js";
+import { sprites, C, P_CYAN, P_VIOLET, P_WHITE, P_MAGENTA, P_AMBER } from "./sprites.js";
 import { fx } from "./fx.js";
 import { input } from "./input.js";
 import { TAU, clamp, smooth, rand, dash, NO_DASH } from "./util.js";
@@ -13,18 +13,25 @@ import { BOSSES } from "./enemies/bosses.js";
 import { ENVY_POWERS, hasEnvy } from "./upgrades.js";
 import { GUN_COL } from "./armory.js";
 import { gunPal } from "./player.js";
-import { SUITS } from "./storage.js";
+import { look, parseLook, lookItem, finishCol, finishColOf, trailPal, trailPalOf } from "./catalog.js";
 import { SLOT_COL } from "./coop.js";
 import { waves } from "./waves.js";
 import { reviveRange } from "./world.js";
+import { drawZonesUnder, drawZonesOver } from "./zones.js";
+import { E, evoCol, evoPal } from "./evolve.js";
+import { M, mutDef, mutVis } from "./mutations.js";
+
+const EVB = BALANCE.evolution;
+const TOX_COL = EVB.smg.b.col, VULN_COL = EVB.nova.b.col, MOON_COL = EVB.heart.a.col, ICE_COL = "#bfe9ff";
+const FRENZY_CAP = BALANCE.fusions.frenzy.cap;
+const fused = (P, id) => !!(P && P.fusions && P.fusions.indexOf(id) !== -1);
 
 // Teammates' astronauts, in their own suits (built on demand, rebuilt when the zoom changes).
 const suitCache = new Map();
 function suitSprites(id) {
   let e = suitCache.get(id);
   if (!e || e.P !== sprites.P) {
-    const suit = SUITS.find((x) => x.id === id) || SUITS[0];
-    e = { P: sprites.P, ...sprites.astronaut(sprites.P, suit) };
+    e = { P: sprites.P, ...sprites.astronaut(sprites.P, look(parseLook(id))) };      // co-op looks: "suit/hat/visor/trail/finish"
     suitCache.set(id, e);
   }
   return e;
@@ -227,6 +234,157 @@ function buildVignette() {
 
 // ---------- helpers ----------
 const lerp = (a, b, t) => a + (b - a) * t;
+
+/** A four-pointed sparkle (evolved guns). */
+function sparkle(g, x, y, r) {
+  const q = r * 0.28;
+  g.beginPath();
+  g.moveTo(x, y - r); g.lineTo(x + q, y - q); g.lineTo(x + r, y); g.lineTo(x + q, y + q);
+  g.lineTo(x, y + r); g.lineTo(x - q, y + q); g.lineTo(x - r, y); g.lineTo(x - q, y - q);
+  g.closePath();
+  g.fill();
+}
+
+/** An elite mutation's marker: you can tell each one apart at a glance, and see its telegraphs. */
+function drawMutation(g, e, x, y, R) {
+  const d = mutDef(e.mut);
+  if (!d) return;
+  const col = d.col, t = G.time + e.id * 0.7, v = mutVis(e);
+  g.lineWidth = 2;
+  switch (e.mut) {
+    case M.VOLATILE: {
+      // a hot core and a slowly turning hazard ring
+      if (G.gfx.glow) {
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.45 + Math.sin(t * 9) * 0.2;
+        g.drawImage(sprites.dots[7], x - R * 0.9, y - R * 0.9, R * 1.8, R * 1.8);
+        g.globalCompositeOperation = "source-over";
+      }
+      g.strokeStyle = col; g.globalAlpha = 0.9;
+      g.setLineDash(dash(4, 6)); g.lineDashOffset = -t * 18;
+      g.beginPath(); g.arc(x, y, R + 7, 0, TAU); g.stroke();
+      g.setLineDash(NO_DASH);
+      break;
+    }
+    case M.BERSERKER: {
+      // horns; berserk, a red pulse around it
+      g.fillStyle = col; g.globalAlpha = e.berserk ? 1 : 0.85;
+      for (let k = -1; k <= 1; k += 2) {
+        g.beginPath(); g.moveTo(x + k * R * 0.35, y - R * 0.7); g.lineTo(x + k * R * 0.85, y - R * 1.35); g.lineTo(x + k * R * 0.65, y - R * 0.55); g.closePath(); g.fill();
+      }
+      if (e.berserk) {
+        g.strokeStyle = col; g.globalAlpha = 0.5 + Math.sin(t * 16) * 0.3; g.lineWidth = 3;
+        g.beginPath(); g.arc(x, y, R + 5 + Math.sin(t * 16) * 2, 0, TAU); g.stroke();
+      }
+      break;
+    }
+    case M.ARMORED: {
+      // a plate across its face, a red weak spot on its back
+      const a = e.ang, fa = BALANCE.mutations.types.armored.frontArc;
+      g.strokeStyle = "#e9eeff"; g.globalAlpha = 0.95; g.lineWidth = 5;
+      g.beginPath(); g.arc(x, y, R + 4, a - fa, a + fa); g.stroke();
+      g.strokeStyle = "#6f7aa3"; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(x, y, R + 7, a - fa, a + fa); g.stroke();
+      const bx = x - Math.cos(a) * R * 0.95, by = y - Math.sin(a) * R * 0.95;
+      if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.7 + Math.sin(t * 7) * 0.25; g.drawImage(sprites.dots[8], bx - 9, by - 9, 18, 18); g.globalCompositeOperation = "source-over"; }
+      g.fillStyle = "#ff3b5c"; g.globalAlpha = 1;
+      g.beginPath(); g.arc(bx, by, 3.2, 0, TAU); g.fill();
+      break;
+    }
+    case M.SHOCKWAVE: {
+      // rings rippling off it; winding up, a bright ring closes in
+      g.strokeStyle = col;
+      for (let k = 0; k < 2; k++) {
+        const f = (t * 0.8 + k * 0.5) % 1;
+        g.globalAlpha = 0.6 * (1 - f);
+        g.beginPath(); g.arc(x, y, R + 4 + f * 16, 0, TAU); g.stroke();
+      }
+      if (v > 0) {
+        g.globalAlpha = 0.5 + v * 0.5; g.lineWidth = 2 + v * 3;
+        g.beginPath(); g.arc(x, y, R + 30 * (1 - v) + 4, 0, TAU); g.stroke();
+        if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = v * 0.7; g.drawImage(sprites.dots[12], x - R * 1.6, y - R * 1.6, R * 3.2, R * 3.2); g.globalCompositeOperation = "source-over"; }
+      }
+      break;
+    }
+    case M.PHANTOM: {
+      // violet wisps trailing it; the shimmer fills a ring before it goes
+      g.fillStyle = col;
+      for (let k = 0; k < 3; k++) {
+        const a = t * 2.2 + k * 2.1, rr = R + 5 + Math.sin(t * 3 + k) * 3;
+        g.globalAlpha = 0.55;
+        g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 2.2, 0, TAU); g.fill();
+      }
+      if (v > 0) {
+        g.strokeStyle = col; g.globalAlpha = 0.9; g.lineWidth = 2.5;
+        g.beginPath(); g.arc(x, y, R + 6, -Math.PI / 2, -Math.PI / 2 + TAU * v); g.stroke();
+      }
+      break;
+    }
+    case M.VAMPIRIC: {
+      // a crimson aura and two fangs
+      g.strokeStyle = col; g.globalAlpha = 0.55 + Math.sin(t * 4) * 0.15;
+      g.beginPath(); g.arc(x, y, R + 5, 0, TAU); g.stroke();
+      g.fillStyle = "#ffffff"; g.globalAlpha = 0.95;
+      for (let k = -1; k <= 1; k += 2) {
+        g.beginPath(); g.moveTo(x + k * 4 - 2.2, y + R * 0.55); g.lineTo(x + k * 4 + 2.2, y + R * 0.55); g.lineTo(x + k * 4, y + R * 0.55 + 6); g.closePath(); g.fill();
+      }
+      break;
+    }
+    case M.REPLICATOR: {
+      // a doubled outline, and a pip for each copy it can still make
+      g.strokeStyle = col; g.globalAlpha = 0.8;
+      g.beginPath(); g.arc(x - 3, y - 2, R + 4, 0, TAU); g.stroke();
+      g.globalAlpha = 0.45;
+      g.beginPath(); g.arc(x + 3, y + 2, R + 4, 0, TAU); g.stroke();
+      g.fillStyle = col; g.globalAlpha = 0.95;
+      const left = BALANCE.mutations.types.replicator.at.length - e.mutN;
+      for (let k = 0; k < left; k++) g.fillRect(x - 5 + k * 7, y - R - 14, 4, 4);
+      break;
+    }
+  }
+  g.globalAlpha = 1;
+  g.lineWidth = 2;
+}
+
+/** What weapon evolutions left on a robot: corruption (Neurotoxin), vulnerable (Gravity Well), a Blood Moon mark. */
+function drawStatus(g, e, x, y, R) {
+  if (e.tox > 0) {
+    // a ring that fills with stacks, and bubbles rising off it
+    g.strokeStyle = TOX_COL; g.globalAlpha = 0.8; g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, R + 4, -Math.PI / 2, -Math.PI / 2 + TAU * (e.tox / EVB.smg.b.max)); g.stroke();
+    g.fillStyle = TOX_COL;
+    for (let k = 0; k < 2; k++) {
+      const ph = (G.time * 1.3 + e.id * 0.37 + k * 0.5) % 1;
+      g.globalAlpha = 0.85 * (1 - ph);
+      g.beginPath(); g.arc(x + Math.sin(e.id + k * 2.1) * R * 0.5, y - R * 0.2 - ph * R * 1.1, 1.6 + e.tox * 0.25, 0, TAU); g.fill();
+    }
+  }
+  if (e.vuln > 0) {
+    // two violet chevrons pointing down: it takes more damage right now
+    g.strokeStyle = VULN_COL; g.globalAlpha = 0.9; g.lineWidth = 2;
+    const top = y - R - 14 + Math.sin(G.time * 8) * 1.5;
+    g.beginPath();
+    for (let k = 0; k < 2; k++) { g.moveTo(x - 5, top + k * 4); g.lineTo(x, top + 4 + k * 4); g.lineTo(x + 5, top + k * 4); }
+    g.stroke();
+  }
+  if (e.chill > 0) {
+    // frost: a pale ring with ice crystals on it (Frozen Judgment, Stolen Time)
+    g.strokeStyle = ICE_COL; g.globalAlpha = 0.7; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(x, y, R + 2, 0, TAU); g.stroke();
+    g.globalAlpha = 0.9;
+    for (let k = 0; k < 4; k++) {
+      const a = k * (TAU / 4) + e.id, cx = x + Math.cos(a) * (R + 2), cy = y + Math.sin(a) * (R + 2);
+      g.beginPath(); g.moveTo(cx - 3, cy); g.lineTo(cx + 3, cy); g.moveTo(cx, cy - 3); g.lineTo(cx, cy + 3); g.stroke();
+    }
+  }
+  if (e.moon > 0) {
+    // a red crescent hanging over it
+    const cx = x + R * 0.7, cy = y - R - 8;
+    g.fillStyle = MOON_COL; g.globalAlpha = 0.95;
+    g.beginPath(); g.arc(cx, cy, 5.5, 0, TAU); g.arc(cx + 2.6, cy - 1.4, 4.6, 0, TAU, true); g.fill("evenodd");
+  }
+  g.globalAlpha = 1;
+}
 function lerpAng(a, b, t) {
   let d = b - a;
   while (d > Math.PI) d -= TAU;
@@ -582,7 +740,7 @@ export const renderer = {
       const q = pk.items[i];
       if (q.life < 3 && Math.floor(q.life * 8) % 2 === 0) continue;
       const x = lerp(q.px, q.x, alpha), y = lerp(q.py, q.y, alpha);
-      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : sprites.star;
+      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : q.kind === 3 ? sprites.covet : sprites.star;
       const pulse = 1 + Math.sin(G.time * 6 + i) * 0.1;
       const sz = spr.w * pulse * (q.t < 0.15 ? q.t / 0.15 : 1);
       g.drawImage(spr.c, x - sz / 2, y - sz / 2, sz, sz);
@@ -615,6 +773,7 @@ export const renderer = {
       if (e.dead || e.ally > 0 || !e.kind.drawUnder) continue;
       e.kind.drawUnder(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha));
     }
+    if (G.zones.count) drawZonesUnder(g);
 
     fx.drawBelow(g);
 
@@ -628,6 +787,9 @@ export const renderer = {
       if (!art) { e.kind.draw(g, e, x, y); continue; }
       const spr = e.flash > 0 ? art.flash : e.ally > 0 ? art.ally : art.base;
       let sc = e.scale * (1 + Math.sin(G.time * 5 + e.id * 1.3) * 0.022);
+      // a Phantom flickers as it gets ready to blink, and is a ghost while it does
+      const ghost = e.mut === M.PHANTOM ? (e.phased ? 0.2 : e.mutN === 1 ? 0.45 + Math.sin(G.time * 60) * 0.3 : 1) : 1;
+      if (ghost < 1) g.globalAlpha = ghost;
       if (e.pop > 0) { const k = e.pop / 0.12; sc *= 1 + k * 0.16; x += e.popX * k * 5; y += e.popY * k * 5; }
       if (e.spawnT > 0) { const t = 1 - e.spawnT / 0.35; sc *= Math.max(0.05, t * t); }
       if (e.kind.shakeAmt) { const sh = e.kind.shakeAmt(e); if (sh) { x += rand(-sh, sh); y += rand(-sh, sh); } }
@@ -635,6 +797,7 @@ export const renderer = {
       const c = Math.cos(ang) * sc * P, sn = Math.sin(ang) * sc * P;
       g.setTransform(c, sn, -sn, c, offX + (x - camX) * P, offY + (y - camY) * P);
       g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+      if (ghost < 1) g.globalAlpha = 1;
       if (e.spawnT > 0) {
         g.globalCompositeOperation = "lighter";
         g.globalAlpha = e.spawnT / 0.35;
@@ -642,7 +805,7 @@ export const renderer = {
         g.globalAlpha = 1;
         g.globalCompositeOperation = "source-over";
       }
-      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80)) {
+      if (e.kind.drawOver || e.elite || e.ally > 0 || e.shield > 0 || (e.hp < e.maxHp && e.maxHp >= 80) || e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0 || e.mut) {
         g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
         if (e.kind.drawOver) e.kind.drawOver(g, e, x, y);
         const R = e.r * e.scale;
@@ -681,13 +844,15 @@ export const renderer = {
           g.globalAlpha = 1;
         }
         if (e.ally > 0) {
-          g.strokeStyle = C.magenta;
+          g.strokeStyle = fused(e.allyBy, "bloodlust") ? C.red : C.magenta;     // Bloodlust: they're out for blood
           g.lineWidth = 2;
           g.globalAlpha = 0.9;
           g.beginPath(); g.arc(x, y, R + 5, -Math.PI / 2, -Math.PI / 2 + TAU * (e.ally / e.allyMax)); g.stroke();
           g.globalAlpha = 1;
         }
-        if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite)) {
+        if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, x, y, R);
+        if (e.mut && e.ally <= 0) drawMutation(g, e, x, y, R);
+        if (e.hp < e.maxHp && (e.maxHp >= 80 || e.elite || e.mut)) {
           const bw = Math.max(26, R * 1.8), bx = x - bw / 2, by = y - R - 12;
           g.fillStyle = "rgba(3,5,24,0.8)";
           g.fillRect(bx - 1, by - 1, bw + 2, 5);
@@ -704,8 +869,19 @@ export const renderer = {
       if (e.dead || !e.boss) continue;
       const k = e.pop > 0 ? e.pop / 0.12 : 0;
       e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
+      g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+      if (e.resT > 0) {
+        // resolve: it's shrugging off the overflow
+        const bx = lerp(e.px, e.x, alpha), by = lerp(e.py, e.y, alpha), R = e.r * e.scale;
+        g.strokeStyle = "#ffffff"; g.globalAlpha = 0.25 + (e.resT / 0.25) * 0.35; g.lineWidth = 3;
+        g.setLineDash(dash(10, 8)); g.lineDashOffset = -G.time * 60;
+        g.beginPath(); g.arc(bx, by, R + 10, 0, TAU); g.stroke();
+        g.setLineDash(NO_DASH); g.globalAlpha = 1;
+      }
+      if (e.tox > 0 || e.vuln > 0 || e.moon > 0 || e.chill > 0) drawStatus(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha), e.r * e.scale);
     }
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
+    if (G.zones.count) drawZonesOver(g);
 
     // auto-aim reticle (and a lighter one for aim assist)
     const tgt = G.autoTarget || G.assistTarget;
@@ -761,7 +937,7 @@ export const renderer = {
       this.drawTag(Q, qx, qy);
     }
     if (Pl && coop && Pl.dead && G.state !== "over") this.drawDowned(Pl, plx, ply, P, offX, offY, camX, camY);
-    else if (Pl && (!Pl.dead || Pl.deathT < 0.02)) this.drawPlayer(Pl, plx, ply, alpha, P, offX, offY, camX, camY);
+    else if (Pl && G.state !== "menu" && (!Pl.dead || Pl.deathT < 0.02)) this.drawPlayer(Pl, plx, ply, alpha, P, offX, offY, camX, camY);   // the Hangar shows you big
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
     // where that hit came from: a red arc around you, pointing at it
     if (Pl && Pl.hurtShow > 0 && !Pl.dead) {
@@ -928,8 +1104,9 @@ export const renderer = {
 
     // gun behind or in front depending on aim
     const gunId = (me ? s.gunId : Pl.gunId) || "blaster";
-    const gcol = GUN_COL[gunId] || C.cyan;
-    const gpal = gunPal(gunId);
+    const ev = (me ? s.ev : Pl.gunEv) || 0;
+    const gcol = ev ? evoCol(ev) : GUN_COL[gunId] || C.cyan;
+    const gpal = ev ? evoPal(ev) : gunPal(gunId);
     const drawGun = () => {
       const a = Pl.aimAng;
       const ca = Math.cos(a), sa = Math.sin(a);
@@ -937,12 +1114,26 @@ export const renderer = {
       const G2 = GUN_SHAPE[gunId] || GUN_SHAPE.blaster;
       const len = G2.len - Pl.recoil * G2.kick;
       const hw = G2.w / 2;
-      g.fillStyle = "#c9d0f2";
+      g.fillStyle = me ? finishCol() : finishColOf(lookItem(Pl.suit, "finish"), G.time);      // weapon finish (catalog.js)
       g.fillRect(4, -hw, len, G2.w);
       g.fillStyle = "#232c5e";
       g.fillRect(4, -hw, 5, G2.w);
       if (G2.mag) g.fillRect(9, hw, 4, G2.mag);
       if (G2.coils) { g.fillStyle = gcol; for (let k = 0; k < 3; k++) g.fillRect(10 + k * 3.5, -hw - 1, 1.6, G2.w + 2); }
+      if (ev) {
+        // evolved: the barrel glows in its evolution's colour, with a stripe down it and a star at the grip
+        if (G.gfx.glow) {
+          g.globalCompositeOperation = "lighter";
+          g.globalAlpha = 0.32 + Math.sin(G.time * 4 + Pl.slot) * 0.1;
+          g.drawImage(sprites.dots[gpal], 1, -hw - 9, len + 10, G2.w + 18);
+          g.globalCompositeOperation = "source-over";
+          g.globalAlpha = blink ? 0.35 : 1;
+        }
+        g.fillStyle = gcol;
+        g.fillRect(10, -G2.w * 0.14, Math.max(2, len - 12), G2.w * 0.28);
+        g.fillStyle = "#ffffff";
+        sparkle(g, 6, -hw - 3, 2.6 + Math.sin(G.time * 6 + Pl.slot) * 0.8);
+      }
       g.fillStyle = gcol;
       g.fillRect(4 + len - 3, -hw, 3, G2.w);
       // charged shot: a growing orb at the muzzle
@@ -984,7 +1175,7 @@ export const renderer = {
       const thrust = Math.min(1, Math.hypot(Pl.vx, Pl.vy) / ((s && s.moveSpeed) || 285));
       const boost = Pl.boostT > 0 ? 1 : 0;
       const L = 5 + thrust * 9 + boost * 16 + Math.sin(G.time * 42 + Pl.slot) * 1.6;
-      const d = sprites.dots[boost ? P_CYAN : P_VIOLET];
+      const d = sprites.dots[boost ? P_CYAN : me ? trailPal() : trailPalOf(lookItem(Pl.suit, "trail"), G.time)];
       g.globalCompositeOperation = "lighter";
       g.globalAlpha = 0.45 + thrust * 0.35 + boost * 0.2;
       g.drawImage(d, -16, 9, 11, L * 1.6);
@@ -1019,6 +1210,55 @@ export const renderer = {
       for (let k = 0; k < Pl.shield; k++) {
         const a0 = -Math.PI / 2 + (k / Math.max(1, Pl.maxShield)) * TAU + 0.08;
         g.beginPath(); g.arc(x, y + bob, 29, a0, a0 + TAU / Math.max(1, Pl.maxShield) - 0.16); g.stroke();
+      }
+    }
+    // evolution meters: Overdrive (then its heat), Phantom Repeater and Soulbound streaks
+    if (me && !Pl.dead && ev) {
+      let f = 0, col = gcol, hot = false;
+      if (ev === E.OVERDRIVE) {
+        const O = EVB.smg.a;
+        if (Pl.odT > 0) { f = Pl.odT / O.time; hot = true; } else if (Pl.heat > 0) { f = Pl.heat / O.heat; col = "#ff4a3d"; } else f = Pl.od / O.fill;
+      } else if (ev === E.PHANTOM) f = Pl.rep / EVB.blaster.b.cap;
+      else if (ev === E.SOUL) f = Pl.soul / EVB.heart.b.cap;
+      if (f > 0.01) {
+        g.strokeStyle = col;
+        g.globalAlpha = hot ? 0.7 + Math.sin(G.time * 30) * 0.25 : 0.55;
+        g.lineWidth = hot ? 3.5 : 2;
+        g.beginPath(); g.arc(x, y + bob, 36, Math.PI / 2 - TAU * 0.22 * f, Math.PI / 2 + TAU * 0.22 * f); g.stroke();
+        g.globalAlpha = 1;
+      }
+    }
+    // Sin Fusions on you: gorged crits waiting, Judgment readied, Golden Frenzy building / blazing
+    if (!Pl.dead) {
+      if (Pl.gorge > 0) {
+        for (let k = 0; k < Pl.gorge; k++) {
+          const a = G.time * 2.4 + (k / 3) * TAU, ox = x + Math.cos(a) * 23, oy = y + bob + Math.sin(a) * 23;
+          if (G.gfx.glow) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.7; g.drawImage(sprites.dots[P_MAGENTA], ox - 7, oy - 7, 14, 14); g.globalCompositeOperation = "source-over"; }
+          g.globalAlpha = 1; g.fillStyle = "#ffd6ea";
+          g.beginPath(); g.arc(ox, oy, 2.4, 0, TAU); g.fill();
+        }
+      }
+      if (Pl.judgeT > 0) {
+        g.strokeStyle = ICE_COL; g.globalAlpha = 0.85; g.lineWidth = 2;
+        g.setLineDash(dash(6, 5)); g.lineDashOffset = -G.time * 40;
+        g.beginPath(); g.arc(x, y + bob, 26, 0, TAU); g.stroke();
+        g.setLineDash(NO_DASH); g.globalAlpha = 1;
+      }
+      if (Pl.goldT > 0) {
+        if (G.gfx.glow) {
+          g.globalCompositeOperation = "lighter";
+          g.globalAlpha = 0.35 + Math.sin(G.time * 12) * 0.12;
+          g.drawImage(sprites.dots[P_AMBER], x - 46, y + bob - 46, 92, 92);
+          g.globalCompositeOperation = "source-over";
+        }
+        g.strokeStyle = C.amber; g.globalAlpha = 0.9; g.lineWidth = 3;
+        g.beginPath(); g.arc(x, y + bob, 33, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, Pl.goldT / 4)); g.stroke();
+        g.globalAlpha = 1;
+      } else if (Pl.frenzy > 0.5) {
+        const f = Pl.frenzy / FRENZY_CAP;
+        g.strokeStyle = C.amber; g.globalAlpha = 0.55; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, y + bob, 36, -Math.PI / 2 - TAU * 0.22 * f, -Math.PI / 2 + TAU * 0.22 * f); g.stroke();
+        g.globalAlpha = 1;
       }
     }
     // charge meter around you

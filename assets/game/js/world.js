@@ -2,7 +2,7 @@
    (damage, kills, scoring, pickups, explosions, asteroids). Co-op: every player is checked in turn
    with usePlayer(), so "the player" in damage/heal/kill code is whoever it's happening to. */
 
-import { G, usePlayer, coop, diff } from "./state.js";
+import { G, usePlayer, coop, diff, threat, resolveRate } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { TAU, rand, randInt, chance, fracRound, clamp } from "./util.js";
 import { fx } from "./fx.js";
@@ -14,6 +14,12 @@ import { updateEnemies } from "./enemies/index.js";
 import { waves } from "./waves.js";
 import { updateBossFx } from "./enemies/bosses.js";
 import { SHOT_KIND, GUN_R, updateGear } from "./armory.js";
+import { E, evoHit, evoEnd, evoKill, evoRicochet, evoTick, evoPal, chainRamp, beamRamp, annihilate, soulTarget, volleyHit, shotGone, evoShotKind } from "./evolve.js";
+import { updateZones, addZone, Z } from "./zones.js";
+import { fusionStar, fusionOverheal, fusionDmg, fusionShot, fusionPerfect, fusionHit, fusionTick } from "./fusion.js";
+import { M, armorMul, replicateAt, vampHeal, volatileDeath } from "./mutations.js";
+import { spawnCopy } from "./enemies/index.js";
+import { progressKill } from "./progress.js";
 
 const A = BALANCE.arena;
 const D = BALANCE.drops;
@@ -76,9 +82,24 @@ function showDamage(e, dmg, crit) {
   }
 }
 
+const VULN = BALANCE.evolution.nova.b.vuln, RESOLVE = BALANCE.resolve;
 export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
-  if (e.dead || e.invuln) return false;
+  if (e.dead || e.invuln || e.phased) return false;       // a Phantom mid-blink can't be touched
   dmg *= e.dmgMul;
+  if (e.mut === M.ARMORED) {
+    const k = armorMul(e, dirX, dirY);
+    dmg *= k;
+    if (k < 1) fx.sparks(e.x - dirX * e.r, e.y - dirY * e.r, Math.atan2(-dirY, -dirX), 0.6, 3, P_WHITE, 260, 0.15);
+    else if (k > 1) crit = true;                           // the weak spot: it shows like a crit
+  }
+  if (e.vuln > 0) dmg *= e.boss ? 1 + (VULN - 1) / 2 : VULN;      // Gravity Well (half as much on a boss)
+  if (e.boss) {
+    // boss resolve (balance.resolve): a leaky bucket of the last second's damage; past it, damage lands at `over`
+    const cap = e.maxHp * resolveRate();
+    const room = Math.max(0, cap - e.res);
+    if (dmg > room) { dmg = room + (dmg - room) * RESOLVE.over; e.resT = 0.25; }
+    e.res += dmg;
+  }
   if (e.shield > 0) {
     // Shielded trait: the cyan shield soaks damage first
     const take = Math.min(e.shield, dmg);
@@ -97,7 +118,8 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
     e.ky += dirY * k;
   }
   showDamage(e, dmg, crit);
-  if (e.hp <= 0) { killEnemy(e); return true; }
+  if (e.hp <= 0) { e.lastCrit = !!crit; killEnemy(e); return true; }
+  if (e.mut === M.REPLICATOR && e.ally <= 0 && G.net.role !== "client" && replicateAt(e)) spawnCopy(e);
   if (e.ally <= 0) onHit(e);
   return false;
 }
@@ -137,7 +159,11 @@ export function killEnemy(e, silent) {
       const low = G.player && G.player.hp <= 2;
       if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal)) dropPickup(2, e.x, e.y, D.heartHeal);
     }
-    if (!ally) onKill(e);
+    if (!ally) { onKill(e); evoKill(e); progressKill(e, G.curChg); }
+  }
+  if (e.mut === M.VOLATILE && !silent && !ally) {
+    const n = Math.max(0, G.wave - 1);
+    volatileDeath(e, 1 + n * BALANCE.waves.hpPerWave + n * n * BALANCE.waves.hpCurve);
   }
   if ((e.traits & TRAIT.volatile) && !silent && !ally) {
     const cur = G.curEnemy;
@@ -185,7 +211,7 @@ export function hurtPlayer(dmg, sx, sy) {
   }
 
   P.hp -= dmg;
-  P.iframes = BALANCE.player.iframes * diff().iframes;
+  P.iframes = BALANCE.player.iframes * diff().iframes * (G.stats.iframesMul || 1);
   P.hurtT = 0.45;
   let dx = P.x - sx, dy = P.y - sy;
   const d = Math.hypot(dx, dy) || 1;
@@ -237,6 +263,7 @@ export function perfectBoost() {
   G.perfects = (G.perfects || 0) + 1;
   P.perfSeq = (P.perfSeq || 0) + 1;
   if (G.stats.perfectCharge) { if (P.charging) P.charge = 1; else P.chargeBank = true; }
+  fusionPerfect(P);
   fx.text(P.x, P.y - 38, "PERFECT!", C.cyan, 18, 0.9);
   // a crisp cyan-violet burst: two rings and a spray, no screen flash
   fx.ring(P.x, P.y, 6, 70, 0.28, C.violet2, 4);
@@ -257,7 +284,7 @@ export function healPlayer(amount, allowShield) {
   } else if (allowShield && P.maxShield > 0 && P.shield < P.maxShield) {
     P.shield = Math.min(P.maxShield, P.shield + amount);
     fx.text(P.x, P.y - 34, "+SHIELD", C.cyan, 14, 0.9);
-  } else return;
+  } else { fusionOverheal(P); return; }
   audio.play("heal", P.x, P.y);
   G.emit("heal");
 }
@@ -331,14 +358,14 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.x = b.px = x; b.y = b.py = y;
   b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed;
   b.r = (plain ? PG.radius : GUN_R[s.gunId] || PG.radius) * (crit ? 1.25 : 1);
-  b.dmg = (plain ? absDmg : s.damage * dmgMul) * (crit ? s.critMul : 1);
+  b.dmg = (plain ? absDmg : s.damage * dmgMul * fusionDmg(G.player)) * (crit ? s.critMul : 1);
   b.life = plain ? PG.life * 1.1 : s.bulletLife;
   b.pierce = pierce + (crit && s.critPierce ? 2 : 0);
   b.nh = 0;
   b.bounces = s.bounces;
   b.crit = crit;
   b.homing = plain ? s.cardHoming : s.homing;
-  b.kind = plain ? (crit ? 1 : kind || 0) : kind || (crit ? 1 : SHOT_KIND[s.gunId] || 0);
+  b.kind = plain ? (crit ? 1 : kind || 0) : kind || (crit ? 1 : s.ev ? evoShotKind(s.ev) : SHOT_KIND[s.gunId] || 0);
   b.explode = 0; b.explodeDmg = 0;
   if (!plain && s.explode) { b.explode = s.explode; b.explodeDmg = b.dmg * s.splash; }
   else if (hasEnvy("boomer")) { b.explode = ENVY_POWERS.boomer.radius; b.explodeDmg = b.dmg * ENVY_POWERS.boomer.dmg; }
@@ -349,44 +376,64 @@ export function firePlayerBullet(x, y, ang, kind, dmgMul = 1, absDmg = 0) {
   b.tgt = null; b.tgtId = 0; b.tgtT = 0;
   b.by = G.player;            // whose build gets the kill (co-op)
   b.gun = s.gunId;
+  // weapon evolutions (evolve.js); shots an evolution spawns mark themselves as kin
+  b.ev = plain ? 0 : s.ev; b.vol = 0; b.life0 = b.life; b.dmg0 = b.dmg; b.amt = 0;
+  b.trail = false; b.trailD = 0; b.bounced = false; b.frag = false; b.kin = 0; b.forked = false; b.lock = false; b.pierced = 0;
+  b.gorged = false;
+  b.chg = G.curChg;                 // part of a charged shot (achievements count its kills)
+  if (!plain) fusionShot(G.player, b, s);        // Sin Fusions: gorged crits, Judgment
   return b;
 }
 
-/** Rail Lance charged shot: everything on the line takes the hit at once. */
-export function fireBeam(x, y, ang, len, width, dmg) {
+/** Rail Lance charged shot: everything on the line takes the hit at once.
+    Annihilator: each robot further along takes more than the last. */
+const beamHits = [];
+export function fireBeam(x, y, ang, len, width, dmg, col) {
   const c = Math.cos(ang), sn = Math.sin(ang);
   const items = G.enemies.items;
+  const anni = G.stats.ev === E.ANNIHILATOR;
   let hits = 0;
+  beamHits.length = 0;
   for (let i = 0; i < G.enemies.count; i++) {
     const e = items[i];
-    if (e.dead || e.ally > 0 || e.spawnT > 0.15) continue;
+    if (e.dead || e.ally > 0 || e.spawnT > 0.15 || e.phased) continue;
     const dx = e.x - x, dy = e.y - y;
     const along = dx * c + dy * sn;
     if (along < -e.r || along > len) continue;
     const side = Math.abs(-dx * sn + dy * c);
     if (side > width + e.r * e.scale) continue;
-    hits++;
-    if (G.player === G.me) trackHit(dmg, "rail");
-    fx.sparks(e.x, e.y, ang, 0.6, 5, P_VIOLET, 360, 0.25);
-    if (damageEnemy(e, dmg, true, c, sn, 260)) G.killMark = 0.2;
+    e.beamAt = along;
+    beamHits.push(e);
   }
+  if (anni) beamHits.sort((a, b) => a.beamAt - b.beamAt);
+  const struck = anni && beamHits.length >= BALANCE.evolution.rail.a.max ? beamHits.slice() : null;
+  for (let k = 0; k < beamHits.length; k++) {
+    const e = beamHits[k];
+    if (e.dead) continue;
+    const d = dmg * (anni ? beamRamp(k) : 1);
+    hits++;
+    if (G.player === G.me) trackHit(d, "rail");
+    fx.sparks(e.x, e.y, ang, 0.6, 5, P_VIOLET, 360, 0.25);
+    if (damageEnemy(e, d, true, c, sn, 260)) G.killMark = 0.2;
+  }
+  if (struck) annihilate(struck, x, y, x + c * len, y + sn * len, dmg);
   for (let k = 0; k < G.asteroids.count; k++) {
     const a = G.asteroids.items[k];
     const dx = a.x - x, dy = a.y - y, along = dx * c + dy * sn;
     if (along > 0 && along < len && Math.abs(-dx * sn + dy * c) < width + a.r) damageAsteroid(a, dmg);
   }
   if (hits) G.hitMark = 0.16;
-  fx.beam(x, y, x + c * len, y + sn * len, width, C.violet2, 0.3);
+  fx.beam(x, y, x + c * len, y + sn * len, width, col || C.violet2, 0.3);
   fx.beam(x, y, x + c * len, y + sn * len, width * 0.35, C.white, 0.22);
   return hits;
 }
 
-/** Arc Caster: the bolt jumps to nearby robots it hasn't hit. */
-function chainFrom(e, b) {
+/** Arc Caster: the bolt jumps to nearby robots it hasn't hit (Thunderlord: harder each jump). */
+function chainFrom(e, b, jumps = b.chain) {
   const s = G.stats;
   const items = G.enemies.items, res = G.hash.results;
   let from = e;
-  for (let j = 0; j < b.chain; j++) {
+  for (let j = 0; j < jumps; j++) {
     const n = G.hash.query(from.x, from.y, s.chainRange + G.maxR);
     let best = null, bd = s.chainRange * s.chainRange;
     for (let k = 0; k < n; k++) {
@@ -397,12 +444,14 @@ function chainFrom(e, b) {
     }
     if (!best) return;
     if (b.nh < 8) b.hits[b.nh++] = best.id;
-    fx.bolt(from.x, from.y, best.x, best.y, C.blue);
+    fx.bolt(from.x, from.y, best.x, best.y, b.ev === E.THUNDER ? THUNDER_COL : C.blue);
     const d = Math.sqrt(bd) || 1;
-    damageEnemy(best, b.dmg * s.chainDmg, false, (best.x - from.x) / d, (best.y - from.y) / d, 60);
+    damageEnemy(best, b.dmg * s.chainDmg * chainRamp(b, j), false, (best.x - from.x) / d, (best.y - from.y) / d, 60);
     from = best;
   }
 }
+
+const THUNDER_COL = BALANCE.evolution.arc.a.col;
 
 /** Storm orb (charged Arc Caster): zaps the closest robots as it flies. */
 function stormZap(b) {
@@ -423,13 +472,14 @@ function stormZap(b) {
 /** A shot that ends (out of range, a wall, a rock, or it burst): grenades and full charges go off. */
 function endShot(b) {
   b.dead = true;
+  if (b.ev && evoEnd(b)) return;
   if (b.special === 3) {
     // cluster bomb: one big burst, then grenadelets
     queueBlast(b.x, b.y, 120, b.dmg, true, false, 0, C.orange, P_ORANGE);
     for (let k = 0; k < 7; k++) {
       const a = (k / 7) * TAU + Math.random() * 0.4;
       const c = firePlayerBullet(b.x, b.y, a, 7, 0.55);
-      if (c) { c.explode = 60; c.explodeDmg = c.dmg; c.life = 0.35 + Math.random() * 0.2; c.vx *= 0.6; c.vy *= 0.6; c.pierce = 0; }
+      if (c) { c.explode = 60; c.explodeDmg = c.dmg; c.life = 0.35 + Math.random() * 0.2; c.vx *= 0.6; c.vy *= 0.6; c.pierce = 0; c.kin = 1; }
     }
     return;
   }
@@ -447,7 +497,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   if (!b) return null;
   if (!bolt) {
     const W = BALANCE.waves;
-    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot;
+    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot * (G.curEnemy && G.curEnemy.boss ? threat("bossShot") : 1);
     vx *= k; vy *= k;
   }
   b.dead = false;
@@ -461,6 +511,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   b.grazed = false;
   b.age = 0; b.turn = 0; b.back = 0; b.owner = null; b.hp = 0; b.home = 0;
   b.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";     // for "what got you"
+  b.from = G.curEnemy; b.fromId = G.curEnemy ? G.curEnemy.id : 0;
   return b;
 }
 
@@ -483,7 +534,8 @@ export function queueBlast(x, y, r, enemyDmg, friendly, hurtsPlayer, playerDmg, 
   q.dead = false; q.x = x; q.y = y; q.r = r; q.enemyDmg = enemyDmg; q.friendly = friendly;
   q.hurtsPlayer = !!hurtsPlayer; q.dmg = playerDmg || 0; q.col = col || C.orange; q.pal = pal === undefined ? P_ORANGE : pal;
   q.by = G.player;
-  q.src = G.curEnemy ? G.curEnemy.type : "";
+  q.chg = G.curChg;
+  q.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";
 }
 
 function processBlasts() {
@@ -500,6 +552,7 @@ function processBlasts() {
     fx.shake(Math.min(0.35, q.r / 400));
     audio.play("explode", q.x, q.y, 0.7);
     if (q.enemyDmg > 0) {
+      G.curChg = q.chg || 0;
       if (q.by && q.by !== G.player) usePlayer(q.by);
       const n = G.hash.query(q.x, q.y, q.r + G.maxR);
       const res = G.hash.results, items = G.enemies.items;
@@ -514,6 +567,7 @@ function processBlasts() {
         // bosses shrug off most splash (chain explosions next to a boss used to melt it)
         damageEnemy(e, e.boss ? q.enemyDmg * 0.3 : q.enemyDmg, false, dx / d, dy / d, 160);
       }
+      G.curChg = 0;
     }
     if (q.hurtsPlayer) {
       const rr = q.r + playerHurtRadius();
@@ -664,6 +718,7 @@ function updatePlayerBullets(dt) {
   for (let i = 0; i < pb.count; i++) {
     const b = pb.items[i];
     if (b.dead) continue;
+    G.curChg = b.chg || 0;
     b.px = b.x; b.py = b.y;
     b.life -= dt;
     if ((b.life <= 0 || b.special) && b.by && b.by !== G.player) usePlayer(b.by);
@@ -674,14 +729,16 @@ function updatePlayerBullets(dt) {
       // Seeker rounds pick a target every 0.1s (not every tick) and steer toward it in between.
       b.tgtT -= dt;
       let best = b.tgt && !b.tgt.dead && b.tgt.id === b.tgtId && b.tgt.ally <= 0 ? b.tgt : null;
-      if (!best || b.tgtT <= 0) {
+      if (!best) b.lock = false;
+      if (!best || (b.tgtT <= 0 && !b.lock)) {
         b.tgtT = 0.1;
         const n = G.hash.query(b.x, b.y, 280);
         let bd = 280 * 280;
         best = null;
-        for (let j = 0; j < n; j++) {
+        if (b.ev === E.SOUL) best = soulTarget(b, n);
+        else for (let j = 0; j < n; j++) {
           const e = items[res[j]];
-          if (e.dead || e.ally > 0) continue;
+          if (e.dead || e.ally > 0 || e.passive || e.phased) continue;
           const d2 = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
           if (d2 < bd) { bd = d2; best = e; }
         }
@@ -700,6 +757,7 @@ function updatePlayerBullets(dt) {
     }
 
     b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.trail) dropTrail(b, dt);
 
     if (b.x < 0 || b.x > A.w || b.y < 0 || b.y > A.h) {
       if (b.bounces > 0) {
@@ -735,7 +793,7 @@ function updatePlayerBullets(dt) {
     if (n && b.by && b.by !== G.player) usePlayer(b.by);
     for (let j = 0; j < n; j++) {
       const e = items[res[j]];
-      if (e.dead || e.ally > 0 || e.spawnT > 0.15) continue;
+      if (e.dead || e.ally > 0 || e.spawnT > 0.15 || e.phased) continue;
       const er = e.r * e.scale;
       const dx = e.x - b.x, dy = e.y - b.y, rr = er + b.r;
       if (dx * dx + dy * dy > rr * rr) continue;
@@ -759,9 +817,18 @@ function updatePlayerBullets(dt) {
       fx.sparks(b.x, b.y, Math.atan2(-diry, -dirx), 0.7, b.crit ? 6 : 3, b.crit ? P_AMBER : e.kind.pal, 300, 0.2);
       audio.play(b.crit ? "crit" : "hit", e.x, e.y, 0.55);
       if (b.by === G.me) trackHit(b.dmg, b.gun);
-      if (damageEnemy(e, b.dmg, b.crit, dirx, diry, b.knock)) G.killMark = 0.18;
+      const killed = damageEnemy(e, b.dmg, b.crit, dirx, diry, b.knock);
+      if (killed) G.killMark = 0.18;
       G.hitMark = b.crit ? 0.16 : Math.max(G.hitMark, 0.1);
-      if (b.chain) chainFrom(e, b);
+      volleyHit(b.vol);
+      b.pierced++;
+      if (b.ev && !b.kin) evoHit(b, e, killed);
+      if (G.player.fusions.length) fusionHit(G.player, b, e);
+      if (b.chain) {
+        chainFrom(e, b);
+        // Thunderlord: a crit forks the lightning
+        if (b.ev === E.THUNDER && b.crit && !b.forked) { b.forked = true; chainFrom(e, b, BALANCE.evolution.arc.a.fork); }
+      }
       if (b.special) {
         // charged shots plough through robots (a little weaker each time) and burst on bosses
         if (b.special === 3 || e.boss) { endShot(b); break; }
@@ -778,10 +845,24 @@ function updatePlayerBullets(dt) {
         }
       }
       if (b.pierce > 0) b.pierce--;
+      else if (b.ev === E.SHRED && !b.bounced && !b.kin && evoRicochet(b, e)) break;
       else { b.dead = true; break; }
     }
   }
+  G.curChg = 0;
+  // shots that are gone this step: accuracy streaks, Blood Moon dart counts
+  for (let i = 0; i < pb.count; i++) { const b = pb.items[i]; if (b.dead && (b.vol || b.kin === 2)) shotGone(b); }
   pb.sweep();
+}
+
+/** Starbreaker: a bolt that pierced a robot burns a trail behind it. */
+const TR = BALANCE.evolution.blaster.a.trail;
+function dropTrail(b, dt) {
+  b.trailD += Math.hypot(b.vx, b.vy) * dt;
+  if (b.trailD < TR.every) return;
+  b.trailD = 0;
+  const z = addZone(Z.TRAIL, b.x, b.y, TR.r, TR.life);
+  if (z) { z.dmg = b.dmg * TR.dmg; z.k = TR.cd; z.col = BALANCE.evolution.blaster.a.col; z.pal = evoPal(E.STAR); z.by = b.by; }
 }
 
 function steerShot(b, tx, ty, step) {
@@ -914,6 +995,7 @@ function updateEnemyBullets(dt) {
         G.hurtSrc = b.src;
         const hit = hurtPlayer(b.dmg, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
         G.hurtSrc = "";
+        if (hit && b.from && b.from.id === b.fromId) vampHeal(b.from, P);
         if (hit) {
           b.dead = true;
           fx.burst(b.x, b.y, 6, P_DANGER, 160, 0.3, 1.2);
@@ -931,7 +1013,7 @@ function collect(q) {
   const P = G.player;
   if (q.kind === 2) {
     if (P.hp < P.maxHp || (P.maxShield > 0 && P.shield < P.maxShield)) {
-      healPlayer(q.value, P.maxShield > 0);
+      healPlayer(Math.max(1, Math.round(q.value * (G.stats.heartMul || 1))), P.maxShield > 0);
       audio.play("heart", P.x, P.y);
       fx.burst(q.x, q.y, 10, P_HEART, 160, 0.6, 1.5);
       haptic(12);
@@ -945,10 +1027,11 @@ function collect(q) {
   G.stars += q.value;
   G.starsTotal += q.value;
   addScore(BALANCE.score.star * q.value);
+  if (P.fusions.length) fusionStar(P, q.kind);
   G.starChain = G.starChainT > 0 ? Math.min(12, G.starChain + 1) : 0;
   G.starChainT = 0.45;
   audio.play("star", q.x, q.y, 0.6, { pitch: G.starChain });
-  fx.burst(q.x, q.y, 3, q.kind === 1 ? P_AMBER : P_CYAN, 90, 0.3, 1);
+  fx.burst(q.x, q.y, 3, q.kind === 1 ? P_AMBER : q.kind === 3 ? P_MINT : P_CYAN, 90, 0.3, 1);
 }
 
 function updatePickups(dt) {
@@ -1020,9 +1103,9 @@ function contactsFor(P) {
         continue;
       }
     }
-    if (e.contact <= 0) continue;
+    if (e.contact <= 0 || e.phased) continue;
     const rr = er * 0.82 + hurtR;
-    if (dx * dx + dy * dy < rr * rr) { G.hurtSrc = e.type; hurtPlayer(e.contact, e.x, e.y); G.hurtSrc = ""; }
+    if (dx * dx + dy * dy < rr * rr) { G.hurtSrc = e.type; if (hurtPlayer(e.contact, e.x, e.y) && e.mut) vampHeal(e, P); G.hurtSrc = ""; }
   }
 
   // moons
@@ -1086,6 +1169,8 @@ export function stepWorld(dt) {
     G.fxOwner = -1;
     P.slowMul = 1;             // bosses lower it again this tick if you're in an aura
     if (!P.dead) tickEnvy(dt);
+    evoTick(P, G.stats, dt);
+    fusionTick(P, dt);
   }
   usePlayer(G.me);
   waves.update(dt);
@@ -1094,6 +1179,7 @@ export function stepWorld(dt) {
   updatePlayerBullets(dt);
   updateEnemyBullets(dt);
   updateGear(dt);
+  updateZones(dt);
   processBlasts();
   updateBossFx(dt);
   updatePickups(dt);
@@ -1110,7 +1196,7 @@ export function stepWorld(dt) {
 
 export function clearWorld() {
   G.enemies.clear(); G.pb.clear(); G.eb.clear(); G.pickups.clear();
-  G.warnings.clear(); G.asteroids.clear(); G.puddles.clear(); G.blasts.clear(); G.mines.clear();
+  G.warnings.clear(); G.asteroids.clear(); G.puddles.clear(); G.blasts.clear(); G.mines.clear(); G.zones.clear();
   fx.clear();
 }
 

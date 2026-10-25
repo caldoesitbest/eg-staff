@@ -4,9 +4,9 @@
    Sloth → Gluttony → Greed → Lust → Wrath → Pride → Envy, one boss every 5 waves.
    Co-op (coop.js + net.js): the host runs this same flow for everyone; clients follow its messages. */
 
-import { G, usePlayer } from "./state.js";
+import { G, usePlayer, setDifficulty, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { store, SUITS, GFX_PRESETS } from "./storage.js";
+import { store, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
 import { input } from "./input.js";
 import { audio } from "./audio.js";
@@ -22,8 +22,16 @@ import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
 import { formatScore, rand, pick, TAU, withSeed, hashStr, seedRng } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
-import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut } from "./armory.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName } from "./armory.js";
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
+import { fusionActivated, fusionWave } from "./fusion.js";
+import { mutKey, mutHint } from "./mutations.js";
+import { progressTick, sigilsBoss, sigilsWin, sigilsRush } from "./progress.js";
+import { look, lookCode, itemsOf } from "./catalog.js";
+import { reportRun } from "./contracts.js";
+import { hangar } from "./hangar.js";
+import { rollChapterEvent, eventWaveStart, eventTick, pendingEvent, eventDone, cacheAway, cacheOptions, relicOptions, takeRelic, altarOptions, takeAltar, acceptAmbush, ambushReward } from "./events.js";
+import { giveItem } from "./armory.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
 
@@ -37,6 +45,7 @@ G.debug.speed = G.debug.on ? Math.max(1, Math.min(8, parseInt(params.get("speed"
 
 // The Windows app (WebView2) talks to its launcher through window.chrome.webview.
 G.desktop = !!(window.chrome && window.chrome.webview);
+G.androidApp = /EnviousGliderAndroid\//.test(navigator.userAgent);     // the Android app's WebView adds this to its user agent
 
 store.load();
 G.settings = store.data.settings;
@@ -48,7 +57,7 @@ const root = document.getElementById("game");
 const canvas = document.getElementById("game-canvas");
 const layer = document.getElementById("touch-layer");
 
-const suitDef = () => SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0];
+const suitDef = () => look();          // what you're wearing (catalog.js)
 
 const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
 /** Auto's starting point, from what the device says about itself (it adjusts from there as you play). */
@@ -135,6 +144,18 @@ function setupRunPlayers(isCoop) {
   usePlayer(G.me);
 }
 
+/** Files this run against today's contracts (once: at game over, Boss Rush results, or when you quit it). */
+function fileRun() {
+  if (G.runFiled) return;
+  G.runFiled = true;
+  const rush = G.mode === "rush";
+  G.runContracts = reportRun({
+    kills: G.kills, wave: G.wave, bosses: rush ? (G.rush ? G.rush.i : 0) : G.bossesKilled || 0, perfects: G.perfects || 0,
+    stars: G.starsTotal || 0, combo: G.bestCombo || 0, difficulty: G.difficulty, daily: !!G.daily, rush,
+  });
+}
+G.on("runStart", () => { G.runFiled = false; G.runContracts = []; });
+
 function menuScene() {
   clearWorld();
   setupRunPlayers(false);
@@ -160,9 +181,14 @@ function startRun(opts) {
   clearWorld();
   const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
+  G.mode = opts && opts.rush && !G.daily ? "rush" : "ladder";
   // the Daily Challenge is always Normal (everyone plays the same run); co-op uses the host's pick
   const want = (opts && opts.difficulty) || G.settings.difficulty;
-  G.difficulty = !G.daily && BALANCE.difficulty[want] ? want : "normal";
+  const mods = G.mode === "rush" ? ((opts && opts.mods) || []).filter((m) => BALANCE.rush.mods[m]) : [];
+  setDifficulty(G.daily ? "normal" : want, mods);
+  G.lastBonus = "";
+  // Boss Rush: i = bosses beaten, t0 = when the first boss arrived (the clock), pb = best splits so far
+  G.rush = G.mode === "rush" ? { i: 0, mods, t0: -1, fightT0: 0, h0: 0, splits: [], picks: 0, inBreak: false, pb: { ...(store.data.rush.splits[G.difficulty] || {}) } } : null;
   G.mark = 0; G.lap = 0; G.won = false; G.rungThisRun = 0;
   Object.assign(G, {
     time: 0, wave: 0, score: 0, kills: 0, combo: 0, comboTimer: 0, bestCombo: 0, stars: 0, starsTotal: 0,
@@ -172,10 +198,12 @@ function startRun(opts) {
     runStats: { dmg: 0, big: 0, byGun: {}, spent: 0 },
   });
   setupRunPlayers(isCoop);
+  G.emit("runStart");
   if (G.net.role !== "client") for (let i = 0; i < BALANCE.arena.asteroids; i++) spawnEdgeAsteroid(true);
   G.cam.x = G.player.x; G.cam.y = G.player.y;
+  if (G.mode === "rush") { for (const P of G.players) { usePlayer(P); G.stars = BALANCE.rush.stars; } usePlayer(G.me); }
   // debug: start later with a matching handful of upgrades
-  const start = G.debug.on && !isCoop ? G.debug.startWave : 1;
+  const start = G.debug.on && !isCoop && G.mode !== "rush" ? G.debug.startWave : 1;
   for (let i = 1; i < start; i++) { const ids = offerCards(); applyCard(pick(ids)); }
   G.player.hp = G.player.maxHp = G.stats.maxHp;
   G.player.maxShield = G.stats.shieldCap;
@@ -194,6 +222,7 @@ function startRun(opts) {
     d.tries++;
   }
   if (G.net.role === "client") return;     // the host starts the waves
+  if (G.mode === "rush") { openUpgrade(); return; }     // Boss Rush opens with a draft
   startWave(start);
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
@@ -221,10 +250,17 @@ function seeded(tag, fn) {
   return G.daily ? withSeed(hashStr(G.daily + ":" + tag), fn) : fn();
 }
 
+/** The wave after this one (Boss Rush: the next boss's wave). */
+const nextWave = () => (G.mode === "rush" ? (G.rush.i + 1) * BALANCE.waves.bossEvery : G.wave + 1);
+
 function startWave(n) {
+  if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
+  G.waveShots = 0; G.waveMisses = 0;          // Dead Eye: your trigger pulls and misses this wave
   seeded("wave" + n, () => waves.start(n));
+  seeded("event" + n, () => rollChapterEvent(n));
+  if (G.net.role !== "client") eventWaveStart(n);
   G.vacuum = false;
-  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; }     // Bubble Shield refills every wave; Gluttony's heals reset
+  for (const P of G.players) { usePlayer(P); P.bubble = G.stats.bubble; P.feastN = 0; fusionWave(P); }     // Bubble Shield refills every wave; Gluttony's (and fusions') per-wave caps reset
   usePlayer(G.me);
   waveIntro(n);
   hostSend({ k: "go", n });
@@ -232,6 +268,14 @@ function startWave(n) {
 
 /** The banner and music for the start of wave n. */
 function waveIntro(n) {
+  if (G.mode === "rush") {
+    const rung = waves.rungOf(n), def = BALANCE.bosses[BALANCE.bosses.order[rung]];
+    const pb = G.rush.pb[BALANCE.bosses.order[rung]];
+    ui.banner("Boss Rush · " + (rung + 1) + " of 7", "@" + def.name, "<b>" + def.title + "</b>" + (pb ? " · best split " + fmtSplit(pb) : ""), "boss", true, def.c1);
+    audio.musicIntensity(2);
+    audio.play("wave");
+    return;
+  }
   const lap = waves.lapOf(n);
   if (waves.isBossWave(n)) {
     const def = BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(n)]];
@@ -262,7 +306,9 @@ G.on("bossDown", () => {
 
 G.on("waveClear", (n) => {
   if (G.state !== "playing") return;
+  if (G.mode === "rush") { rushBossDown(); return; }
   popAllAllies();
+  cacheAway();
   const bonus = BALANCE.score.waveClear * n;
   const flawless = G.waveHits === 0;
   addScore(bonus);
@@ -285,13 +331,13 @@ G.on("waveClear", (n) => {
     G.winTime = G.time;
     clearT = 2.4;
     ui.banner("The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true);
-    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest" });
+    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest", sig: 1 });
     audio.play("newBest");
     setState("clear");
     return;
   }
   const head = waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n;
-  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear" });
+  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear", sig: waves.boss ? 1 : 0 });   // sig: a sin boss fell (guests earn its Sigils)
   ui.banner(head, waves.boss ? "Clear!" : "Clear", text, "good");
   audio.play("clear");
   audio.musicIntensity(1);
@@ -299,10 +345,108 @@ G.on("waveClear", (n) => {
   setState("clear");
 });
 
+// ---------------------------------------------------------------------------
+// Boss Rush
+// ---------------------------------------------------------------------------
+G.on("bossFight", () => { if (G.mode === "rush" && G.rush) { G.rush.fightT0 = G.time; G.rush.h0 = G.hitsTaken; } });
+
+/** 83.4 → "1:23.4" */
+function fmtSplit(t) {
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1);
+}
+/** The Armory opens after every boss (every other one on Sealed Armory). */
+const rushArmoryOpen = () => !G.rush.mods.includes("sealed") || G.rush.i % 2 === 0;
+
+function rushBossDown() {
+  popAllAllies();
+  const R = G.rush, RB = BALANCE.rush, type = waves.bossType, def = BALANCE.bosses[type];
+  const t = Math.max(0, G.time - R.fightT0), hits = G.hitsTaken - R.h0;
+  R.splits.push({ type, t, hits });
+  R.i++;
+  if (!hits) G.score += RB.hitless * diff().score;
+  // between bosses: a little health back (none on Starved), the Armory's stipend, everyone back up
+  for (const P of G.players) {
+    if (P.gone) continue;
+    usePlayer(P);
+    if (P.dead && G.net.role === "host") revivePlayer(P);
+    if (!R.mods.includes("starved")) P.hp = Math.min(P.maxHp, P.hp + RB.heal);
+    G.stars += RB.stipend;
+  }
+  usePlayer(G.me);
+  G.vacuum = true;
+  const pb = R.pb[type], d = pb ? t - pb : 0;
+  const sub = "Split <b>" + fmtSplit(t) + "</b>" + (pb ? " · <b class='" + (d <= 0 ? "good" : "bad") + "'>" + (d <= 0 ? "−" : "+") + fmtSplit(Math.abs(d)) + "</b> vs best" : "") +
+    " · " + (hits ? hits + (hits === 1 ? " hit" : " hits") : "<b>no hits</b>");
+  G.lastBonus = "@" + def.name + " fell in " + fmtSplit(t);
+  const done = R.i >= 7;
+  const b = ["Boss Rush · " + R.i + " of 7", "@" + def.name + " down", sub, "good", true];
+  ui.banner(...b, def.c1);
+  hostSend({ k: "clear", b, snd: done ? "newBest" : "clear" });
+  audio.play(done ? "newBest" : "clear");
+  audio.musicIntensity(1);
+  clearT = BALANCE.waves.breather + 1.4;
+  setState("clear");
+}
+
+/** Boss Rush rank: S/A/B/C/D by fighting time (more room on Hard and Nightmare); every 10 hits costs a grade. */
+function rushRank(time, hits) {
+  const RK = BALANCE.rush.rank, slow = RK.slower[G.difficulty] || 1;
+  let g = RK.par.findIndex((p) => time <= p * slow);
+  if (g < 0) g = 4;
+  return "SABCD"[Math.min(4, g + Math.floor(hits / RK.hits))];
+}
+
+/** The Rush is over: all seven down, or you fell. Records your bests (solo runs only) and shows the results. */
+function finishRush(cleared) {
+  overShown = true;
+  const R = G.rush, RB = BALANCE.rush;
+  const fight = R.splits.reduce((a, s) => a + s.t, 0);
+  if (cleared) G.score += Math.max(0, RB.timeScore.base - fight * RB.timeScore.perSec) * diff().score;
+  const sum = {
+    rush: true, cleared, score: Math.floor(G.score), time: fight, hits: G.hitsTaken, beaten: R.i, kills: G.kills,
+    splits: R.splits.map((s) => ({ type: s.type, t: s.t, hits: s.hits, pb: R.pb[s.type] || 0 })),
+    mods: R.mods.slice(), difficulty: G.difficulty, rank: cleared ? rushRank(fight, G.hitsTaken) : "",
+    next: cleared ? "" : BALANCE.bosses.order[R.i] || "", killedBy: cleared ? "" : sourceName(G.me && G.me.killedBy),
+    build: buildSummary(), buildTitle: buildTitle(),
+  };
+  const record = !G.debug.on && G.net.role === "off";
+  if (record) {
+    const rs = store.data.rush;
+    const best = (rs.splits[G.difficulty] = rs.splits[G.difficulty] || {});
+    for (const s of R.splits) if (!best[s.type] || s.t < best[s.type]) best[s.type] = Math.round(s.t * 100) / 100;
+    if (cleared) {
+      rs.clears++;
+      const prev = rs.best[G.difficulty];
+      sum.prevTime = prev ? prev.time : 0;
+      sum.newTime = !prev || fight < prev.time;
+      sum.newScore = !prev || sum.score > prev.score;
+      if (sum.newTime || sum.newScore) {
+        rs.best[G.difficulty] = {
+          time: sum.newTime ? Math.round(fight * 10) / 10 : prev.time, score: sum.newScore ? sum.score : prev.score,
+          hits: sum.newTime ? sum.hits : prev.hits, rank: sum.newTime ? sum.rank : prev.rank, mods: sum.newTime ? sum.mods : prev.mods,
+        };
+      }
+    }
+  }
+  sum.solo = record;
+  if (!record) sum.recordNote = G.net.role !== "off" ? "co-op run: records are kept for solo runs" : "debug run, records not saved";
+  store.data.totals.kills += G.kills;
+  store.save(true);
+  G.emit("rushDone", sum);
+  lastRun = sum;
+  hostSend({ k: "rushdone", sum: { ...sum, build: [] } });
+  fileRun();
+  setState("over");
+  ui.showRushDone(sum);
+  audio.play(cleared ? "newBest" : "gameOver");
+}
+
 function showVictory() {
   ui.clearBanner();
   setState("win");
   input.releaseAll();
+  G.emit("ladderWin");
   if (!G.debug.on) {
     const b = store.data.best;
     b.wins = (b.wins || 0) + 1;
@@ -317,11 +461,109 @@ function showVictory() {
 }
 
 function openUpgrade() {
-  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus }); }
+  if (G.net.role === "host") { resetReady(); hostSend({ k: "between", w: G.wave, bonus: G.lastBonus, ev: pendingEvent(), cache: !!G.cacheCracked }); }
   ui.clearBanner();
+  if (G.mode === "rush" && !G.rush.inBreak) {
+    // Boss Rush: a draft to open with, then a couple of cards after each boss
+    G.rush.inBreak = true;
+    G.rush.i = Math.round(G.wave / BALANCE.waves.bossEvery);
+    G.rush.picks = G.wave === 0 ? BALANCE.rush.draft : BALANCE.rush.picks;
+  }
+  // a sin boss just fell and a gun is at Tier IV: it can evolve (one evolution per boss)
+  if (G.wave > 0 && waves.isBossWave(G.wave) && evoCandidate() >= 0) { openEvolve(); return; }
+  openCards();
+}
+
+// ---------------------------------------------------------------------------
+// special events (events.js): a choice between waves
+// ---------------------------------------------------------------------------
+let evOpts = [], evType = "";
+function openEvent(type) {
+  evType = type;
+  setState("event");
+  input.releaseAll();
+  const w = G.wave;
+  if (type === "cache") {
+    evOpts = cacheOptions();
+    ui.showEvent({ kicker: "Cosmic Cache", title: "The cache cracks open", sub: "Stars spill out, and something glints inside. Take one.", col: "#ffc861",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, col: o.col })), leave: false });
+  } else if (type === "corrupt") {
+    evOpts = relicOptions();
+    ui.showEvent({ kicker: "Corrupted Armory", title: "Power, at a price", sub: "A broken vending unit hums with stolen power. Each relic is strong, and each one costs you. Take one, or walk away.", col: "#ff2a55",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, cost: o.cost, col: "#ff2a55" })), leave: "Walk away" });
+  } else if (type === "altar") {
+    evOpts = altarOptions();
+    ui.showEvent({ kicker: "Sin Altar", title: "An altar to the seven", sub: "It takes what you offer and gives what you want. You have \u2605" + G.stars + ".", col: "#a98bff",
+      options: evOpts.map((o) => ({ name: o.name, text: o.text, cost: o.price ? "\u2605 " + o.price : "Free", disabled: o.price > G.stars })), leave: "Leave it" });
+  } else if (type === "ambush") {
+    evOpts = [{ id: "fight" }];
+    ui.showEvent({ kicker: "Elite Ambush · wave " + (w + 1), title: "Hunters have your scent", sub: "Three mutated hunters will be waiting when the next wave starts. Kill all three within " + BALANCE.events.ambush.time + " seconds.", col: "#ff3b3b",
+      options: [{ name: "Take the fight", text: "Win: \u2605 " + ambushReward() + " and an extra card after the wave", cost: "Lose: they keep hunting you" }], leave: "Slip away" });
+  }
+  audio.play("evoReady");
+}
+function pickEvent(i) {
+  if (G.state !== "event") return;
+  const o = evOpts[i];
+  if (i >= 0 && !o) return;
+  if (evType === "cache" && o) { if (o.id === "stars") G.stars += o.stars; else giveItem(o.item); }
+  else if (evType === "corrupt" && o) takeRelic(o.id);
+  else if (evType === "altar" && o) { if (!takeAltar(o)) { audio.play("deny"); ui.toast("Not enough stars"); return; } }
+  else if (evType === "ambush" && o) acceptAmbush();
+  audio.play(i >= 0 ? "buy" : "click");
+  eventDone(evType);
+  afterCards();
+}
+
+// ---------------------------------------------------------------------------
+// weapon evolution (evolve.js): two paths, pick one or decide after the next boss
+// ---------------------------------------------------------------------------
+let evoSlot = -1, evoBusy = false;
+function openEvolve() {
+  evoSlot = evoCandidate();
+  evoBusy = false;
+  setState("evolve");
+  input.releaseAll();
+  ui.showEvo(evoSlot);
+  audio.play("evoReady");
+}
+function pickEvolution(path) {
+  if (G.state !== "evolve" || evoBusy || evoSlot < 0) return;
+  if (!evolveGun(evoSlot, path)) return;
+  evoBusy = true;
+  const g = G.guns[evoSlot], P = G.player, col = gunCol(g);
+  if (G.gunSlot !== evoSlot) swapGun(evoSlot);
+  audio.play("evolve");
+  const card = document.querySelector('#evo-cards .evo-card[data-path="' + path + '"]');
+  if (card) card.classList.add("chosen");
+  if (P) {
+    fx.ring(P.x, P.y, 10, 160, 0.6, col, 5);
+    fx.burst(P.x, P.y, 30, P_CYAN, 300, 0.8, 2);
+    fx.text(P.x, P.y - 44, gunName(g).toUpperCase(), col, 22, 1.6);
+  }
+  setTimeout(() => { if (G.state === "evolve") openCards(); }, 650);
+}
+function laterEvolution() {
+  if (G.state !== "evolve" || evoBusy) return;
+  audio.play("click");
+  openCards();
+}
+
+function openCards() {
   setState("upgrade");
   input.releaseAll();
   offered = seeded("cards" + G.wave + ":" + G.rerolls, () => offerCards());
+  if (G.mode === "rush") {
+    const R = G.rush, nb = BALANCE.bosses[BALANCE.bosses.order[R.i]];
+    ui.showUpgrade(offered, {
+      kicker: R.i === 0 ? "Boss Rush · opening draft" : "Boss Rush · " + R.i + " of 7 down",
+      title: nb ? "@" + nb.name + " is next" : "Choose your power",
+      bonus: (R.picks > 1 ? R.picks + " picks left" : "Last pick") + (G.lastBonus ? " · " + G.lastBonus : ""),
+      armory: rushArmoryOpen() ? "the Armory is next" : "the Armory is sealed this time",
+    });
+    if (!offered.length) { ui.toast("Every Sin and Augment maxed"); R.picks = 1; afterCards(); }
+    return;
+  }
   const nextBoss = (G.wave + 1) % BALANCE.waves.bossEvery === 0;
   const nb = nextBoss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(G.wave + 1)]] : null;
   const armoryNext = armorySoldOut() ? "the Armory is sold out" : armoryAfter(G.wave) ? "the Armory is next" : "the Armory opens after wave " + nextArmoryWave(G.wave);
@@ -332,9 +574,13 @@ function openUpgrade() {
 
 /** After the card: the Armory (if it opens this wave and has anything left for you), else the next wave. */
 function afterCards() {
+  if (G.mode === "rush" && G.rush.picks > 1) { G.rush.picks--; openCards(); return; }
+  if (G.bonusPick > 0) { G.bonusPick--; openCards(); return; }            // the Elite Ambush's extra card
+  const ev = pendingEvent();
+  if (ev) { openEvent(ev); return; }
   const P = G.player;
   const skipShop = armorySoldOut() && (!P || P.hp >= P.maxHp);      // still opens to patch you up
-  if (armoryAfter(G.wave) && !skipShop) { openArmory(); return; }
+  if ((G.mode === "rush" ? rushArmoryOpen() : armoryAfter(G.wave)) && !skipShop) { openArmory(); return; }
   if (G.net.role !== "off") {
     if (G.net.role === "host") hostReady(); else if (!coop.waiting) clientReady();
     coop.waiting = true;
@@ -343,7 +589,7 @@ function afterCards() {
   }
   ui.show(null);
   setState("playing");
-  startWave(G.wave + 1);
+  startWave(nextWave());
 }
 
 function pickCard(id) {
@@ -351,10 +597,19 @@ function pickCard(id) {
   const lvl = applyCard(id);
   const c = CARD_BY_ID[id];
   const P = G.player;
+  if (c.kind === "fusion") {
+    // a Sin Fusion: its own moment
+    fusionActivated(P, id, c.name);
+    G.emit("fusion", id);
+    ui.toast("Sin Fusion: " + c.name, 2600);
+    afterCards();
+    return;
+  }
   audio.play("pick");
   fx.ring(P.x, P.y, 10, 120, 0.5, c.color, 4);
   fx.burst(P.x, P.y, 24, P_CYAN, 260, 0.7, 1.8);
   fx.text(P.x, P.y - 40, c.name.toUpperCase() + (lvl >= c.max ? " MAX" : " " + lvl), c.color, 18, 1.3);
+  G.emit("card", id);
   afterCards();
 }
 
@@ -366,6 +621,11 @@ function openArmory() {
   input.releaseAll();
   const bounty = G.wave % BALANCE.waves.bossEvery === 0;
   seeded("shop" + G.wave, () => rollNewShop(bounty));
+  if (G.mode === "rush") {
+    const nb = BALANCE.bosses[BALANCE.bosses.order[G.rush.i]];
+    ui.showShop({ kicker: G.rush.i === 0 ? "Boss Rush · stock up" : "Boss Rush · the Armory pays a bounty", next: "Next: <b>@" + nb.name + "</b>, " + nb.title + ".", go: "Face @" + nb.name });
+    return;
+  }
   const next = G.wave + 1;
   const boss = next % BALANCE.waves.bossEvery === 0;
   const nb = boss ? BALANCE.bosses[BALANCE.bosses.order[waves.rungOf(next)]] : null;
@@ -385,6 +645,8 @@ function shopBuy(i) {
   audio.play("buy");
   const P = G.player;
   if (P) fx.ring(P.x, P.y, 10, 90, 0.4, info.col, 3);
+  const held = o.kind === "gun" && G.guns.find((g) => g && g.id === o.id);
+  if (held && held.tier === 4 && !held.evo) { ui.toast(BALANCE.guns[o.id].name + " is Tier IV: beat the next boss to evolve it", 3200); audio.play("evoReady"); }
   ui.renderShop();
 }
 
@@ -407,7 +669,7 @@ function shopGo() {
   }
   ui.show(null);
   setState("playing");
-  startWave(G.wave + 1);
+  startWave(nextWave());
 }
 
 function reroll() {
@@ -489,7 +751,22 @@ function fmtTime(t) {
 
 // "What got you", for the summary screen.
 const SRC_NAMES = { drone: "a Drone", swarm: "a Swarmling", ripper: "a Ripper's charge", gunner: "a Gunner", splitter: "a Splitter", mini: "a Splitter shard",
-  bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Volatile elite's burst" };
+  bulwark: "a Bulwark", boomer: "a Boomer's blast", sniper: "a Sniper", patch: "a Patch Bot", gem: "Pride's crown gem", decoy: "one of Lust's fakes", volatile: "a Shrapnel elite's burst",
+  shockwave: "a Shockwave mutant's ring", "volatile mutant": "a Volatile mutant's blast" };
+
+// The Elite Ambush (events.js)
+G.on("ambushStart", () => ui.banner("Elite Ambush", "Hunters!", "Kill all three within " + BALANCE.events.ambush.time + " seconds", "boss", false, "#ff3b3b"));
+G.on("ambushWon", (gain) => ui.toast("Ambush survived: ★" + gain + " and an extra card after this wave", 3200));
+G.on("ambushLost", () => ui.toast("Too slow: the hunters are still after you", 2800));
+
+// The first time you ever meet each mutation, a hint says what to do about it.
+G.on("mutSpawn", (e) => {
+  const k = mutKey(e.mut), seen = store.data.seenMut || (store.data.seenMut = {});
+  if (!k || seen[k] || G.state === "menu") return;
+  seen[k] = 1;
+  store.save();
+  ui.toast("Mutation · " + mutHint(e.mut), 4600);
+});
 function sourceName(src) {
   if (!src) return "";
   if (BALANCE.bosses[src]) return "@" + BALANCE.bosses[src].name;
@@ -515,7 +792,8 @@ async function postRun(sum) {
     daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items }, difficulty: G.difficulty },
   });
   if (G.state !== "over") return;
-  if (res.skipped) ui.setOnline(null);
+  if (res.skipped === "expired") ui.setOnline("signin", "expired");
+  else if (res.skipped) ui.setOnline(null);
   else if (res.ok) ui.setOnline("posted", { rank: res.rank, daily: !!G.daily });
   else ui.setOnline("error", res.error);
 }
@@ -526,10 +804,12 @@ function finishWonRun() {
 }
 
 function gameOver() {
+  if (G.mode === "rush") { finishRush(false); return; }
   overShown = true;
   const best = store.data.best;
   const oldWave = best.wave;
   const sum = {
+    prevBest: best.score,
     score: Math.floor(G.score), wave: G.wave, kills: G.kills, combo: G.bestCombo, stars: G.starsTotal,
     time: fmtTime(G.time), perfects: G.perfects, bosses: G.bossesKilled,
     build: buildSummary(), buildTitle: buildTitle(), difficulty: G.difficulty,
@@ -557,7 +837,7 @@ function gameOver() {
   store.data.totals.kills += sum.kills;
   if (!record) sum.buildTitle = (sum.buildTitle || "") + (G.net.role !== "off" ? " · co-op run (solo bests and the leaderboard stay solo)" : " · debug run, bests not saved");
   if (G.net.role !== "off") sum.team = G.players.filter((p) => !p.gone).map((p) => p.name).join(", ");
-  const unlocked = SUITS.filter((s) => s.wave > oldWave && s.wave <= best.wave);
+  const unlocked = itemsOf("suit").filter((s) => s.wave && s.wave > oldWave && s.wave <= best.wave);
   if (unlocked.length) sum.unlock = unlocked.map((s) => s.name).join(" and ");
   const pool = TITLES.find((t) => sum.wave >= t[0])[1];
   sum.title = G.won ? (G.lap > 0 || G.wave > 35 ? "Past the top of the Ladder" : "You climbed the whole Ladder") : pool[Math.floor(Math.random() * pool.length)];
@@ -567,6 +847,8 @@ function gameOver() {
     const d = store.data.daily;
     if (d.date === G.daily && sum.score > d.score) { d.score = sum.score; d.wave = sum.wave; sum.dailyBest = true; }
   }
+  fileRun();
+  G.emit("runOver", sum);
   store.save(true);
   postRun(sum);
   lastRun = sum;
@@ -598,7 +880,7 @@ function menuStep(dt) {
 function update(dt) {
   const s = G.state;
   if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
-  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win") return;
+  if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win" || s === "evolve" || s === "event") return;
   if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
   let sdt = dt;
   if (G.slowmo > 0) { G.slowmo -= dt; sdt = dt * G.slowScale; }
@@ -606,13 +888,18 @@ function update(dt) {
   if (G.net.role === "host") hostBefore(sdt);
   stepWorld(sdt);
   if (G.net.role === "host") hostAfter();
+  if (s === "playing") eventTick(sdt);
+  progressTick(sdt);
   fx.update(sdt);
   if (s === "dying") {
     deathT += dt;
     if (deathT > 1.5 && !overShown) gameOver();
   } else if (s === "clear") {
     clearT -= dt;
-    if (clearT <= 0) { if (G.won && G.wave === 35) showVictory(); else openUpgrade(); }
+    if (clearT <= 0) {
+      if (G.mode === "rush") { if (G.rush.i >= 7) finishRush(true); else openUpgrade(); }
+      else if (G.won && G.wave === 35) showVictory(); else openUpgrade();
+    }
   }
 }
 
@@ -632,7 +919,7 @@ function musicDirector() {
   const live = !!(b && b.state !== -1);
   if (live && !lastBossLive) audio.impact();
   lastBossLive = live;
-  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win") {
+  if (s === "upgrade" || s === "shop" || s === "paused" || s === "over" || s === "win" || s === "evolve" || s === "event") {
     audio.musicTheme(s === "win" ? "envy" : sin, "chapter");
     audio.musicIntensity(0);
     return;
@@ -728,25 +1015,32 @@ function toggleFullscreen() {
 ui.init({
   onPlay: () => { audio.unlock(); startRun(); },
   onDaily: () => { audio.unlock(); startRun({ daily: todayUTC() }); },
+  onRush: () => { if (store.rushUnlocked() || G.debug.on) ui.openRush(); else ui.toast("Beat @Envy on the Sin Ladder to open Boss Rush", 2600); },
+  onRushStart: (mods) => { store.data.rush.mods = mods; store.save(); audio.unlock(); startRun({ rush: true, mods }); },
+  onRushAgain: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun({ rush: true, mods: (lastRun && lastRun.mods) || [] }); },
   onEndless: () => { ui.show(null); openUpgrade(); audio.musicIntensity(1); },
   onFinish: finishWonRun,
   onExit: () => { store.save(true); if (G.desktop) window.chrome.webview.postMessage({ type: "quit" }); },
   onPause: pause,
   onResume: resume,
-  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); },
-  onQuit: () => { if (G.net.role !== "off") endCoop(); toMenu(); },
+  onRestart: () => { if (G.net.role !== "client") fileRun(); if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.mode === "rush" ? { rush: true, mods: G.rush.mods } : G.daily ? { daily: todayUTC() } : null); },
+  onQuit: () => { if (G.state !== "menu") fileRun(); if (G.net.role !== "off") endCoop(); toMenu(); },
   onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
   onLobbyHost: async (name) => {
     store.data.coopName = name; store.save();
-    try { await net.host(name, G.settings.suit); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.host(name, lookCode()); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
   onLobbyJoin: async (code, name) => {
     store.data.coopName = name; store.save();
-    try { await net.join(code, name, G.settings.suit); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.join(code, name, lookCode()); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
+  onLobbyMode: (mode) => { coop.mode = mode; coop.mods = store.data.rush.mods || []; },
   onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
   onLobbyLeave: () => { endCoop(); ui.show("menu"); },
   onPick: pickCard,
+  onEvo: pickEvolution,
+  onEvent: pickEvent,
+  onEvoLater: laterEvolution,
   onReroll: reroll,
   onPatch: patchUp,
   onBuy: shopBuy,
@@ -756,7 +1050,9 @@ ui.init({
   onSelectSlot: (i) => { if (swapGun(i)) audio.play("swap"); ui.renderShop(); },
   onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
   onSettings: applySettings,
-  onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
+  onLook: () => renderer.setSuit(suitDef()),
+  onSfx: (name) => audio.play(name),
+  onAchv: () => audio.play("achv"),
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
@@ -786,7 +1082,8 @@ input.onPause = () => {
     resume();
     return true;
   }
-  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && ui.screen === "menu") return hangar.back();
+  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
   if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
@@ -796,7 +1093,8 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
-  else if (ui.screen === "how" || ui.screen === "news") ui.show("menu");
+  else if (G.state === "menu" && ui.screen === "menu") hangar.back();
+  else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download") ui.show("menu");
   else if (G.state === "paused") resume();
 };
 
@@ -822,6 +1120,10 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
     const onButton = document.activeElement && document.activeElement.tagName === "BUTTON" && document.activeElement.id !== "shop-go";
     if ((e.code === "Enter" || e.code === "Space") && !onButton) { e.preventDefault(); if (ui.armed) shopGo(); return; }
+  } else if (s === "event") {
+    if (digit >= 0 && digit < 3) { e.preventDefault(); if (ui.armed) pickEvent(digit); return; }
+  } else if (s === "evolve") {
+    if (digit === 0 || digit === 1) { e.preventDefault(); if (ui.armed) pickEvolution(digit === 0 ? "a" : "b"); return; }
   } else if (s === "upgrade") {
     const i = digit;
     if (i >= 0 && offered[i]) { e.preventDefault(); if (ui.armed) pickCard(offered[i]); return; }
@@ -831,6 +1133,8 @@ window.addEventListener("keydown", (e) => {
       const next = at < 0 ? 0 : (at + (e.code === "ArrowRight" ? 1 : cards.length - 1)) % cards.length;
       if (cards[next]) { e.preventDefault(); cards[next].focus(); }
     }
+  } else if (s === "over" && ui.screen === "rushdone") {
+    if (ui.armed && e.code === "KeyR") { e.preventDefault(); if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun({ rush: true, mods: (lastRun && lastRun.mods) || [] }); }
   } else if (s === "over" && ui.screen === "over") {
     if (!ui.armed) return;
     const again = () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.daily ? { daily: todayUTC() } : null); };
@@ -893,12 +1197,25 @@ if (G.debug.on && params.get("autoplay") === "1") {
   import("./debug-bot.js").then(({ bot }) => {
     bot.onRetry = startRun;
     bot.onPick = pickCard;
+    bot.onEvo = pickEvolution;
+    bot.onEvent = pickEvent;
     bot.onBuy = shopBuy;
     bot.onShopGo = shopGo;
     autopilot = bot;
     window.__bot = bot;
+    bot.rushRuns = [];
+    G.on("rushDone", (sum) => bot.rushRuns.push({ cleared: sum.cleared, beaten: sum.beaten, time: Math.round(sum.time), hits: sum.hits, rank: sum.rank, score: sum.score,
+      killedBy: sum.killedBy, splits: sum.splits.map((x) => x.type + ":" + Math.round(x.t) + "s/" + x.hits + "h").join(" "), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier + (g.evo || "")).join("+"), cards: Object.keys(G.up).length }));
     G.debug.god = params.get("god") === "1";
     if (params.get("cohost") || params.get("cojoin")) { bot.autoRetry = false; return; }   // co-op tests start from the lobby
+    if (params.get("rush") === "1") {
+      const mods = (params.get("mods") || "").split(",").filter(Boolean);
+      bot.onRetry = () => startRun({ rush: true, mods });
+      bot.onRushAgain = bot.onRetry;
+      startRun({ rush: true, mods });
+      if (params.get("god") === "1") G.debug.god = true;
+      return;
+    }
     startRun();
     if (params.get("god") === "1") G.debug.god = true;
   });
@@ -907,7 +1224,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
 if (G.debug.on && params.get("cohost")) {
   setTimeout(async () => {
     try {
-      const code = await net.host("Host", G.settings.suit);
+      const code = await net.host("Host", lookCode());
       window.__coopCode = code;
       if (G.desktop) window.chrome.webview.postMessage({ type: "status", msg: "code " + code });
       ui.lobbyRoom(code, true);
@@ -919,18 +1236,24 @@ if (G.debug.on && params.get("cohost")) {
   }, 600);
 }
 if (G.debug.on && params.get("cojoin")) {
-  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
+  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), lookCode()).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
 }
 if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
 if (G.debug.on && params.get("scene")) {
   import("./debug-bot.js").then(({ scene }) => setTimeout(() => scene(params.get("scene"), { startRun, spawnEnemy, waves, input, seedRng }), 900));
+}
+if (G.debug.on && params.get("tests") === "1") {
+  import("./tests.js").then(({ runTests }) => setTimeout(() => runTests({ startRun, spawnEnemy, waves, rushRank }), 800));
 }
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
 }
 if (G.debug.on) {
   import("./armory.js").then((armory) => {
-    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop };
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop,
+      openUpgrade, openEvolve, pickEvolution, openEvent, pickEvent,
+      stage: (gun, path, opts) => import("./debug-bot.js").then((m) => m.stage({ spawnEnemy, waves }, gun, path, opts)),
+      zoneAt: (t, f) => import("./debug-bot.js").then((m) => m.zoneAt(t, f)) };
   });
   ui.toast("Debug: N skip · B boss · G god · K kill · U upgrade · H heal · J swarm · M stars", 5000);
 }
@@ -938,6 +1261,8 @@ if (G.debug.on) {
 // ---------------------------------------------------------------------------
 // desktop app + online
 // ---------------------------------------------------------------------------
+ui.setApp(G.desktop || G.androidApp);
+G.on("look", () => renderer.setSuit(suitDef()));
 if (G.desktop) {
   ui.setDesktop(true);
   // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)
@@ -950,6 +1275,19 @@ if (G.desktop) {
     if (m.type === "auth") online.refresh();
     if (m.type === "pause") pause();
   });
+}
+// The Android app (its WebView adds "EnviousGliderAndroid/" to the user agent) calls these: the system back button
+// (false = nothing left to close, so the app goes to the background) and the app leaving / returning to the screen.
+if (G.androidApp) {
+  window.egApp = {
+    back: () => {
+      if (input.onPause()) return true;
+      if (G.state === "menu" && ui.screen && ui.screen !== "menu") { ui.show("menu"); return true; }
+      return false;
+    },
+    pause: () => { if (G.net.role === "off") pause(); audio.suspend(); },
+    resume: () => { audio.resume(); loop.resetClock(); },
+  };
 }
 G.on("auth", () => { ui.renderAccount(); if (ui.screen === "board") ui.openBoard(ui.boardKindNow || "all"); });
 online.init();
@@ -990,26 +1328,35 @@ initCoop({
   startRun,
   toMenu,
   toast: (t, ms) => ui.toast(t, ms),
-  openUpgrade: (msg) => { G.wave = msg.w; G.lastBonus = msg.bonus || ""; openUpgrade(); },
+  openUpgrade: (msg) => {
+    G.wave = msg.w; G.lastBonus = msg.bonus || "";
+    // the host's event for this break (everyone makes their own choice)
+    G.event = msg.ev && msg.ev !== "cache" ? { type: msg.ev, wave: msg.w, done: false, spawnAt: -1 } : null;
+    G.cacheCracked = !!msg.cache;
+    openUpgrade();
+  },
   closeBetween: (n) => {
     if (G.state !== "playing") { ui.show(null); setState("playing"); }
     G.wave = n;
+    if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
     waveIntro(n);
   },
-  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
+  rushDone: (sum) => { sigilsRush(sum); fileRun(); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
     delete sum.dmg; delete sum.big; delete sum.topGun;
     sum.spent = G.runStats ? G.runStats.spent : 0;
     sum.killedBy = sourceName(G.me && G.me.killedBy);
+    fileRun();
     lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver");
   },
-  showWin: (sum) => { ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
+  showWin: (sum) => { sigilsWin(); ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
   readyChanged: () => {
     if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn());
     if (G.state === "upgrade" && coop.waiting) ui.setCardsWaiting(waitingOn());
   },
-  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(G.wave + 1); },
+  nextWave: () => { ui.show(null); setState("playing"); resetReady(); startWave(nextWave()); },
 });
 
 // damage-number digits are pre-rendered with the game font: redo them once it has loaded

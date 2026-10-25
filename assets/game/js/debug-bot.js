@@ -9,10 +9,10 @@ import { BALANCE } from "./balance.js";
 // ?bot=dps|tank|cc|weak: what the autopilot builds toward (balance tests). Anything else: random picks.
 // Earlier in a list = wanted more. "weak" takes the least useful cards and never shops.
 const PROFILES = {
-  dps:  ["wrath", "pride", "multishot", "pierce", "overcharge", "velocity", "homing", "glass", "hollow", "battery", "scope", "capbank", "overdrive", "crown", "clover",
+  dps:  ["frenzy", "feast", "judgment", "wrath", "pride", "multishot", "pierce", "overcharge", "velocity", "homing", "glass", "hollow", "battery", "scope", "capbank", "overdrive", "crown", "clover",
          "rail", "heart", "nova", "scatter", "smg", "arc"],
-  tank: ["gluttony", "suit", "nanoweave", "wrath", "bubble", "multishot", "fang", "thorns", "boost", "hollow", "battery", "orbit", "thrusters", "fuel", "turret", "scatter", "smg"],
-  cc:   ["sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
+  tank: ["feast", "parasite", "gluttony", "suit", "nanoweave", "wrath", "bubble", "multishot", "fang", "thorns", "boost", "hollow", "battery", "orbit", "thrusters", "fuel", "turret", "scatter", "smg"],
+  cc:   ["stolen", "bloodlust", "judgment", "covetous", "sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
   weak: ["greed", "rear", "magnet", "coupon", "piggy", "velocity", "ricochet"],
 };
 const rank = (list, id) => { const i = list.indexOf(id); return i < 0 ? 99 : i; };
@@ -24,6 +24,8 @@ export const bot = {
   autoRetry: true,
   onRetry: null,
   onPick: null,
+  onEvo: null,
+  onEvent: null,
   onBuy: null,
   onShopGo: null,
   chargeT: 0,
@@ -48,6 +50,18 @@ export const bot = {
   tick() {
     this.record();
     const L = PROFILES[this.profile];
+    if (G.state === "event") {
+      // events: take an option you can afford (or leave), so balance runs see them
+      const opts = [...document.querySelectorAll("#event-opts .event-opt:not([disabled])")];
+      if (this.onEvent) this.onEvent(opts.length && Math.random() < 0.8 ? Math.floor(Math.random() * opts.length) : -1);
+      return;
+    }
+    if (G.state === "evolve") {
+      // ?evo=a|b forces a path (balance tests); otherwise either
+      const want = new URLSearchParams(location.search).get("evo");
+      if (this.onEvo) this.onEvo(want === "a" || want === "b" ? want : Math.random() < 0.5 ? "a" : "b");
+      return;
+    }
     if (G.state === "upgrade") {
       const cards = [...document.querySelectorAll("#cards .card")];
       if (cards.length && this.onPick) {
@@ -73,7 +87,7 @@ export const bot = {
     }
     if (G.state === "over") {
       if (this.autoRetry && this.onRetry) {
-        this.runs.push({ wave: G.wave, time: Math.round(G.time), hits: G.hitsTaken, score: Math.round(G.score), build: JSON.stringify(G.up), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join("+"), waves: this.waves,
+        this.runs.push({ wave: G.wave, time: Math.round(G.time), hits: G.hitsTaken, score: Math.round(G.score), build: JSON.stringify(G.up), guns: G.guns.filter(Boolean).map((g) => g.id + g.tier + (g.evo || "")).join("+"), waves: this.waves,
           byGun: G.runStats ? Object.fromEntries(Object.entries(G.runStats.byGun).map(([k, v]) => [k, Math.round(v)])) : null, items: JSON.stringify(G.items) });
         this.waves = []; this._wave = 0;
         this.onRetry();
@@ -100,7 +114,7 @@ export const bot = {
       if (e.dead || e.ally > 0) continue;
       const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
       let ring = 0;
-      if (e.type === "glutton" && e.state === 3) ring = BALANCE.bosses.glutton.slamRadius * e.scale + 40;
+      if (e.type === "glutton" && e.state === 3) { const d = BALANCE.bosses.glutton; ring = d.slamRadius * Math.min(e.scale, d.slamGrowCap) * (e.shock ? d.aftershock.scale : 1) + 40; }
       if (e.type === "boomer" && e.state === 1) ring = BALANCE.enemies.boomer.blast + 30;
       if (ring && d < ring) { ax += (dx / d) * (ring - d) * 6; ay += (dy / d) * (ring - d) * 6; if (d < ring * 0.8) near = true; }
       const lane = (e.type === "ripper" && e.state === 1) || (e.type === "sniper" && e.state === 1) || (e.type === "overclock" && e.windT > 0);
@@ -110,6 +124,14 @@ export const bot = {
         const along = dx * c + dy * s, side = -dx * s + dy * c;
         if (along > 0 && Math.abs(side) < 60) { const k = side >= 0 ? 1 : -1; ax += -s * k * 400; ay += c * k * 400; if (Math.abs(side) < 25) near = true; }
       }
+    }
+    // mutations: boost through a Shockwave ring about to reach you, get out of a Volatile's blast ring
+    for (let i = 0; i < G.zones.count; i++) {
+      const z = G.zones.items[i];
+      if (z.dead) continue;
+      const dx = P.x - z.x, dy = P.y - z.y, d = Math.hypot(dx, dy) || 1;
+      if (z.type === 8) { const R = z.r0 + (z.r - z.r0) * (z.t / z.life); if (d > R - 8 && d - R < 45) near = true; }
+      if (z.type === 7 && z.y2 > 0 && d < z.r + 30) { ax += (dx / d) * (z.r + 30 - d) * 6; ay += (dy / d) * (z.r + 30 - d) * 6; if (d < z.r * 0.7) near = true; }
     }
     for (let i = 0; i < G.eb.count; i++) {
       const b = G.eb.items[i];
@@ -123,6 +145,12 @@ export const bot = {
       const dx = P.x - best.x, dy = P.y - best.y, d = Math.hypot(dx, dy) || 1;
       ax += (-dy / d) * 500; ay += (dx / d) * 500;
       if (d > 260) { ax -= (dx / d) * 300; ay -= (dy / d) * 300; }
+    }
+    // a target out of reach (snipers keep their distance): close in, like a person would
+    if (best) {
+      const dx = best.x - P.x, dy = best.y - P.y, d = Math.hypot(dx, dy) || 1;
+      const reach = G.stats.bulletSpeed * G.stats.bulletLife * 0.85;
+      if (d > reach) { ax += (dx / d) * 500; ay += (dy / d) * 500; }
     }
     ax += (1000 - P.x) * 0.25;
     ay += (650 - P.y) * 0.25;
@@ -238,3 +266,46 @@ export async function scene(name, h) {
   h.input.mouse.down = false;
   G.debug.freeze = true;
 }
+
+/** Debug only (window.__eg.stage): a weapon-evolution moment for screenshots. Puts a Tier IV gun
+    evolved down a path in your hands, lines up a row of tough robots, fires (opts.fire seconds), charges
+    (opts.charge), then freezes when opts.until(G) says so (or opts.after seconds later). */
+export async function stage(h, gun, path, opts = {}) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const { computeStats } = await import("./upgrades.js");
+  G.debug.zoom = opts.zoom || 1;
+  h.waves.queue.length = 0; h.waves.active = false;
+  G.enemies.clear(); G.eb.clear(); G.pb.clear(); G.zones.clear(); G.warnings.clear(); G.asteroids.clear(); G.pickups.clear();
+  G.wave = opts.wave || 15; G.debug.god = true;
+  G.guns = [{ id: gun, tier: 4, evo: path }, null]; G.gunSlot = 0; computeStats();
+  const P = G.player, px = opts.px || 800;
+  P.x = P.px = px; P.y = P.py = 650; P.vx = P.vy = 0; P.od = 0; P.odT = 0; P.heat = 0; P.rep = opts.rep || 0; P.soul = opts.soul || 0;
+  const types = opts.types || ["gunner", "drone", "splitter", "drone", "sniper", "drone", "gunner", "drone", "splitter"];
+  types.forEach((t, i) => {
+    const e = h.spawnEnemy(t, px + 180 + (i % 5) * 75, 580 + Math.floor(i / 5) * 140 + (i % 2) * 26, { spawnT: 0 });
+    if (e) { e.speed = 0; e.hp = e.maxHp = opts.hp || 4000; }
+  });
+  const ax = px + 350;
+  let phase = 0, t0 = G.time, done = false;
+  const orig = G.enemies.sweep.bind(G.enemies);
+  G.enemies.sweep = function () {
+    const c = G.cam;
+    input.mode = "kbm"; input.mouse.seen = true; input.mouse.inside = true; input.aimMode = "mouse";
+    input.mouse.x = (ax - c.x) * c.z + c.cssW / 2; input.mouse.y = (640 - c.y) * c.z + c.cssH / 2; G.aimWorld.x = ax; G.aimWorld.y = 640;
+    G.player.x = px; G.player.y = 650;
+    const el = G.time - t0;
+    if (phase === 0) { input.mouse.down = input.fire = el < (opts.fire || 0); if (el >= (opts.fire || 0)) { phase = 1; t0 = G.time; } }
+    else if (phase === 1) { input.mouse.charge = el < (opts.charge || 0); if (el >= (opts.charge || 0)) { input.mouse.charge = false; phase = 2; t0 = G.time; } }
+    else if (phase === 2 && !done && (opts.until ? opts.until(G) : el >= (opts.after || 0.1))) { done = true; G.debug.freeze = true; input.mouse.down = input.fire = false; }
+    return orig();
+  };
+  G.debug.freeze = false;
+  for (let k = 0; k < 4000 && !done; k++) await sleep(2);
+  G.enemies.sweep = orig;
+  return { done, zones: G.zones.count, shots: G.pb.count };
+}
+/** For stage(): true once a zone of this type is part-way through its life. */
+export const zoneAt = (type, frac = 0.4) => (g) => {
+  for (let i = 0; i < g.zones.count; i++) { const z = g.zones.items[i]; if (!z.dead && z.type === type && z.t > z.life * frac) return true; }
+  return false;
+};
