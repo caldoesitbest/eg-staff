@@ -1,10 +1,111 @@
 # Envious Glider — Project Ascension progress
 
 Update 4.0 "Ascension" (branch `game-v4`), 4.1 "Ascension II" (branch `game-v4.1`, Phase II below) and
-4.2 "Ascension Unleashed" (branch `game-v4.2`, Phase III below).
+4.2 "Ascension Unleashed" (branch `game-v4.2`, Phase III below) and 4.3 "Cosmic Hangar" (branch `game-v4.3`, Phase IV below).
 This file tracks the master directive: what was audited,
 what shipped, how it was tested, and what is still to do. Statuses are honest: **Done** means built and
 tested, **Partial** means some of it shipped, **Next** means not started.
+
+## Phase IV — 4.3 "Cosmic Hangar": the lobby, Item Shop, Locker and Challenges
+
+The menu is now a lobby built around your astronaut, with a real cosmetics economy behind it. It's built on the 4.2 branch (`game-v4.3` from `game-v4.2`), and nothing from 4.2 was removed.
+
+### What shipped
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| The Cosmic Hangar (lobby) | **Done** | `hangar.js`. Your astronaut stands big on a lit platform: the beam, turning rings, a reflection, your jetpack trail and your weapon finish. It aims at your pointer, or looks around slowly without a mouse, and shimmers when its look changes. It's drawn by the game's own `sprites.astronaut()`, so it is the astronaut you fly. Tabs: Play, Locker, Item Shop, Challenges, Profile. The game world idles behind (your in-world astronaut is hidden in the lobby). Only the open tab's stage animates, and the loop sleeps during runs |
+| Play tab | **Done** | Title and pilot card (badges, bests, the Sin Ladder) on the left; the stage in the middle; on the right, mode cards (Ladder, Daily, Boss Rush, Co-op), difficulty, and today's headline shop item. One PLAY button launches the selected mode; tapping a selected mode card also plays it. Every 4.2 mode still launches the same way |
+| Item Shop | **Done** | A daily featured row (four picks, 00:00 UTC, the same for everyone; everything is also always in the catalog, with no fake timers or discounts). Tabs by kind, Collections, and Hide owned. The item panel lets you try the item on your astronaut, buy it (with a confirm step), or wear it. A short, skippable reveal on purchase (bigger rays for Legendary and Mythic) has Wear it now / Keep browsing |
+| Locker | **Done** | Seven slots (hat, suit, visor, trail, finish, victory effect, title), each with what's equipped. A grid with All/Owned, a rarity filter, and sorting (rarity, name, newest). Tap to wear; tap something you don't own to try it on (and jump to it in the shop). Three loadout presets save or apply a whole outfit (never your guns or build); missing items are left as they were |
+| Rarity | **Done** | Common, Uncommon, Rare, Epic, Legendary, Mythic. Each has a consistent colour on cards, slots, the item panel and the reveal; Legendary and Mythic cards shimmer. Colours match the Armory's gear rarities |
+| Catalog | **Done** | `catalog.js`: one list for every cosmetic (suits moved out of `storage.js`, the 4.2 cosmetics and hats out of `progress.js`), with stable ids per kind, rarity, collection, source, art config, ownership, equipping, presets, the featured row and the economy |
+| New cosmetics | **Done** | 7 new hats; 10 new suits, each with a chest emblem (moon, reactor core, coin, heart, flame, crown, eye, star, swirl, spark); 6 visors (3 with effects: starfield, cracked glass, black-mirror rim); 11 trails with motion styles (smoke, ember, dust, zap); 9 finishes; 2 victory effects (Starburst, Singularity); 3 titles. Achievement and best-wave items stay earned, not sold |
+| Collections | **Done** | Nine sets (one per sin, plus Void and Astral), each a hat, suit, trail and finish (plus a visor in three). Owning a whole set unlocks its title |
+| Challenges | **Done** | `contracts.js`: three daily contracts (easy, medium, hard; new at 00:00 UTC) that pay Sigils once. They're filed from each run's end, quit or restart, solo or co-op. The tab also has today's Daily Challenge, the four achievements you're closest to, and an Earning Sigils table |
+| Profile | **Done** | Your astronaut and stats (only what's tracked: runs, bests, wins, fastest win, kills, Boss Rush clears, achievements, cosmetics owned, Sigils earned since 4.3), plus every achievement (pin up to 3 badges) |
+| Co-op | **Done** | Looks travel as `suit/hat/visor/trail/finish` (an older client reads the suit and stops). Unknown ids become defaults. The lobby list shows each player's astronaut; in runs, teammates' trails and finishes are theirs. Looks are sent once on joining, so they can never block or delay a lobby |
+| Audio | **Done** | The menu theme is slower and more ambient (84 bpm, soft pad, sparse sine arpeggio). New sounds: tab, preview, equip, reveal |
+| Saves | **Done** | Save version 4. 4.2 hats move into the one inventory (`owned`), with presets, contracts and lifetime Sigils added. Nothing earned is lost (tested) |
+| Account-wide cosmetics | **Next** | Everything is saved on the device (and in the Windows app's save file). Account-wide ownership needs trusted server-side purchases (a Supabase table plus a function that checks the balance and writes atomically). That's outside this repo and needs your approval |
+| Android build of 4.3 | **Next** | Per your instruction, the APK is built after you okay the 4.3 exe |
+| Human playtest | **Next** | Everything below was tested by script |
+
+### Decisions
+
+- **Sigils, not a new currency.** The brief allowed reusing an existing currency, and adding a second one would split the economy.
+- **A real 2D showcase, not fake 3D.** The astronaut turns to face your pointer, aims, bobs and reflects. There's no pseudo-rotation.
+- **Nothing for real money, and no pressure.** No payment code, no loot boxes, no timed exclusives. The only countdowns are true ones (the next featured row, the next contracts).
+- **Local saves aren't tamper-proof, and the game says so.** The Challenges tab tells players where their Sigils and cosmetics are saved.
+
+### Economy (`balance.sigils`)
+
+| Source | Sigils |
+| --- | --- |
+| Each sin boss on the Ladder | 2 × difficulty (Normal 1, Hard 2, Nightmare 3) |
+| Beating the Ladder | 6 × difficulty |
+| Clearing Boss Rush | 4 (+4 for S, +2 for A) × difficulty |
+| Each achievement | 3 |
+| Daily contracts | 4 / 6 / 8 |
+
+- **Prices by rarity:** 20, 40, 75, 120, 200, 320.
+- **Pace:** a Normal Ladder win pays about 20, and a day's three contracts 18. That's a Rare every few days of play and a Legendary in a week or two.
+- **Totals:** the full catalog (57 items for sale) costs 5,390 Sigils.
+
+![](shots/v43-lineup-hat.png)
+![](shots/v43-lineup-suit.png)
+![](shots/v43-lineup-visor.png)
+
+### Performance (this machine, headless Chrome)
+
+| | |
+| --- | --- |
+| Drawing the open stage (Play/Locker), per frame | 0.1–0.35 ms (1280×720 0.34, 1920×1080 0.14, 915×412 0.21) |
+| First time opening the Shop (draws ~60 item cards) | 26 ms, once |
+| First time opening the Locker | 47 ms, once |
+| Switching tabs after that | 7–19 ms |
+| During a run | the lobby's loop sleeps |
+
+### Tests
+
+- **Automated checks:** `?debug=1&tests=1` runs 57 checks, and all pass. Besides 4.2's 31, they cover:
+  - catalog integrity (unique ids, prices, collections with titles, every hat, suit and visor draws);
+  - the shop (no buying what you can't afford, achievement items aren't for sale, exact price, no double purchase);
+  - the Locker (no wearing what you don't own; wave suits);
+  - collection titles; loadout presets (missing items skipped);
+  - the featured row (stable all day, changes daily, all for sale);
+  - look codes (round trip; unknown ids become defaults);
+  - Sigils (none in debug, ×3 on Nightmare);
+  - contracts (three tiers, stable, no Boss Rush ones before it's open, sums and maxes, paid once);
+  - migrations 4.1 → v4 and 4.2 → v4 (hats carry over).
+- **Soak:** the autopilot played from the Hangar to a full Ladder win (wave 35) and quit back to the lobby with no errors.
+- **Real co-op:** two headless players went through the live lobby server. Each saw both full looks in the lobby list and in the run, with no errors.
+- **Layouts:** checked at 1280×720, 1920×1080, 915×412 (phone held sideways, the Android app's shape) and 390×844 (phone upright, the website).
+
+### Before / after
+
+| Before (4.2) | After (4.3) |
+| --- | --- |
+| ![](shots/v43-before-menu.jpg) | ![](shots/v43-after-menu.jpg) |
+| ![](shots/v43-before-locker.jpg) | ![](shots/v43-after-locker.jpg) |
+| ![](shots/v43-before-menu-phone.jpg) | ![](shots/v43-after-menu-phone.jpg) |
+| ![](shots/v43-before-coop.jpg) | ![](shots/v43-after-coop.jpg) |
+
+| | |
+| --- | --- |
+| ![](shots/v43-after-shop.jpg) Item Shop | ![](shots/v43-after-detail.jpg) Trying an item on |
+| ![](shots/v43-after-confirm.jpg) Confirming a purchase | ![](shots/v43-after-reveal.jpg) The reveal |
+| ![](shots/v43-after-challenges.jpg) Challenges | ![](shots/v43-after-profile.jpg) Profile |
+| ![](shots/v43-after-coop-run.jpg) Co-op: each player's look in the run | ![](shots/v43-after-locker-phone.jpg) Locker, phone held sideways |
+| ![](shots/v43-after-shop-phone.jpg) Item Shop, phone held sideways | ![](shots/v43-after-portrait-play.jpg) Phone upright (website) |
+
+### Known limits
+
+- **Cosmetics and Sigils are per device.** A cleared browser loses them; the Windows app keeps a file copy. Account-wide ownership needs server work.
+- **Teammates' cosmetics can't be verified,** because there's no server to check ownership. The game only checks that the ids exist.
+- **A co-op guest's contracts count the team's numbers** (kills, stars), because the host runs the robots.
+- **Gamepad navigation in the Hangar** cycles through every visible button rather than moving spatially.
+- **No human playtest yet.**
 
 ## Phase III — 4.2 "Ascension Unleashed": evolutions, fusions, Boss Rush, mutations, achievements, events
 
