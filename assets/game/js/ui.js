@@ -4,11 +4,13 @@
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { input } from "./input.js";
-import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
+import { store, GFX_PRESETS, GFX_KEYS } from "./storage.js";
 import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
 import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
 import { evoChoices } from "./evolve.js";
-import { ACHIEVEMENTS, ACH_BY_ID, COSMETICS, cosUnlocked, cosOf, unlockedAch, rewardNames, lookSuit, HATS, HAT_BY_ID, hatOwned, hatOf, buyHat, wearHat } from "./progress.js";
+import { ACHIEVEMENTS, ACH_BY_ID, unlockedAch, rewardNames } from "./progress.js";
+import { equipped } from "./catalog.js";
+import { hangar, lookArt } from "./hangar.js";
 import { sprites, PAL } from "./sprites.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
@@ -48,7 +50,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 6;
+const NEWS_VERSION = 7;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
@@ -74,7 +76,7 @@ export const ui = {
     document.body.appendChild(defs);
 
     const click = (id, fn) => { const n = $(id); if (n) n.addEventListener("click", (e) => { handlers.onClick && handlers.onClick(); fn(e); }); };
-    click("play-btn", () => handlers.onPlay());
+    click("play-btn", () => hangar.play());
     for (const b of document.querySelectorAll(".diff-opt")) {
       b.addEventListener("click", () => { store.data.settings.difficulty = b.dataset.diff; store.save(); this.renderDifficulty(); });
     }
@@ -96,13 +98,8 @@ export const ui = {
     click("news-btn", () => this.show("news"));
     click("download-btn", () => this.show("download"));
     click("download-done", () => this.show("menu"));
-    click("coop-btn", () => handlers.onCoop());
-    click("rush-btn", () => handlers.onRush());
-    click("profile-btn", () => this.openProfile("achv"));
-    click("ptab-achv", () => this.openProfile("achv"));
-    click("ptab-locker", () => this.openProfile("locker"));
-    click("profile-done", () => this.show("menu"));
     G.on("achv", (a) => this.achvPop(a));
+    hangar.init({ ui: this, handlers, sfx: (n) => handlers.onSfx && handlers.onSfx(n), name: () => (online.user ? "@" + online.name : "Pilot") });
     G.on("sigils", (s) => {
       if (s.quiet) return;
       const why = s.why === "win" ? " · the Ladder is yours" : s.why === "rush" ? " · Boss Rush cleared" : "";
@@ -139,7 +136,6 @@ export const ui = {
     document.querySelectorAll("#settings-form .tab").forEach((t) => t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.settingsTab(t.dataset.tab); }));
     click("settings-done", () => this.closeSettings());
     click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
-    click("daily-btn", () => handlers.onDaily());
     click("board-btn", () => this.openBoard("all", "menu"));
     click("board-done", () => this.show(this.boardBack || "menu"));
     click("board-signin", () => online.signIn());
@@ -206,14 +202,13 @@ export const ui = {
     detail("set-trails", "change", (n) => { s().trails = n.checked; });
     detail("set-grid", "change", (n) => { s().grid = n.checked; });
 
-    this.renderSuits();
     this.syncSettings();
     this.syncMute();
   },
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "profile", "event", "download"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "event", "download"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -225,7 +220,7 @@ export const ui = {
     if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo" || name === "rushdone" || name === "event") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
     if (name === "how") this.renderHow();
     if (name === "download") this.renderDownload();
-    if (name === "menu") this.refreshMenu();
+    if (name === "menu") { this.refreshMenu(); hangar.show(); }
     const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
@@ -348,22 +343,10 @@ export const ui = {
       add("Best score", "—");
       add("Best wave", "—");
     }
-    this.renderSuits();
     this.renderDifficulty();
     this.renderControlsHint();
     this.renderLadder($("mini-ladder"), b.rung || 0, (b.wins || 0) > 0);
     this.renderProfileStrip();
-    const rb = $("rush-btn");
-    if (rb) {
-      const open = store.rushUnlocked();
-      rb.classList.toggle("locked", !open);
-      rb.title = open ? "The seven sins, back to back" : "Beat @Envy on the Sin Ladder to open Boss Rush";
-      const best = store.data.rush.best[store.data.settings.difficulty];
-      $("rush-label").textContent = !open ? "Boss Rush · locked" : best ? "Boss Rush · " + fmtClock(best.time) : "Boss Rush";
-    }
-    const daily = store.data.daily;
-    const today = todayUTC();
-    $("daily-label").textContent = daily.date === today && daily.score > 0 ? "Daily · best " + formatScore(daily.score) : "Daily Challenge";
     const nb = $("news-btn");
     if (nb) nb.classList.toggle("fresh", store.data.seenNews !== NEWS_VERSION);
     this.renderAccount();
@@ -502,28 +485,6 @@ export const ui = {
     for (const b of document.querySelectorAll(".diff-opt")) b.setAttribute("aria-checked", b.dataset.diff === cur ? "true" : "false");
     const note = $("diff-note");
     if (note) note.textContent = DIFF_NOTES[cur];
-  },
-
-  renderSuits() {
-    const list = $("suit-list");
-    if (!list) return;
-    list.replaceChildren();
-    const cur = store.data.settings.suit;
-    for (const s of SUITS) {
-      const unlocked = store.suitUnlocked(s);
-      const need = s.achv ? "Earn " + (ACH_BY_ID[s.achv] ? ACH_BY_ID[s.achv].name : s.achv) : "Reach wave " + s.wave;
-      const b = el("button", "suit");
-      b.type = "button";
-      b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", s.id === cur ? "true" : "false");
-      b.setAttribute("aria-label", s.name + (unlocked ? "" : " (" + need.toLowerCase() + ")"));
-      b.title = unlocked ? s.name : need + " to unlock";
-      b.style.setProperty("--suit", s.suit);
-      b.style.setProperty("--trim", s.trim);
-      if (!unlocked) { b.disabled = true; b.append(el("span", "lock", s.achv ? "\u2605" : "W" + s.wave)); }
-      b.addEventListener("click", () => { handlers.onSuit(s.id); this.renderSuits(); });
-      list.append(b);
-    }
   },
 
   renderControlsHint() {
@@ -864,7 +825,7 @@ export const ui = {
     if (!box) return;
     box.replaceChildren();
     const c = store.data.cos;
-    const title = cosOf("title");
+    const title = equipped("title");
     for (const id of c.badges || []) {
       const a = ACH_BY_ID[id];
       if (!a || !unlockedAch(id)) continue;
@@ -875,26 +836,18 @@ export const ui = {
       box.append(b);
     }
     if (title.id) box.append(el("span", "player-title", title.name));
-    const sg = store.data.sigils || 0;
-    if (sg > 0) {
-      const s = el("span", "sigil-chip");
-      s.title = "Sigils: spend them on hats in your Profile's Locker";
-      s.append(icon("gem"), el("b", "", String(sg)));
-      box.append(s);
-    }
     const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
     const lab = $("profile-label");
-    if (lab) lab.textContent = "Profile · " + n + "/" + ACHIEVEMENTS.length;
+    if (lab) lab.title = n + " of " + ACHIEVEMENTS.length + " achievements";
   },
 
   openProfile(tab) {
-    this.hatPick = null;
-    $("ptab-achv").setAttribute("aria-selected", tab === "achv" ? "true" : "false");
-    $("ptab-locker").setAttribute("aria-selected", tab === "locker" ? "true" : "false");
-    $("ppage-achv").hidden = tab !== "achv";
-    $("ppage-locker").hidden = tab !== "locker";
-    if (tab === "achv") this.renderAchievements(); else this.renderLocker();
-    if (screen !== "profile") this.show("profile");
+    this.hangarTab(tab === "locker" ? "locker" : "profile");
+  },
+  /** Opens the Hangar on one of its tabs (play, locker, shop, challenges, profile). */
+  hangarTab(t) {
+    if (screen !== "menu") this.show("menu");
+    hangar.tab(t, true);
   },
 
   /** Every achievement: unlocked ones show when, locked ones what to do (and how far along you are). Tap an unlocked one to pin its badge (3 at most). */
@@ -938,150 +891,6 @@ export const ui = {
       });
       list.append(b);
     }
-  },
-
-  /** The locker: suit, visor, jetpack trail, weapon finish, title, victory effect, with a live preview. */
-  /** Hats: the ones you own swap on with a tap; tap one you don't to try it on in the preview, then buy it with Sigils. */
-  renderHats(box) {
-    const sec = el("div", "locker-sec hats");
-    const head = el("div", "hat-head");
-    const bal = el("span", "sigil-bal");
-    bal.title = "Sigils: from sin bosses, Ladder wins, Boss Rush clears and achievements (more on Hard and Nightmare)";
-    bal.append(icon("gem"), el("b", "", String(store.data.sigils || 0)), el("span", "", " Sigils"));
-    head.append(el("h3", "set-h", "Hat"), bal);
-    sec.append(head);
-    const row = el("div", "locker-row");
-    const cur = hatOf();
-    for (const h of HATS) {
-      const owned = hatOwned(h.id);
-      const b = el("button", "lock-opt" + (h.id === cur ? " on" : "") + (h.id === this.hatPick ? " pick" : ""));
-      b.type = "button";
-      b.setAttribute("aria-pressed", h.id === cur ? "true" : "false");
-      const sw = el("i", "swatch");
-      sw.style.setProperty("--sw", h.col);
-      b.append(sw, el("span", "", h.name));
-      if (!owned) {
-        const p = el("small", "price");
-        p.append(icon("gem"), document.createTextNode(String(h.price)));
-        b.append(p);
-        b.title = "Try it on, then buy it for " + h.price + " Sigils";
-      } else if (h.note) b.title = h.note;
-      b.addEventListener("click", () => {
-        if (owned) { this.hatPick = null; wearHat(h.id); handlers.onHat && handlers.onHat(false); }
-        else { this.hatPick = h.id; handlers.onClick && handlers.onClick(); }
-        this.renderLocker();
-      });
-      row.append(b);
-    }
-    sec.append(row);
-    const pick = this.hatPick && HAT_BY_ID[this.hatPick];
-    if (pick && !hatOwned(pick.id)) {
-      const have = store.data.sigils || 0;
-      const bar = el("div", "hat-buy");
-      const what = el("span", "");
-      what.append(el("b", "", pick.name), document.createTextNode(" · "), icon("gem"), document.createTextNode(" " + pick.price));
-      const buy = el("button", "btn btn-primary btn-sm", have >= pick.price ? "Buy and wear" : "Need " + (pick.price - have) + " more");
-      buy.type = "button";
-      buy.disabled = have < pick.price;
-      buy.addEventListener("click", () => {
-        if (!buyHat(pick.id)) return;
-        this.hatPick = null;
-        handlers.onHat && handlers.onHat(true);
-        this.toast(pick.name + ": yours", 1800);
-        this.renderLocker();
-        this.renderProfileStrip();
-      });
-      bar.append(what, buy, el("small", "", "Trying it on in the preview"));
-      sec.append(bar);
-    }
-    box.append(sec);
-  },
-
-  renderLocker() {
-    const box = $("locker-opts");
-    box.replaceChildren();
-    this.renderHats(box);
-    const c = store.data.cos;
-    const kinds = [["suit", "Suit"], ["visor", "Visor"], ["trail", "Jetpack trail"], ["finish", "Weapon finish"], ["title", "Title"], ["victory", "Victory effect"]];
-    for (const [kind, label] of kinds) {
-      const sec = el("div", "locker-sec");
-      sec.append(el("h3", "set-h", label));
-      const row = el("div", "locker-row");
-      const opts = kind === "suit" ? SUITS.map((s) => ({ id: s.id, name: s.name, col: s.trim, achv: s.achv, wave: s.wave })) : COSMETICS[kind];
-      const cur = kind === "suit" ? store.data.settings.suit : c[kind] || "";
-      for (const o of opts) {
-        const open = cosUnlocked(kind, o.id);
-        const b = el("button", "lock-opt" + (o.id === cur ? " on" : ""));
-        b.type = "button";
-        b.setAttribute("aria-pressed", o.id === cur ? "true" : "false");
-        const sw = el("i", "swatch");
-        const col = o.col || (o.pals ? PAL[o.pals[0]] : o.sins ? "#ff9448" : o.prism ? "#ff5ce1" : "#a57bff");
-        sw.style.setProperty("--sw", col);
-        if (o.sins || o.prism) sw.classList.add("rainbow");
-        b.append(sw, el("span", "", o.name));
-        if (!open) {
-          b.disabled = true;
-          b.title = o.achv ? "Earn " + (ACH_BY_ID[o.achv] ? ACH_BY_ID[o.achv].name : o.achv) : "Reach wave " + o.wave;
-          b.append(el("small", "", o.achv ? "\u2605 " + (ACH_BY_ID[o.achv] ? ACH_BY_ID[o.achv].name : "") : "Wave " + o.wave));
-        }
-        b.addEventListener("click", () => {
-          if (kind === "suit") { handlers.onSuit(o.id); }
-          else { c[kind] = o.id; store.save(); if (kind === "visor") handlers.onLook && handlers.onLook(); handlers.onClick && handlers.onClick(); }
-          this.renderLocker();
-          this.renderProfileStrip();
-        });
-        row.append(b);
-      }
-      sec.append(row);
-      box.append(sec);
-    }
-    this.previewLoop();
-  },
-
-  /** Draws your astronaut in the locker (suit, visor, gun finish, a puff of your trail) while it's open. */
-  previewLoop() {
-    const cv = $("locker-preview");
-    if (!cv || this.previewOn) return;
-    this.previewOn = true;
-    const g = cv.getContext("2d");
-    let suitKey = "", spr = null;
-    const puffs = [];
-    const frame = (now) => {
-      if (screen !== "profile" || $("ppage-locker").hidden) { this.previewOn = false; return; }
-      const worn = lookSuit(SUITS.find((s) => s.id === store.data.settings.suit) || SUITS[0]);
-      const suit = this.hatPick ? { ...worn, hat: this.hatPick } : worn;        // trying a hat on
-      const key = suit.id + suit.visor + suit.hat;
-      if (key !== suitKey || !spr) { suitKey = key; spr = sprites.astronaut(2.4, suit).player; }
-      const t = now / 1000;
-      g.clearRect(0, 0, cv.width, cv.height);
-      g.fillStyle = "#050820"; g.fillRect(0, 0, cv.width, cv.height);
-      // the trail
-      const tr = cosOf("trail");
-      if (Math.random() < 0.6) {
-        const col = tr.col || (tr.pals ? PAL[tr.pals[Math.random() < 0.5 ? 0 : 1]] : tr.sins ? PAL[13 + (Math.floor(t * 6) % 7)] : PAL[Math.random() < 0.5 ? 1 : 10]);
-        puffs.push({ x: 84, y: 118, vx: -60 - Math.random() * 40, vy: 20 + Math.random() * 30, life: 0.7, col });
-      }
-      for (let i = puffs.length - 1; i >= 0; i--) {
-        const p = puffs[i];
-        p.life -= 1 / 60; p.x += p.vx / 60; p.y += p.vy / 60;
-        if (p.life <= 0) { puffs.splice(i, 1); continue; }
-        g.globalAlpha = p.life;
-        g.fillStyle = p.col;
-        g.beginPath(); g.arc(p.x, p.y, 3 + (0.7 - p.life) * 6, 0, Math.PI * 2); g.fill();
-      }
-      g.globalAlpha = 1;
-      const bob = Math.sin(t * 3) * 3;
-      const S = 128;
-      g.drawImage(spr.c, 104 - S / 2, 96 - S / 2 + bob, S, S);
-      // the gun, in your finish
-      const f = cosOf("finish");
-      g.fillStyle = f.prism ? "hsl(" + Math.round((t * 90) % 360) + ", 85%, 78%)" : f.col || "#c9d0f2";
-      g.fillRect(112, 97 + bob, 36, 10);
-      g.fillStyle = "#232c5e"; g.fillRect(112, 97 + bob, 10, 10);
-      g.fillStyle = "#63f4ff"; g.fillRect(142, 97 + bob, 6, 10);
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
   },
 
   /** An achievement just unlocked: a card slides in at the top (several queue up). */
@@ -1177,6 +986,7 @@ export const ui = {
     add("Bosses", sum.beaten + " / 7");
     if (sum.killedBy) add("Got you", sum.killedBy);
     if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
+    for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
     const tb = $("rush-splits").tBodies[0];
     tb.replaceChildren();
     for (const s of sum.splits || []) {
@@ -1298,7 +1108,8 @@ export const ui = {
       const m = members.find((x) => x.slot === i);
       const li = el("li", "lobby-slot" + (m ? "" : " empty"));
       li.style.setProperty("--slot", SLOT_COL[i]);
-      li.append(el("span", "lobby-dot"));
+      if (m) { const art = el("span", "lobby-astro"); art.append(lookArt(m.suit, 46, 52)); li.append(art); }
+      else li.append(el("span", "lobby-dot"));
       li.append(el("span", "lobby-pname", m ? m.name : "Waiting for a player…"));
       if (m && m.slot === 0) li.append(el("span", "lobby-tag", "Host"));
       list.append(li);
@@ -1529,6 +1340,7 @@ export const ui = {
     if (sum.spent) add("Stars spent", String(sum.spent));
     if (sum.killedBy) add("Got you", sum.killedBy);
     if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
+    for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
     renderArsenal(buildBox);
@@ -1549,7 +1361,9 @@ export const ui = {
 
   // ---------------- gamepad menu navigation ----------------
   navigate(dir) {
-    const root = screen && $("screen-" + screen);
+    let root = screen && $("screen-" + screen);
+    // in the Hangar, an open item panel or reveal keeps the focus to itself
+    if (screen === "menu") { const ov = [$("reveal"), $("item-detail")].find((n) => n && !n.hidden); if (ov) root = ov; }
     if (!root) return;
     const list = Array.from(root.querySelectorAll("button:not([disabled]), input, select")).filter((n) => n.offsetParent !== null);
     if (!list.length) return;

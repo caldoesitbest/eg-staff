@@ -6,7 +6,7 @@
 
 import { G, usePlayer, setDifficulty, diff } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { store, SUITS, GFX_PRESETS } from "./storage.js";
+import { store, GFX_PRESETS } from "./storage.js";
 import { startLoop } from "./loop.js";
 import { input } from "./input.js";
 import { audio } from "./audio.js";
@@ -26,7 +26,10 @@ import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patc
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { fusionActivated, fusionWave } from "./fusion.js";
 import { mutKey, mutHint } from "./mutations.js";
-import { progressTick, lookSuit, lookCode, sigilsBoss, sigilsWin, sigilsRush } from "./progress.js";
+import { progressTick, sigilsBoss, sigilsWin, sigilsRush } from "./progress.js";
+import { look, lookCode, itemsOf } from "./catalog.js";
+import { reportRun } from "./contracts.js";
+import { hangar } from "./hangar.js";
 import { rollChapterEvent, eventWaveStart, eventTick, pendingEvent, eventDone, cacheAway, cacheOptions, relicOptions, takeRelic, altarOptions, takeAltar, acceptAmbush, ambushReward } from "./events.js";
 import { giveItem } from "./armory.js";
 import { net } from "./net.js";
@@ -54,7 +57,7 @@ const root = document.getElementById("game");
 const canvas = document.getElementById("game-canvas");
 const layer = document.getElementById("touch-layer");
 
-const suitDef = () => lookSuit(SUITS.find((s) => s.id === G.settings.suit && store.suitUnlocked(s)) || SUITS[0]);
+const suitDef = () => look();          // what you're wearing (catalog.js)
 
 const FIXED_LEVEL = { high: 2, medium: 1, low: 0, potato: 0, custom: 2 };
 /** Auto's starting point, from what the device says about itself (it adjusts from there as you play). */
@@ -140,6 +143,18 @@ function setupRunPlayers(isCoop) {
   }
   usePlayer(G.me);
 }
+
+/** Files this run against today's contracts (once: at game over, Boss Rush results, or when you quit it). */
+function fileRun() {
+  if (G.runFiled) return;
+  G.runFiled = true;
+  const rush = G.mode === "rush";
+  G.runContracts = reportRun({
+    kills: G.kills, wave: G.wave, bosses: rush ? (G.rush ? G.rush.i : 0) : G.bossesKilled || 0, perfects: G.perfects || 0,
+    stars: G.starsTotal || 0, combo: G.bestCombo || 0, difficulty: G.difficulty, daily: !!G.daily, rush,
+  });
+}
+G.on("runStart", () => { G.runFiled = false; G.runContracts = []; });
 
 function menuScene() {
   clearWorld();
@@ -421,6 +436,7 @@ function finishRush(cleared) {
   G.emit("rushDone", sum);
   lastRun = sum;
   hostSend({ k: "rushdone", sum: { ...sum, build: [] } });
+  fileRun();
   setState("over");
   ui.showRushDone(sum);
   audio.play(cleared ? "newBest" : "gameOver");
@@ -821,7 +837,7 @@ function gameOver() {
   store.data.totals.kills += sum.kills;
   if (!record) sum.buildTitle = (sum.buildTitle || "") + (G.net.role !== "off" ? " · co-op run (solo bests and the leaderboard stay solo)" : " · debug run, bests not saved");
   if (G.net.role !== "off") sum.team = G.players.filter((p) => !p.gone).map((p) => p.name).join(", ");
-  const unlocked = SUITS.filter((s) => s.wave > oldWave && s.wave <= best.wave);
+  const unlocked = itemsOf("suit").filter((s) => s.wave && s.wave > oldWave && s.wave <= best.wave);
   if (unlocked.length) sum.unlock = unlocked.map((s) => s.name).join(" and ");
   const pool = TITLES.find((t) => sum.wave >= t[0])[1];
   sum.title = G.won ? (G.lap > 0 || G.wave > 35 ? "Past the top of the Ladder" : "You climbed the whole Ladder") : pool[Math.floor(Math.random() * pool.length)];
@@ -831,6 +847,7 @@ function gameOver() {
     const d = store.data.daily;
     if (d.date === G.daily && sum.score > d.score) { d.score = sum.score; d.wave = sum.wave; sum.dailyBest = true; }
   }
+  fileRun();
   G.emit("runOver", sum);
   store.save(true);
   postRun(sum);
@@ -1006,8 +1023,8 @@ ui.init({
   onExit: () => { store.save(true); if (G.desktop) window.chrome.webview.postMessage({ type: "quit" }); },
   onPause: pause,
   onResume: resume,
-  onRestart: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.mode === "rush" ? { rush: true, mods: G.rush.mods } : G.daily ? { daily: todayUTC() } : null); },
-  onQuit: () => { if (G.net.role !== "off") endCoop(); toMenu(); },
+  onRestart: () => { if (G.net.role !== "client") fileRun(); if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.mode === "rush" ? { rush: true, mods: G.rush.mods } : G.daily ? { daily: todayUTC() } : null); },
+  onQuit: () => { if (G.state !== "menu") fileRun(); if (G.net.role !== "off") endCoop(); toMenu(); },
   onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
   onLobbyHost: async (name) => {
     store.data.coopName = name; store.save();
@@ -1033,9 +1050,8 @@ ui.init({
   onSelectSlot: (i) => { if (swapGun(i)) audio.play("swap"); ui.renderShop(); },
   onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
   onSettings: applySettings,
-  onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
   onLook: () => renderer.setSuit(suitDef()),
-  onHat: (bought) => { audio.play(bought ? "buy" : "click"); renderer.setSuit(suitDef()); },
+  onSfx: (name) => audio.play(name),
   onAchv: () => audio.play("achv"),
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
@@ -1066,6 +1082,7 @@ input.onPause = () => {
     resume();
     return true;
   }
+  if (s === "menu" && ui.screen === "menu") return hangar.back();
   if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
   if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
@@ -1076,6 +1093,7 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
+  else if (G.state === "menu" && ui.screen === "menu") hangar.back();
   else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download") ui.show("menu");
   else if (G.state === "paused") resume();
 };
@@ -1244,6 +1262,7 @@ if (G.debug.on) {
 // desktop app + online
 // ---------------------------------------------------------------------------
 ui.setApp(G.desktop || G.androidApp);
+G.on("look", () => renderer.setSuit(suitDef()));
 if (G.desktop) {
   ui.setDesktop(true);
   // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)
@@ -1322,13 +1341,14 @@ initCoop({
     if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
     waveIntro(n);
   },
-  rushDone: (sum) => { sigilsRush(sum); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
-  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) sigilsBoss(); },
+  rushDone: (sum) => { sigilsRush(sum); fileRun(); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
     delete sum.dmg; delete sum.big; delete sum.topGun;
     sum.spent = G.runStats ? G.runStats.spent : 0;
     sum.killedBy = sourceName(G.me && G.me.killedBy);
+    fileRun();
     lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver");
   },
   showWin: (sum) => { sigilsWin(); ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },

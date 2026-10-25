@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=6">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=8">
+<link rel="stylesheet" href="../assets/game/game.css?v=9">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -91,56 +91,131 @@
   <div class="toast" id="toast" role="status"></div>
   <div class="achv-pop" id="achv-pop" role="status" aria-live="polite"></div>
 
-  <!-- start menu -->
-  <section class="screen screen-menu" id="screen-menu" aria-labelledby="menu-title">
-    <header class="menu-top">
+  <!-- the Cosmic Hangar: the lobby (Play, Locker, Item Shop, Challenges, Profile) -->
+  <section class="screen screen-menu hangar" id="screen-menu" data-tab="play" aria-labelledby="menu-title">
+    <header class="hangar-top">
       <div class="brand-slot" id="brand-slot" data-mark="/assets/home/eg-mark.webp"><a class="brand" href="/"><img class="brand-mark" src="/assets/home/eg-mark.webp" alt="" width="44" height="33"><span>Envious Gluttony™</span></a></div>
+      <nav class="hangar-nav" aria-label="Hangar">
+        <button class="hnav on" type="button" data-tab="play" aria-current="page"><i data-icon="zap"></i><span>Play</span></button>
+        <button class="hnav" type="button" data-tab="locker"><i data-icon="shirt"></i><span>Locker</span></button>
+        <button class="hnav" type="button" data-tab="shop"><i data-icon="shopping-bag"></i><span>Item Shop</span><b class="hnav-dot" id="shop-dot" hidden></b></button>
+        <button class="hnav" type="button" data-tab="challenges"><i data-icon="list-checks"></i><span>Challenges</span><b class="hnav-dot" id="contract-dot" hidden></b></button>
+        <button class="hnav" type="button" data-tab="profile" id="profile-btn"><i data-icon="badge-check"></i><span id="profile-label">Profile</span></button>
+      </nav>
       <div class="menu-tools">
+        <span class="hangar-sigils" id="hangar-sigils"></span>
         <button class="account-chip" id="account-chip" type="button" hidden></button>
+        <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings"><i data-icon="settings"></i></button>
         <button class="icon-btn" id="menu-fullscreen" type="button" aria-label="Fullscreen" hidden><i data-icon="maximize"></i></button>
         <button class="icon-btn" id="menu-mute" type="button" aria-label="Mute sound"><i data-icon="volume-2"></i></button>
       </div>
     </header>
-    <div class="menu-main">
-      <p class="kicker"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
-      <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
-      <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
-      <div class="menu-actions">
-        <button class="btn btn-primary btn-xl" id="play-btn" type="button"><i data-icon="zap"></i>Climb the Ladder</button>
-        <button class="btn btn-ghost btn-daily" id="daily-btn" type="button"><i data-icon="calendar-days"></i><span id="daily-label">Daily Challenge</span></button>
-        <button class="btn btn-ghost btn-coop" id="coop-btn" type="button"><i data-icon="users"></i>Co-op <small>2–4</small></button>
-        <button class="btn btn-ghost btn-rush" id="rush-btn" type="button"><i data-icon="flame"></i><span id="rush-label">Boss Rush</span></button>
+
+    <div class="hangar-body">
+      <!-- Play -->
+      <div class="hpane hpane-play" id="hpane-play">
+        <div class="hp-left">
+          <p class="kicker"><span>Envious Gluttony™</span><i>✦</i><span>Arcade</span></p>
+          <h1 class="title" id="menu-title"><span class="title-tag">Envious Glider</span><span class="title-sub">Sinners <b>vs.</b> Machines</span></h1>
+          <p class="lede">The robots want our planet. You've got a blaster, a boost and seven bad habits. Hold the line.</p>
+          <div class="pilot-card">
+            <div class="profile-strip" id="profile-strip"></div>
+            <dl class="bests" id="bests"></dl>
+          </div>
+          <div class="ladder-panel">
+            <p class="kicker"><span>The Sin Ladder</span></p>
+            <ol class="mini-ladder" id="mini-ladder"></ol>
+          </div>
+        </div>
+        <div class="hp-stage">
+          <canvas class="stage-canvas" id="stage-play" aria-label="Your astronaut"></canvas>
+          <div class="stage-plate"><b id="stage-name">Pilot</b><span id="stage-title" hidden></span></div>
+          <button class="stage-edit" type="button" data-goto="locker"><i data-icon="shirt"></i>Change your look</button>
+        </div>
+        <div class="hp-right">
+          <h2 class="hp-h">Mode</h2>
+          <div class="mode-list" role="radiogroup" aria-label="Mode">
+            <button class="mode-card" id="mode-ladder" type="button" role="radio" data-mode="ladder"><i data-icon="zap"></i><span class="mode-txt"><b>The Sin Ladder</b><small id="ladder-label">Seven sins, one climb</small></span></button>
+            <button class="mode-card mode-daily" id="daily-btn" type="button" role="radio" data-mode="daily"><i data-icon="calendar-days"></i><span class="mode-txt"><b>Daily Challenge</b><small id="daily-label">Same seed for everyone today</small></span></button>
+            <button class="mode-card mode-rush" id="rush-btn" type="button" role="radio" data-mode="rush"><i data-icon="flame"></i><span class="mode-txt"><b>Boss Rush</b><small id="rush-label">Seven sins, back to back</small></span></button>
+            <button class="mode-card mode-coop" id="coop-btn" type="button" role="radio" data-mode="coop"><i data-icon="users"></i><span class="mode-txt"><b>Co-op <em>2–4</em></b><small>Host a lobby or join a friend's</small></span></button>
+          </div>
+          <div class="diff-pick" role="radiogroup" aria-label="Difficulty" aria-describedby="diff-note">
+            <span class="diff-label">Difficulty</span>
+            <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
+            <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
+            <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
+            <span class="diff-note" id="diff-note"></span>
+          </div>
+          <button class="feat-card" id="hangar-feat" type="button"></button>
+        </div>
       </div>
-      <div class="diff-pick" role="radiogroup" aria-label="Difficulty" aria-describedby="diff-note">
-        <span class="diff-label">Difficulty</span>
-        <button class="diff-opt" type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
-        <button class="diff-opt" type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
-        <button class="diff-opt" type="button" role="radio" data-diff="nightmare" aria-checked="false">Nightmare</button>
-        <span class="diff-note" id="diff-note"></span>
+      <!-- Locker, Item Shop, Challenges: built by hangar.js -->
+      <div class="hpane hpane-locker" id="hpane-locker" hidden></div>
+      <div class="hpane hpane-shop" id="hpane-shop" hidden></div>
+      <div class="hpane hpane-challenges" id="hpane-challenges" hidden></div>
+      <!-- Profile -->
+      <div class="hpane hpane-profile" id="hpane-profile" hidden>
+        <div class="prof">
+          <aside class="prof-card">
+            <canvas class="stage-canvas" id="stage-profile" aria-label="Your astronaut"></canvas>
+            <h2 class="prof-name" id="prof-name">Pilot</h2>
+            <p class="prof-title" id="prof-title"></p>
+            <dl class="prof-stats" id="prof-stats"></dl>
+          </aside>
+          <section class="prof-achv">
+            <h2 class="chal-h">Achievements</h2>
+            <p class="set-note" id="achv-summary"></p>
+            <div class="achv-list" id="achv-list" role="list"></div>
+          </section>
+        </div>
       </div>
-      <div class="menu-actions menu-actions-2">
+    </div>
+
+    <footer class="hangar-foot">
+      <div class="foot-links">
         <button class="btn btn-ghost btn-sm" id="board-btn" type="button"><i data-icon="trophy"></i>Leaderboard</button>
-        <button class="btn btn-ghost btn-sm" id="profile-btn" type="button"><i data-icon="badge-check"></i><span id="profile-label">Profile</span></button>
         <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
-        <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
         <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
         <button class="btn btn-ghost btn-sm" id="download-btn" type="button"><i data-icon="download"></i>Download</button>
         <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
+        <span class="menu-ver" id="menu-ver">v4.3 · Cosmic Hangar</span>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
-      <dl class="bests" id="bests"></dl>
-      <div class="profile-strip" id="profile-strip"></div>
-      <div class="suits">
-        <span class="suits-label">Suit</span>
-        <div class="suit-list" id="suit-list" role="radiogroup" aria-label="Suit colour"></div>
+      <button class="btn btn-primary btn-xl play-big" id="play-btn" type="button"><i data-icon="zap"></i><span class="play-txt"><b>Play</b><small id="play-sub">The Sin Ladder · Normal</small></span></button>
+    </footer>
+
+    <!-- one item, up close: try it on, buy it, wear it -->
+    <div class="item-detail" id="item-detail" hidden role="dialog" aria-modal="true" aria-labelledby="idet-name">
+      <div class="idet-panel" id="idet-panel">
+        <button class="icon-btn idet-close" id="idet-close" type="button" aria-label="Close"><i data-icon="x"></i></button>
+        <div class="idet-stage">
+          <canvas class="stage-canvas" id="stage-detail" aria-label="Trying it on"></canvas>
+          <div class="stage-plate"><span id="idet-plate" hidden></span></div>
+        </div>
+        <div class="idet-info">
+          <p class="idet-kicker" id="idet-kicker"></p>
+          <h3 class="idet-name" id="idet-name"></h3>
+          <p class="idet-desc" id="idet-desc"></p>
+          <div class="idet-src" id="idet-src"></div>
+          <div class="idet-actions" id="idet-actions"></div>
+          <p class="idet-bal" id="idet-bal"></p>
+        </div>
       </div>
     </div>
-    <aside class="ladder-panel" aria-labelledby="ladder-title">
-      <p class="kicker"><span>The Sin Ladder</span></p>
-      <h2 class="ladder-title" id="ladder-title">Seven sins. One climb.</h2>
-      <ol class="mini-ladder" id="mini-ladder"></ol>
-    </aside>
-    <footer class="menu-foot"><span class="menu-ver" id="menu-ver">v4.2 · Ascension Unleashed</span><span>Same planet.</span> <span>Different breed.</span></footer>
+    <!-- bought it: a short, skippable reveal -->
+    <div class="reveal" id="reveal" hidden role="dialog" aria-modal="true" aria-labelledby="reveal-name">
+      <div class="reveal-rays" aria-hidden="true"></div>
+      <div class="reveal-card">
+        <p class="reveal-k" id="reveal-k"></p>
+        <div class="reveal-art" id="reveal-art"></div>
+        <h3 class="reveal-name" id="reveal-name"></h3>
+        <div class="reveal-actions">
+          <button class="btn btn-primary" id="reveal-wear" type="button"><i data-icon="shirt"></i>Wear it now</button>
+          <button class="btn btn-ghost" id="reveal-keep" type="button">Keep browsing</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- pause -->
@@ -286,28 +361,6 @@
         <button class="btn btn-primary btn-xl" id="rushdone-again" type="button"><i data-icon="refresh-cw"></i>Run it back</button>
         <button class="btn btn-ghost" id="rushdone-menu" type="button"><i data-icon="house"></i>Menu</button>
       </div>
-    </div>
-  </section>
-
-  <!-- profile: achievements + the locker (cosmetics) -->
-  <section class="screen screen-profile" id="screen-profile" hidden aria-labelledby="profile-title">
-    <div class="panel panel-wide glow-card profile">
-      <h2 class="panel-title" id="profile-title">Profile</h2>
-      <div class="tabs" role="tablist">
-        <button class="tab" id="ptab-achv" type="button" role="tab" aria-selected="true">Achievements</button>
-        <button class="tab" id="ptab-locker" type="button" role="tab" aria-selected="false">Locker</button>
-      </div>
-      <div class="ppage" id="ppage-achv">
-        <p class="set-note" id="achv-summary"></p>
-        <div class="achv-list" id="achv-list" role="list"></div>
-      </div>
-      <div class="ppage" id="ppage-locker" hidden>
-        <div class="locker">
-          <canvas class="locker-preview" id="locker-preview" width="220" height="200" aria-label="Your astronaut"></canvas>
-          <div class="locker-opts" id="locker-opts"></div>
-        </div>
-      </div>
-      <button class="btn btn-primary" id="profile-done" type="button">Done</button>
     </div>
   </section>
 
@@ -461,18 +514,18 @@
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 4.2</span><i>&#10022;</i><span>Ascension Unleashed</span></p>
+      <p class="kicker"><span>Update 4.3</span><i>&#10022;</i><span>Cosmic Hangar</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
-        <li><b>Weapon evolutions.</b> Take a gun to Tier IV, beat the next sin boss, and it evolves down one of two paths, for good: Starbreaker or Phantom Repeater, Supernova or Shredder, Overdrive or Neurotoxin, Annihilator or Singularity, Cataclysm or Gravity Well, Thunderlord or Tempest, Blood Moon or Soulbound. Each one changes how the gun plays, and its charged shot.</li>
-        <li><b>Sin Fusions.</b> Take two sins to level 3 and a fusion card can turn up: Covetous King, Bloodlust, Immortal Feast, Frozen Judgment, Golden Frenzy, Parasitic Heart or Stolen Time. One per run (a second in endless).</li>
-        <li><b>Boss Rush.</b> Beat Envy to unlock it: the seven sins back to back, with a draft and a short break after each. Splits against your bests, ranks, its own records, and five modifiers once you've cleared it. Co-op hosts can pick it too.</li>
-        <li><b>Elite mutations.</b> Volatile, Berserker, Armored, Shockwave, Phantom, Vampiric and Replicator robots, each with its own look and its own trick to beat.</li>
-        <li><b>Events.</b> Now and then: a Cosmic Cache drifting through, a Corrupted Armory, a Sin Altar, an Elite Ambush.</li>
-        <li><b>Achievements and the Locker.</b> 34 achievements unlock suits, visors, jetpack trails, weapon finishes, titles, badges and victory effects. Your Profile is on the menu.</li>
-        <li><b>Hats.</b> Sin bosses, Ladder wins, Boss Rush clears and achievements pay out rare <b>Sigils</b> (more on Hard and Nightmare). Spend them on nine hats in the Locker, from Sloth's Nightcap to the Halo, and swap any time. The crown is always yours.</li>
-        <li><b>Everything hits harder.</b> Bosses have more health, attack more often and bring more help; robots are tougher, keener and come in bigger waves. Overcharged elites show up from wave 8.</li>
-        <li><b>From 4.1:</b> Normal, Hard and Nightmare, smarter robots and squads, harder bosses, a darker Greed theme and a polish pass.</li>
+        <li><b>The Cosmic Hangar.</b> The menu is now a lobby: your astronaut, big, on its own platform, wearing everything you've picked and aiming where you point. Pick a mode and a difficulty on the right, then hit Play.</li>
+        <li><b>The Item Shop.</b> Over 50 cosmetics for Sigils you earn in play: hats, suits with chest emblems, visors (a starfield, cracked glass, black mirror), jetpack trails that move differently, weapon finishes, victory effects and titles. Four featured picks a day; everything else is always there. Try anything on before you buy it. No real money, ever.</li>
+        <li><b>Seven new hats.</b> Starforged Cap, Cosmic Bandit, Void Halo, Broken Halo, Overlord, Astral Crown, and the Mythic Black Hole.</li>
+        <li><b>Collections.</b> A set for each sin, plus Void and Astral. Own a whole set for its title.</li>
+        <li><b>The Locker.</b> Every slot in one place, filters and sorting, and three saved loadouts.</li>
+        <li><b>Challenges.</b> Three daily contracts that pay Sigils, today's Daily Challenge, and the achievements you're closest to.</li>
+        <li><b>Your Profile.</b> Your stats, your achievements, your astronaut.</li>
+        <li><b>Co-op.</b> Teammates see your suit, hat, visor, trail and finish, in the lobby and in the run.</li>
+        <li><b>From 4.2:</b> weapon evolutions, Sin Fusions, Boss Rush, elite mutations, achievements, events, and harder bosses.</li>
       </ul>
       <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
     </div>
@@ -481,15 +534,15 @@
   <!-- download the app (website only: hidden inside the apps) -->
   <section class="screen screen-download" id="screen-download" hidden aria-labelledby="download-title">
     <div class="panel panel-wide glow-card download">
-      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.2</span></p>
+      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.3</span></p>
       <h2 class="panel-title" id="download-title">Get the app</h2>
       <p class="set-note">The same game as this page, in its own full-screen app. Leaderboards, sign-in and co-op work whenever you're online.</p>
       <div class="dl-grid" id="dl-grid">
-        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.2" download="EnviousGlider.exe">
+        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.3" download="EnviousGlider.exe">
           <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
           <b>Windows</b><span>Windows 10 or 11 &middot; <span id="dl-win-size">1.8 MB</span></span><em><i data-icon="download"></i>Download .exe</em>
         </a>
-        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.2" download="EnviousGlider.apk" hidden>
+        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.3" download="EnviousGlider.apk" hidden>
           <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
           <b>Android</b><span>Android 7 or later &middot; <span id="dl-apk-size">0.8 MB</span></span><em><i data-icon="download"></i>Download .apk</em>
         </a>
@@ -521,7 +574,7 @@
           <li>Carry <b>two guns</b> and swap mid-fight: a crowd gun and a boss gun is a good start.</li>
           <li>Take a gun to <b>Tier IV</b> and beat the next sin boss: it <b>evolves</b> down one of two paths. Take two <b>sins to level 3</b> and a <b>Sin Fusion</b> card can turn up.</li>
           <li>Now and then something unusual happens: a <b>Cosmic Cache</b> to crack, a <b>Corrupted Armory</b>, a <b>Sin Altar</b>, an <b>Elite Ambush</b>.</li>
-          <li>Beat <b>@Envy</b> to open <b>Boss Rush</b>. Achievements unlock looks in your <b>Profile</b>, and sin bosses, wins and achievements earn rare <b>Sigils</b> for <b>hats</b>.</li>
+          <li>Beat <b>@Envy</b> to open <b>Boss Rush</b>. Sin bosses, wins, Boss Rush, achievements and daily contracts earn <b>Sigils</b>: spend them in the <b>Item Shop</b>, and dress your astronaut in the <b>Locker</b>.</li>
           <li>Stack <b>Sins</b> and gear that combo: cards and offers say when they synergise with what you have.</li>
           <li><b>Co-op</b> (2&ndash;4): one player hosts a lobby and shares the code. Everyone builds their own loadout and readies up between waves. Stand next to a downed teammate to revive them. The host should keep the game in front.</li>
           <li>Quick kills build your <b>combo</b>. Getting hit drops it.</li>
@@ -544,47 +597,50 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=8",
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=8",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=8",
-    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=8",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=8",
-    "/assets/game/js/events.js": "/assets/game/js/events.js?v=8",
-    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=8",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=8",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=8",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=8",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=8",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=8",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=8",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=8",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=8",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=8",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=8",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=8",
-    "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=8",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=8",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=8",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=8",
-    "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=8",
-    "/assets/game/js/music.js": "/assets/game/js/music.js?v=8",
-    "/assets/game/js/net.js": "/assets/game/js/net.js?v=8",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=8",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=8",
-    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=8",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=8",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=8",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=8",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=8",
-    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=8",
-    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=8",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=8",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=8",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=8",
-    "/assets/game/js/version.js": "/assets/game/js/version.js?v=8",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=8",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=8",
-    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=8"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=9",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=9",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=9",
+    "/assets/game/js/catalog.js": "/assets/game/js/catalog.js?v=9",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=9",
+    "/assets/game/js/contracts.js": "/assets/game/js/contracts.js?v=9",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=9",
+    "/assets/game/js/events.js": "/assets/game/js/events.js?v=9",
+    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=9",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=9",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=9",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=9",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=9",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=9",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=9",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=9",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=9",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=9",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=9",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=9",
+    "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=9",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=9",
+    "/assets/game/js/hangar.js": "/assets/game/js/hangar.js?v=9",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=9",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=9",
+    "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=9",
+    "/assets/game/js/music.js": "/assets/game/js/music.js?v=9",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=9",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=9",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=9",
+    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=9",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=9",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=9",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=9",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=9",
+    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=9",
+    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=9",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=9",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=9",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=9",
+    "/assets/game/js/version.js": "/assets/game/js/version.js?v=9",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=9",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=9",
+    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=9"
   }
 }
 </script>
@@ -593,6 +649,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=9" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=8"></script>
+<script type="module" src="../assets/game/js/main.js?v=9"></script>
 </body>
 </html>

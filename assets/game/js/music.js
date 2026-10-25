@@ -24,9 +24,10 @@ const SCALES = {
 const THEMES = {
   menu: {
     chapter: {
-      bpm: 104, root: 45, scale: "minor", prog: [0, 5, 6, 4], swing: 0,
-      pad: { type: "sawtooth", cutoff: 1100, gain: 0.045 },
-      arp: { type: "triangle", notes: [0, 2, 4, 7, 4, 2], every: 2, oct: 2, cutoff: 2600, gain: 0.05 },
+      // 4.3: the Hangar's theme. At rest (the lobby) it's only the pad and a slow, spacious arpeggio
+      bpm: 84, root: 45, scale: "minor", prog: [0, 5, 6, 4], swing: 0,
+      pad: { type: "sawtooth", type2: "triangle", cutoff: 950, gain: 0.05, detune: 12, attack: 0.4 },
+      arp: { type: "sine", notes: [0, 4, 2, 7, 4, 9], every: 4, oct: 2, cutoff: 2200, gain: 0.05, vib: 5 },
       bass: { type: "sawtooth", type2: "square", cutoff: 380, env: 900, gain: 0.2, pat: "0.0.7.0.0.0.7.0." },
       kit: "punch",
       drums: { kick: "x.......x.......", snare: "....x.......x...", hat: "..x...x...x...x." },

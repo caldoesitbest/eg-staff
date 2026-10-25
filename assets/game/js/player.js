@@ -16,7 +16,8 @@ import { hasEnvy, ENVY_POWERS } from "./upgrades.js";
 import { swapGun, GUN_COL } from "./armory.js";
 import { evoRate, evoSpread, evoFired, evoShot, evoCharged, evoOrb, evoPal, evoCol, newVolley } from "./evolve.js";
 import { fusionReset, fusionRate, fusionBeforeFire, fusionAfterFire } from "./fusion.js";
-import { newCharge, chargeFired, trailPal } from "./progress.js";
+import { newCharge, chargeFired } from "./progress.js";
+import { equipped, lookItem, trailPalOf, trailStyleOf } from "./catalog.js";
 
 const A = BALANCE.arena;
 const B = BALANCE.player;
@@ -330,7 +331,11 @@ export function updatePlayer(dt, P = G.player) {
       if (P.thrustT <= 0) {
         P.thrustT = 0.03;
         const bx = P.x - P.facing * 10, by = P.y + 4;
-        fx.p(0, bx, by, -mx * 120 + rand(-20, 20), -my * 120 + rand(-20, 20), 0.35, 1.5, P === G.me ? trailPal() : Math.random() < 0.5 ? P_VIOLET : P_DVIOLET, 3);
+        const tr = P === G.me ? equipped("trail") : lookItem(P.suit, "trail");      // your trail, or a teammate's
+        const st = trailStyleOf(tr);
+        for (let n = 0; n < st.n; n++) {
+          fx.p(0, bx, by, -mx * st.push + rand(-st.spread, st.spread), -my * st.push + rand(-st.spread, st.spread) + st.rise, st.life, st.size, trailPalOf(tr, G.time), 3);
+        }
       }
     }
   }

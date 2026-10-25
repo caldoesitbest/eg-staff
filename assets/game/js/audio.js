@@ -376,6 +376,28 @@ const SOUNDS = {
     const t = now();
     tone(d, "square", 220, 180, t, 0.12, 0.08);
   }],
+  // the Hangar (4.3)
+  tab: [0.06, (d) => {              // switching Hangar tabs: a soft swish and a blip
+    const t = now();
+    noise(d, t, 0.12, 0.05, "bandpass", 1800, 4200, 0.7);
+    tone(d, "sine", 1320, 1760, t + 0.02, 0.08, 0.05);
+  }],
+  preview: [0.04, (d) => {          // trying something on
+    const t = now();
+    tone(d, "triangle", 1046, 1568, t, 0.09, 0.05);
+  }],
+  equip: [0.08, (d) => {            // putting it on for real: a little shimmer
+    const t = now();
+    [1319, 1760, 2349].forEach((f, i) => tone(d, "sine", f, f, t + i * 0.04, 0.22, 0.05));
+    noise(d, t, 0.25, 0.04, "highpass", 7000, 10000);
+  }],
+  reveal: [0.8, (d) => {            // bought: a rising sweep, then a chord
+    const t = now();
+    tone(d, "sawtooth", 220, 880, t, 0.35, 0.05, 0.02);
+    noise(d, t, 0.4, 0.12, "bandpass", 600, 7000, 0.8);
+    [523, 659, 784, 1047].forEach((f, i) => tone(d, "triangle", f, f, t + 0.32 + i * 0.05, 0.6, 0.07));
+    tone(d, "sine", 2093, 2093, t + 0.55, 0.5, 0.04);
+  }],
   pop: [0.05, (d) => {
     const t = now();
     tone(d, "sine", jitter(1200, 0.1), 400, t, 0.08, 0.12);

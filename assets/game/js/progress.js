@@ -4,7 +4,8 @@
 
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
-import { store, SUITS } from "./storage.js";
+import { store } from "./storage.js";
+import { item, equipped, earnSigils, sigilAmount } from "./catalog.js";
 import { rand, TAU } from "./util.js";
 import { fx } from "./fx.js";
 import { audio } from "./audio.js";
@@ -56,67 +57,13 @@ export const ACHIEVEMENTS = [
 ];
 export const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 
-/** Cosmetics by kind. "achv": the achievement that unlocks it (none: always yours). */
-export const COSMETICS = {
-  visor: [
-    { id: "", name: "Suit colour" },
-    { id: "mirror", name: "Mirror", col: "#e9f1ff", achv: "untouchable" },
-    { id: "fused", name: "Fused", col: "#ff7ad9", achv: "fused" },
-    { id: "toxic", name: "Toxic", col: "#9dff5c", achv: "diet" },
-    { id: "gold", name: "Gold", col: "#ffc861", achv: "mirror" },
-  ],
-  trail: [
-    { id: "", name: "Violet", pals: [P_VIOLET, P_DVIOLET] },
-    { id: "afterimage", name: "Afterimage", pals: [P_CYAN, P_WHITE], achv: "matador" },
-    { id: "supernova", name: "Supernova", pals: [P_WHITE, P_AMBER], achv: "overkill" },
-    { id: "toxic", name: "Toxic", col: "#9dff5c", achv: "mutants" },
-    { id: "ember", name: "Ember", pals: [P_ORANGE, P_RED], achv: "calm" },
-    { id: "gauntlet", name: "Gauntlet", pals: [P_ORANGE, P_CYAN], achv: "gauntlet" },
-    { id: "sinful", name: "Seven Sins", sins: true, achv: "seven" },
-  ],
-  finish: [
-    { id: "", name: "Steel", col: "#c9d0f2" },
-    { id: "chrome", name: "Chrome", col: "#f4f8ff", achv: "deadeye" },
-    { id: "gilded", name: "Gilded", col: "#ffd45c", achv: "daily" },
-    { id: "obsidian", name: "Obsidian", col: "#3a3360", achv: "hard" },
-    { id: "evolved", name: "Prismatic", prism: true, achv: "evolved" },
-    { id: "ascendant", name: "Ascendant", col: "#fff4d6", achv: "arsenal" },
-  ],
-  title: [
-    { id: "", name: "No title" },
-    { id: "ghost", name: "Ghost in the Machine", achv: "ghost" },
-    { id: "fiend", name: "Combo Fiend", achv: "fiend" },
-    { id: "sinner", name: "Sin Incarnate", achv: "sinmax" },
-    { id: "ascended", name: "The Ascended", achv: "allpaths" },
-    { id: "kingslayer", name: "Kingslayer", achv: "crown" },
-    { id: "walker", name: "Nightmare Walker", achv: "nightmare" },
-    { id: "speed", name: "Speed Demon", achv: "speed" },
-    ...Object.keys(GUN_TITLES).map((g) => ({ id: "m_" + g, name: GUN_TITLES[g], achv: "m_" + g })),
-  ],
-  victory: [
-    { id: "", name: "Classic" },
-    { id: "fireworks", name: "Sin Fireworks", achv: "gauntlet" },
-    { id: "eclipse", name: "Eclipse", achv: "nightmare" },
-    { id: "supernova", name: "Supernova", achv: "beyond" },
-  ],
-};
-export const COS_KINDS = ["suit", "visor", "trail", "finish", "title", "victory"];
-
 const data = () => store.data;
 const life = () => store.data.life;
 export const unlockedAch = (id) => !!data().achv[id];
-/** Can you wear it? (Suits: by best wave or an achievement.) */
-export function cosUnlocked(kind, id) {
-  if (kind === "suit") { const s = SUITS.find((x) => x.id === id); return !!s && store.suitUnlocked(s); }
-  const c = (COSMETICS[kind] || []).find((x) => x.id === id);
-  return !!c && (!c.achv || unlockedAch(c.achv));
-}
-export const cosOf = (kind) => (COSMETICS[kind] || []).find((x) => x.id === (data().cos[kind] || "")) || COSMETICS[kind][0];
 /** What an achievement's rewards are called ("Mirror visor", "Ember trail"). */
 export function rewardNames(a) {
   return a.rewards.map(([k, id]) => {
-    if (k === "suit") { const s = SUITS.find((x) => x.id === id); return (s ? s.name : id) + " suit"; }
-    const c = COSMETICS[k].find((x) => x.id === id);
+    const c = item(k, id);
     return (c ? c.name : id) + " " + (k === "victory" ? "victory effect" : k === "title" ? "title" : k);
   });
 }
@@ -229,88 +176,8 @@ G.on("runOver", (sum) => {
 });
 
 // ---------------------------------------------------------------------------
-// how cosmetics show up in the game
+// Sigil payouts (catalog.js has the economy)
 // ---------------------------------------------------------------------------
-const SIN_PALS = ["sloth", "glutton", "greed", "lust", "wrath", "pride", "envy"].map((k) => PAL.indexOf(SIN[k]));
-/** Jetpack puff colours for your own astronaut (palette indexes). */
-export function trailPal() {
-  const t = cosOf("trail");
-  if (t.sins) return SIN_PALS[Math.floor(G.time * 6) % SIN_PALS.length];
-  if (t.col) { const i = PAL.indexOf(t.col); return i >= 0 ? i : P_VIOLET; }
-  const p = t.pals || [P_VIOLET, P_DVIOLET];
-  return p[Math.random() < 0.5 ? 0 : 1];
-}
-/** Your gun's body colour. */
-export function finishCol() {
-  const f = cosOf("finish");
-  if (f.prism) return "hsl(" + Math.round((G.time * 90) % 360) + ", 85%, 78%)";
-  return f.col || "#c9d0f2";
-}
-/** Your suit with the visor and hat you picked. */
-export function lookSuit(suit) {
-  const v = cosOf("visor");
-  return { ...suit, visor: v && v.col ? v.col : suit.visor, hat: hatOf() };
-}
-/** What co-op teammates see of you: "suit/hat" (an older client reads the suit and ignores the rest). */
-export const lookCode = () => (data().settings.suit || "classic") + "/" + hatOf();
-
-// ---------------------------------------------------------------------------
-// hats, bought with Sigils (a rare currency: see balance.sigils). The crown is everyone's from the start,
-// and you can swap between the hats you own any time in the Locker. sprites.js draws them.
-// ---------------------------------------------------------------------------
-const SG = BALANCE.sigils;
-export const HATS = [
-  { id: "crown", name: "Crown", col: C.amber, note: "The original" },
-  { id: "none", name: "No hat", col: "#7f8bb0" },
-  { id: "nightcap", name: "Sloth's Nightcap", col: SIN.sloth },
-  { id: "toque", name: "Gluttony's Toque", col: "#f4f6ff" },
-  { id: "tophat", name: "Greed's Top Hat", col: SIN.greed },
-  { id: "boppers", name: "Lust's Heart Boppers", col: SIN.lust },
-  { id: "horns", name: "Wrath's Horns", col: "#ff4a3d" },
-  { id: "laurels", name: "Pride's Laurels", col: "#ffd45c" },
-  { id: "serpent", name: "Envy's Serpent", col: SIN.envy },
-  { id: "antenna", name: "Machine Antenna", col: C.cyan },
-  { id: "halo", name: "Halo", col: "#ffe9a8", note: "For a reformed sinner" },
-].map((h) => ({ ...h, price: SG.hats[h.id] || 0 }));
-export const HAT_BY_ID = Object.fromEntries(HATS.map((h) => [h.id, h]));
-
-export const hatOwned = (id) => { const h = HAT_BY_ID[id]; return !!h && (h.price === 0 || !!data().hats[id]); };
-export const hatOf = () => (hatOwned(data().cos.hat) ? data().cos.hat : "crown");
-
-/** Spends Sigils on a hat and puts it on. False if it's unknown, already yours, or you can't afford it. */
-export function buyHat(id) {
-  const h = HAT_BY_ID[id];
-  if (!h || hatOwned(id) || (data().sigils || 0) < h.price) return false;
-  data().sigils -= h.price;
-  data().hats[id] = Date.now();
-  data().cos.hat = id;
-  store.save(true);
-  return true;
-}
-export function wearHat(id) {
-  if (!hatOwned(id)) return false;
-  data().cos.hat = id;
-  store.save();
-  return true;
-}
-
-/** Sigils for one of the payouts (before checking whether this run can earn any). */
-export function sigilAmount(kind, rank) {
-  const mul = SG.diff[G.difficulty] || 1;
-  if (kind === "boss") return SG.boss * mul;
-  if (kind === "win") return SG.win * mul;
-  if (kind === "rush") return (SG.rush + (SG.rank[rank] || 0)) * mul;
-  return 0;
-}
-/** Adds Sigils to your save (never in a debug run). quiet: no toast (the achievement card says it). */
-export function earnSigils(n, why, quiet) {
-  if (!(n > 0) || G.debug.on) return 0;
-  data().sigils = (data().sigils || 0) + n;
-  G.runSigils = (G.runSigils || 0) + n;
-  store.save();
-  G.emit("sigils", { n, why, quiet: !!quiet });
-  return n;
-}
 // The host's events pay out here; co-op guests are paid from the host's messages (main.js), same amounts.
 export const sigilsBoss = () => earnSigils(sigilAmount("boss"), "boss");
 export const sigilsWin = () => earnSigils(sigilAmount("win"), "win");
@@ -322,7 +189,7 @@ G.on("rushDone", (sum) => { if (G.net.role !== "client") sigilsRush(sum); });
 // victory effects: played over the last boss's death
 const shows = [];
 export function victoryFx(x, y) {
-  const v = cosOf("victory").id;
+  const v = equipped("victory").id;
   if (!v) return;
   if (v === "fireworks") {
     for (let i = 0; i < 9; i++) shows.push({ t: 0.25 + i * 0.28, x: x + rand(-320, 320), y: y + rand(-220, 180), col: Object.values(SIN)[i % 7] });
@@ -330,6 +197,10 @@ export function victoryFx(x, y) {
     for (let i = 0; i < 4; i++) shows.push({ t: 0.2 + i * 0.22, x, y, nova: i });
   } else if (v === "eclipse") {
     shows.push({ t: 0.2, x, y, eclipse: true });
+  } else if (v === "starburst") {
+    for (let i = 0; i < 5; i++) shows.push({ t: 0.2 + i * 0.18, x, y, star: i });
+  } else if (v === "singularity") {
+    shows.push({ t: 0.15, x, y, hole: 0 }, { t: 1.05, x, y, hole: 1 });
   }
 }
 /** Runs scheduled victory effects (main.js, every step). */
@@ -354,6 +225,29 @@ export function progressTick(dt) {
       fx.ring(s.x, s.y, 30, 420, 1.3, "#a57bff", 3);
       for (let k = 0; k < 12; k++) { const a = (k / 12) * TAU; fx.sparks(s.x + Math.cos(a) * 60, s.y + Math.sin(a) * 60, a, 0.2, 3, P_VIOLET, 420, 0.6); }
       fx.screenFlash("#2a0d44", 0.4, 1.4);
+    } else if (s.star !== undefined) {
+      // rings of gold stars, each wider than the last
+      const n = 8 + s.star * 2, r = 70 + s.star * 70;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * TAU + s.star * 0.3;
+        fx.burst(s.x + Math.cos(a) * r, s.y + Math.sin(a) * r, 4, k % 2 ? P_AMBER : P_WHITE, 120, 0.7, 1.6);
+      }
+      fx.ring(s.x, s.y, r * 0.6, r * 1.3, 0.6, "#ffd45c", 3);
+      if (!s.star) audio.play("explode", s.x, s.y, 0.4);
+    } else if (s.hole !== undefined) {
+      if (!s.hole) {
+        // it all falls in...
+        fx.ring(s.x, s.y, 520, 20, 0.9, "#0a0614", 22);
+        fx.ring(s.x, s.y, 360, 24, 0.85, "#ff8a3d", 3);
+        for (let k = 0; k < 16; k++) { const a = (k / 16) * TAU; fx.sparks(s.x + Math.cos(a) * 300, s.y + Math.sin(a) * 300, a + Math.PI, 0.25, 2, k % 2 ? P_ORANGE : P_VIOLET, 520, 0.6); }
+      } else {
+        // ...and comes back out
+        fx.screenFlash("#ffe2c4", 0.5, 1.4);
+        fx.ring(s.x, s.y, 10, 560, 1.1, "#ff42d0", 5);
+        fx.ring(s.x, s.y, 10, 380, 0.9, "#ffffff", 3);
+        fx.burst(s.x, s.y, 34, P_ORANGE, 640, 1.2, 2.4);
+        audio.play("bigExplode", s.x, s.y, 0.6);
+      }
     }
   }
 }

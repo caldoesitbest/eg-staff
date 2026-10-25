@@ -5,8 +5,8 @@ import { BALANCE } from "./balance.js";
 
 const KEY = "eg-glider-v1";
 // Save format version. 1: up to 4.1. 2 (4.2): Boss Rush records, achievements, cosmetics, lifetime stats.
-// 3 (4.2): Sigils and hats.
-const SAVE_VER = 3;
+// 3 (4.2): Sigils and hats. 4 (4.3): one cosmetics inventory (owned), loadout presets, daily contracts.
+const SAVE_VER = 4;
 
 function prefersReducedMotion() {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
@@ -15,20 +15,7 @@ function coarsePointer() {
   try { return window.matchMedia("(pointer: coarse)").matches; } catch (e) { return false; }
 }
 
-export const SUITS = [
-  { id: "classic", name: "Classic", wave: 0, suit: "#eef2ff", trim: "#38e8ff", visor: "#8e44ff" },
-  { id: "violet", name: "Violet", wave: 5, suit: "#d9c8ff", trim: "#a57bff", visor: "#ff42d0" },
-  { id: "mint", name: "Mint", wave: 10, suit: "#d6fff1", trim: "#73ffce", visor: "#38e8ff" },
-  { id: "magenta", name: "Magenta", wave: 15, suit: "#ffd6f4", trim: "#ff42d0", visor: "#8e44ff" },
-  { id: "gold", name: "Gold", wave: 20, suit: "#fff1cc", trim: "#ffc861", visor: "#ff42d0" },
-  { id: "void", name: "Void", wave: 25, suit: "#2a2f55", trim: "#63f4ff", visor: "#63f4ff" },
-  // 4.2: earned with achievements (progress.js)
-  { id: "laureate", name: "Laureate", achv: "ladder", suit: "#fffaf0", trim: "#ffc861", visor: "#63f4ff" },
-  { id: "obsidian", name: "Obsidian", achv: "hard", suit: "#1d1a2e", trim: "#a57bff", visor: "#ff42d0" },
-  { id: "nightmare", name: "Nightmare", achv: "nightmare", suit: "#2a0d14", trim: "#ff3b5c", visor: "#ffc861" },
-  { id: "seven", name: "Seven Sins", achv: "seven", suit: "#f4f6ff", trim: "#ff9448", visor: "#6d7bff" },
-  { id: "unholy", name: "Unholy", achv: "unholy", suit: "#14081f", trim: "#73ffce", visor: "#ff4f8b" },
-];
+// Suits, and every other cosmetic, are in catalog.js (4.3).
 
 // Graphics presets fill in these settings (Auto uses High and steps down on its own when frames are slow).
 export const GFX_KEYS = ["resScale", "particles", "glow", "background", "grid", "trails"];
@@ -73,6 +60,7 @@ function defaults() {
       contrastShots: false, // bolder robot shots
       hitstop: "light",     // impact freeze on big hits: full | light | off
       difficulty: "normal", // normal | hard | nightmare (the Daily Challenge is always Normal)
+      mode: "ladder",       // the Hangar's mode: ladder | daily | rush | coop
       // crosshair
       crossColor: "auto",   // auto (inverts what's behind it) | cyan | white | yellow | lime | magenta | red | orange | custom
       crossCustom: "#63f4ff",
@@ -89,9 +77,12 @@ function defaults() {
     seenMut: {},          // elite mutations you've met (their hint shows once)
     achv: {},             // achievements: id -> when (progress.js)
     cos: { visor: "", trail: "", finish: "", title: "", victory: "", badges: [], hat: "crown" },   // the cosmetics you picked
-    life: { perfects: 0, mutants: 0, fusions: {}, evos: {}, evoGuns: {}, rushClears: 0 },   // lifetime counts for achievements
-    sigils: 0,            // the hat currency (progress.js)
-    hats: {},             // hats you bought: id -> when
+    life: { perfects: 0, mutants: 0, fusions: {}, evos: {}, evoGuns: {}, rushClears: 0, sigils: 0 },   // lifetime counts (achievements, Sigils earned)
+    sigils: 0,            // the Hangar's currency (catalog.js)
+    owned: {},            // cosmetics you bought: "kind:id" -> when (catalog.js)
+    presets: [null, null, null],   // three saved outfits (catalog.js)
+    contracts: { day: "", list: [] },   // today's contracts (contracts.js)
+    shopSeen: "",         // the last day you looked at the Item Shop's featured row
   };
 }
 
@@ -108,6 +99,11 @@ function migrate(d, saved) {
   if (from < 3) {
     // Sigils arrive: the achievements you already have pay out, as if earned today
     d.sigils = (d.sigils || 0) + Object.keys(d.achv || {}).length * BALANCE.sigils.achievement;
+  }
+  if (from < 4) {
+    // 4.3: hats bought in 4.2 join the one cosmetics inventory
+    for (const id of Object.keys(saved.hats || {})) d.owned["hat:" + id] = saved.hats[id];
+    delete d.hats;
   }
   d.ver = SAVE_VER;
   return d;
@@ -145,7 +141,9 @@ export const store = {
           daily: { ...d.daily, ...(saved.daily || {}) },
           rush: { ...d.rush, ...(saved.rush || {}) },
           achv: { ...(saved.achv || {}) },
-          hats: { ...(saved.hats || {}) },
+          owned: { ...(saved.owned || {}) },
+          presets: Array.isArray(saved.presets) && saved.presets.length === 3 ? saved.presets : [null, null, null],
+          contracts: saved.contracts && Array.isArray(saved.contracts.list) ? saved.contracts : { day: "", list: [] },
           cos: { ...d.cos, ...(saved.cos || {}) },
           life: { ...d.life, ...(saved.life || {}) },
         };
@@ -173,7 +171,6 @@ export const store = {
     if (now) write(); else saveTimer = setTimeout(write, 250);
   },
 
-  suitUnlocked(s) { return s.achv ? !!(data.achv && data.achv[s.achv]) : (data.best.wave || 0) >= s.wave; },
   /** Boss Rush opens once you've beaten Envy on the Ladder. */
   rushUnlocked() { return (data.best.wins || 0) > 0 || (data.rush && data.rush.clears > 0); },
 };

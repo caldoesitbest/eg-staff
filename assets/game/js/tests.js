@@ -123,25 +123,70 @@ export async function runTests(h) {
     // --- the rest ------------------------------------------------------------------------------------
     check("Boss Rush rank: fast and clean is S", h.rushRank && h.rushRank(200, 2) === "S");
     check("Boss Rush rank: hits cost grades", h.rushRank && h.rushRank(200, 17) === "B");
-    // hats and Sigils: prices hold, nothing free, nothing earned in a debug run
+    // the cosmetics catalog (4.3): ownership, buying, wearing, loadouts, the featured row, look codes
     const { store } = await import("./storage.js");
-    const pr = await import("./progress.js");
-    const keep = { sigils: store.data.sigils, hats: { ...store.data.hats }, hat: store.data.cos.hat, diff: G.difficulty };
+    const cat = await import("./catalog.js");
+    const ct = await import("./contracts.js");
+    const { sprites } = await import("./sprites.js");
+    const d0 = store.data;
+    const keep = JSON.stringify({ sigils: d0.sigils, owned: d0.owned, cos: d0.cos, suit: d0.settings.suit, presets: d0.presets, contracts: d0.contracts, achv: d0.achv, wave: d0.best.wave });
+    const keepDiff = G.difficulty;
     try {
-      store.data.hats = {}; store.data.cos.hat = "crown"; store.data.sigils = 10;
-      check("hats: the crown is yours from the start", pr.hatOwned("crown") && pr.hatOf() === "crown");
-      check("hats: can't buy what you can't afford", !pr.buyHat("halo") && store.data.sigils === 10 && !pr.hatOwned("halo"));
-      check("hats: can't wear a hat you don't own", !pr.wearHat("halo") && pr.hatOf() === "crown");
-      store.data.sigils = 250;
-      check("hats: buying spends Sigils and puts it on", pr.buyHat("halo") && store.data.sigils === 250 - BALANCE.sigils.hats.halo && pr.hatOf() === "halo");
-      check("hats: no buying the same hat twice", !pr.buyHat("halo") && store.data.sigils === 250 - BALANCE.sigils.hats.halo);
-      check("hats: swap back to the crown", pr.wearHat("crown") && pr.hatOf() === "crown");
-      const before = store.data.sigils;
-      check("Sigils: none in a debug run", pr.earnSigils(5, "test") === 0 && store.data.sigils === before);
+      const keys = new Set(cat.ITEMS.map((i) => i.key));
+      check("catalog: every item has a unique id per kind", keys.size === cat.ITEMS.length, cat.ITEMS.length + " items");
+      check("catalog: every shop item has a rarity and a price", cat.ITEMS.every((i) => cat.RARITY[i.rarity] && (!i.shop || i.price > 0)));
+      check("catalog: every collection has items and a title", cat.SETS.every((st) => cat.setItems(st.id).length >= 3 && cat.ITEMS.some((i) => i.kind === "title" && i.fromSet === st.id)));
+      let drawn = 0;
+      for (const it of cat.ITEMS) if (["hat", "suit", "visor"].includes(it.kind)) { sprites.astronaut(1, cat.look({ strict: true, [it.kind]: it.id })); drawn++; }
+      check("catalog: every hat, suit and visor draws", drawn > 40, drawn + " drawn");
+      d0.owned = {}; d0.cos.hat = "crown"; d0.settings.suit = "classic"; d0.sigils = 10; d0.achv = {}; d0.best.wave = 0;
+      const halo = cat.item("hat", "halo");
+      check("Locker: the crown is yours and on from the start", cat.owns(cat.item("hat", "crown")) && cat.equipped("hat").id === "crown");
+      check("shop: can't buy what you can't afford", !cat.buy(halo) && d0.sigils === 10 && !cat.owns(halo));
+      check("Locker: can't wear what you don't own", !cat.equip("hat", "halo") && cat.equipped("hat").id === "crown");
+      check("shop: achievement items aren't for sale", !cat.buy(cat.item("visor", "mirror")) && d0.sigils === 10);
+      d0.sigils = 1000;
+      check("shop: buying spends exactly its price", cat.buy(halo) && d0.sigils === 1000 - halo.price && cat.owns(halo));
+      check("shop: no buying the same thing twice", !cat.buy(halo) && d0.sigils === 1000 - halo.price);
+      check("Locker: wear it, then swap back", cat.equip("hat", "halo") && cat.equipped("hat").id === "halo" && cat.equip("hat", "crown") && cat.equipped("hat").id === "crown");
+      check("Locker: wave suits open with your best wave", !cat.owns(cat.item("suit", "gold")) && ((d0.best.wave = 20), cat.owns(cat.item("suit", "gold"))));
+      d0.sigils = 100000;
+      for (const it of cat.setItems("sloth")) cat.buy(it);
+      check("collections: owning a whole one gives its title", cat.owns(cat.item("title", "rested")) && !cat.owns(cat.item("title", "bottomless")));
+      cat.equip("hat", "nightcap"); cat.equip("suit", "slumber");
+      cat.savePreset(0);
+      cat.equip("hat", "crown"); cat.equip("suit", "classic");
+      delete d0.owned["hat:nightcap"];
+      const missing = cat.applyPreset(0);
+      check("loadouts: a preset puts back what you still own", missing === 1 && cat.equipped("suit").id === "slumber" && cat.equipped("hat").id === "crown");
+      check("loadouts: an empty slot does nothing", cat.applyPreset(2) === -1 || d0.presets[2] !== null);
+      const f1 = cat.featured("2026-10-25"), f2 = cat.featured("2026-10-25"), f3 = cat.featured("2026-10-26");
+      check("shop: the featured row is the same all day and changes daily", f1.map((i) => i.key).join() === f2.map((i) => i.key).join() && f1.map((i) => i.key).join() !== f3.map((i) => i.key).join());
+      check("shop: four featured, all for sale, the first Epic or better", f1.length === 4 && f1.every((i) => i.shop) && f1[0].rarity >= 3);
+      cat.equip("visor", "galaxy");
+      const code = cat.lookCode();
+      const back = cat.parseLook(code);
+      check("co-op: your look code round-trips", back.suit === "slumber" && back.visor === "" && back.hat === "crown", code);
+      const bad = cat.parseLook("nope/blackhole/<b>/zzz");
+      check("co-op: unknown ids in a teammate's look become defaults", bad.suit === "classic" && bad.hat === "blackhole" && bad.visor === "" && bad.trail === "" && bad.finish === "");
+      const before = d0.sigils;
+      check("Sigils: none in a debug run", cat.earnSigils(5, "test") === 0 && d0.sigils === before);
       G.difficulty = "nightmare";
-      check("Sigils: x3 on Nightmare", pr.sigilAmount("win") === BALANCE.sigils.win * 3 && pr.sigilAmount("rush", "S") === (BALANCE.sigils.rush + BALANCE.sigils.rank.S) * 3);
+      check("Sigils: x3 on Nightmare", cat.sigilAmount("win") === BALANCE.sigils.win * 3 && cat.sigilAmount("rush", "S") === (BALANCE.sigils.rush + BALANCE.sigils.rank.S) * 3);
+      // daily contracts
+      const c1 = ct.pickContracts("2026-10-25", true), c2 = ct.pickContracts("2026-10-25", true);
+      check("contracts: three a day, one of each tier, the same all day", c1.length === 3 && c1.map((c) => c.tier).join() === "0,1,2" && JSON.stringify(c1) === JSON.stringify(c2) && new Set(c1.map((c) => c.id)).size === 3);
+      check("contracts: no Boss Rush ones before Boss Rush opens", [...Array(40)].every((_, i) => ct.pickContracts("2026-01-" + (i + 1), false).every((c) => c.id !== "rush")));
+      d0.contracts = { day: cat.dayKey(), list: [{ id: "kills", tier: 0, need: 100, have: 0, done: false }, { id: "wave", tier: 1, need: 10, have: 0, done: false }, { id: "hard", tier: 2, need: 6, have: 0, done: false }] };
+      const r1 = ct.reportRun({ kills: 60, wave: 12, difficulty: "normal" }, true);
+      const r2 = ct.reportRun({ kills: 60, wave: 4, difficulty: "hard" }, true);
+      const r3 = ct.reportRun({ kills: 500, wave: 30, difficulty: "nightmare" }, true);
+      const L = d0.contracts.list;
+      check("contracts: sums add up, maxes keep the best, each pays once", r1.length === 1 && r2.length === 1 && r3.length === 1 && L.every((c) => c.done), r1.length + "/" + r2.length + "/" + r3.length);
     } finally {
-      store.data.sigils = keep.sigils; store.data.hats = keep.hats; store.data.cos.hat = keep.hat; G.difficulty = keep.diff;
+      const k = JSON.parse(keep);
+      d0.sigils = k.sigils; d0.owned = k.owned; d0.cos = k.cos; d0.settings.suit = k.suit; d0.presets = k.presets; d0.contracts = k.contracts; d0.achv = k.achv; d0.best.wave = k.wave;
+      G.difficulty = keepDiff;
       store.save(true);
     }
     // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted (and paid in Sigils)
@@ -152,9 +197,14 @@ export async function runTests(h) {
       localStorage.setItem(KEY, JSON.stringify({ best: { score: 4242, wave: 52, wins: 1 }, totals: { runs: 9, kills: 900 }, settings: { suit: "mint", difficulty: "hard" } }));
       store.load();
       const d = store.data;
-      check("save migration: 4.1 save upgraded to version 3", d.ver === 3 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
+      check("save migration: 4.1 save upgraded to version 4", d.ver === 4 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
       check("save migration: Boss Rush open, past achievements counted", store.rushUnlocked() && !!d.achv.ladder && !!d.achv.beyond);
       check("save migration: past achievements pay Sigils, crown on", d.sigils === 2 * BALANCE.sigils.achievement && d.cos.hat === "crown", "sigils " + d.sigils);
+      // a 4.2 save (version 3) with two hats bought: they're still yours, in the one inventory
+      localStorage.setItem(KEY, JSON.stringify({ ver: 3, best: { score: 10, wave: 5 }, sigils: 33, hats: { tophat: 111, halo: 222 }, cos: { hat: "halo" }, settings: { suit: "classic" } }));
+      store.load();
+      const d2 = store.data;
+      check("save migration: 4.2 hats carry over", d2.ver === 4 && d2.owned["hat:tophat"] === 111 && d2.owned["hat:halo"] === 222 && d2.sigils === 33 && !d2.hats && cat.equipped("hat").id === "halo");
     } finally {
       try { if (backup === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, backup); } catch (err) { /* ignore */ }
       store.load();

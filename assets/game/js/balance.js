@@ -375,13 +375,15 @@ export const BALANCE = {
     c_lead:      { name: "Leaden Wings", chargeDmg: 0.6, speed: -0.15, text: "Charged shots +60% damage", cost: "You move 15% slower" },
   },
 
-  // Sigils: the rare currency for hats (progress.js). Earned from sin bosses on the Ladder, Ladder wins and Boss Rush
-  // clears (all x the difficulty: Normal 1, Hard 2, Nightmare 3) and achievements; never in debug runs.
-  // A Normal Ladder win is about 12, so the cheapest hat takes a few good runs and the Halo a long while.
+  // Sigils: the Hangar's currency (catalog.js), for cosmetics in the Item Shop. Earned from sin bosses on the
+  // Ladder, Ladder wins and Boss Rush clears (all x the difficulty: Normal 1, Hard 2, Nightmare 3), achievements
+  // and daily contracts (contracts.js); never in debug runs. A Normal Ladder win pays about 20 and a day's three
+  // contracts about 18: a Rare item every few days of play, a Legendary in a week or two.
   sigils: {
-    boss: 1, win: 5, rush: 3, rank: { S: 3, A: 1 }, achievement: 2,
+    boss: 2, win: 6, rush: 4, rank: { S: 4, A: 2 }, achievement: 3,
     diff: { normal: 1, hard: 2, nightmare: 3 },
-    hats: { nightcap: 30, toque: 40, tophat: 50, boppers: 50, horns: 70, laurels: 80, serpent: 100, antenna: 120, halo: 200 },
+    price: [20, 40, 75, 120, 200, 320],      // Item Shop prices by rarity: Common, Uncommon, Rare, Epic, Legendary, Mythic
+    contracts: [4, 6, 8],                    // a daily contract's reward: easy, medium, hard
   },
 
   // Special events on the Ladder: at most one per chapter (from chapter 2), on one of its first three waves.
