@@ -123,8 +123,28 @@ export async function runTests(h) {
     // --- the rest ------------------------------------------------------------------------------------
     check("Boss Rush rank: fast and clean is S", h.rushRank && h.rushRank(200, 2) === "S");
     check("Boss Rush rank: hits cost grades", h.rushRank && h.rushRank(200, 17) === "B");
-    // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted
+    // hats and Sigils: prices hold, nothing free, nothing earned in a debug run
     const { store } = await import("./storage.js");
+    const pr = await import("./progress.js");
+    const keep = { sigils: store.data.sigils, hats: { ...store.data.hats }, hat: store.data.cos.hat, diff: G.difficulty };
+    try {
+      store.data.hats = {}; store.data.cos.hat = "crown"; store.data.sigils = 10;
+      check("hats: the crown is yours from the start", pr.hatOwned("crown") && pr.hatOf() === "crown");
+      check("hats: can't buy what you can't afford", !pr.buyHat("halo") && store.data.sigils === 10 && !pr.hatOwned("halo"));
+      check("hats: can't wear a hat you don't own", !pr.wearHat("halo") && pr.hatOf() === "crown");
+      store.data.sigils = 250;
+      check("hats: buying spends Sigils and puts it on", pr.buyHat("halo") && store.data.sigils === 250 - BALANCE.sigils.hats.halo && pr.hatOf() === "halo");
+      check("hats: no buying the same hat twice", !pr.buyHat("halo") && store.data.sigils === 250 - BALANCE.sigils.hats.halo);
+      check("hats: swap back to the crown", pr.wearHat("crown") && pr.hatOf() === "crown");
+      const before = store.data.sigils;
+      check("Sigils: none in a debug run", pr.earnSigils(5, "test") === 0 && store.data.sigils === before);
+      G.difficulty = "nightmare";
+      check("Sigils: x3 on Nightmare", pr.sigilAmount("win") === BALANCE.sigils.win * 3 && pr.sigilAmount("rush", "S") === (BALANCE.sigils.rush + BALANCE.sigils.rank.S) * 3);
+    } finally {
+      store.data.sigils = keep.sigils; store.data.hats = keep.hats; store.data.cos.hat = keep.hat; G.difficulty = keep.diff;
+      store.save(true);
+    }
+    // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted (and paid in Sigils)
     const KEY = "eg-glider-v1";
     let backup = null;
     try { backup = localStorage.getItem(KEY); } catch (err) { /* storage blocked */ }
@@ -132,8 +152,9 @@ export async function runTests(h) {
       localStorage.setItem(KEY, JSON.stringify({ best: { score: 4242, wave: 52, wins: 1 }, totals: { runs: 9, kills: 900 }, settings: { suit: "mint", difficulty: "hard" } }));
       store.load();
       const d = store.data;
-      check("save migration: 4.1 save upgraded to version 2", d.ver === 2 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
+      check("save migration: 4.1 save upgraded to version 3", d.ver === 3 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
       check("save migration: Boss Rush open, past achievements counted", store.rushUnlocked() && !!d.achv.ladder && !!d.achv.beyond);
+      check("save migration: past achievements pay Sigils, crown on", d.sigils === 2 * BALANCE.sigils.achievement && d.cos.hat === "crown", "sigils " + d.sigils);
     } finally {
       try { if (backup === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, backup); } catch (err) { /* ignore */ }
       store.load();

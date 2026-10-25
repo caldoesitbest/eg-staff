@@ -1531,3 +1531,15 @@ body.eg-game::before { display: none; }
 .dl-notes { font-size: 0.86rem; text-align: left; }
 .dl-notes li[hidden] { display: none; }
 .game.reduced .dl-card { animation: none; transition: none; }
+
+/* ---------------- hats + Sigils (4.2) ---------------- */
+.hat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hat-head .set-h { margin: 0 0 6px; }
+.sigil-bal, .sigil-chip { display: inline-flex; align-items: center; gap: 4px; font: 700 0.8rem var(--g-num); color: #b9f3ff; letter-spacing: 0.03em; }
+.sigil-bal span { color: #7f8bb0; font-weight: 600; }
+.sigil-bal .i, .sigil-chip .i, .lock-opt .price .i, .hat-buy .i { width: 13px; height: 13px; color: var(--g-cyan, #63f4ff); vertical-align: -2px; }
+.sigil-chip { padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(99, 244, 255, 0.35); background: rgba(99, 244, 255, 0.08); }
+.lock-opt .price { display: inline-flex; align-items: center; gap: 3px; color: #9fdfff; }
+.lock-opt.pick { border-color: #ffc861; color: #fff; box-shadow: 0 0 10px -4px #ffc861; }
+.hat-buy { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(255, 200, 97, 0.35); border-radius: 12px; background: rgba(255, 200, 97, 0.06); font-size: 0.85rem; color: #f4f6ff; }
+.hat-buy small { color: #7f8bb0; font-size: 0.72rem; }

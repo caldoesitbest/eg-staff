@@ -375,6 +375,15 @@ export const BALANCE = {
     c_lead:      { name: "Leaden Wings", chargeDmg: 0.6, speed: -0.15, text: "Charged shots +60% damage", cost: "You move 15% slower" },
   },
 
+  // Sigils: the rare currency for hats (progress.js). Earned from sin bosses on the Ladder, Ladder wins and Boss Rush
+  // clears (all x the difficulty: Normal 1, Hard 2, Nightmare 3) and achievements; never in debug runs.
+  // A Normal Ladder win is about 12, so the cheapest hat takes a few good runs and the Halo a long while.
+  sigils: {
+    boss: 1, win: 5, rush: 3, rank: { S: 3, A: 1 }, achievement: 2,
+    diff: { normal: 1, hard: 2, nightmare: 3 },
+    hats: { nightcap: 30, toque: 40, tophat: 50, boppers: 50, horns: 70, laurels: 80, serpent: 100, antenna: 120, halo: 200 },
+  },
+
   // Special events on the Ladder: at most one per chapter (from chapter 2), on one of its first three waves.
   // The Cosmic Cache drifts through mid-wave; the others are a choice between waves. Stars are the only currency.
   events: {

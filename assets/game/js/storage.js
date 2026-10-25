@@ -1,9 +1,12 @@
 /* Saved bests, settings and unlocks. Every read and write is wrapped, so the game still
    runs (without saving) when storage is blocked, full or in a private window. */
 
+import { BALANCE } from "./balance.js";
+
 const KEY = "eg-glider-v1";
 // Save format version. 1: up to 4.1. 2 (4.2): Boss Rush records, achievements, cosmetics, lifetime stats.
-const SAVE_VER = 2;
+// 3 (4.2): Sigils and hats.
+const SAVE_VER = 3;
 
 function prefersReducedMotion() {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
@@ -85,8 +88,10 @@ function defaults() {
     rush: { clears: 0, best: {}, splits: {}, mods: [] },
     seenMut: {},          // elite mutations you've met (their hint shows once)
     achv: {},             // achievements: id -> when (progress.js)
-    cos: { visor: "", trail: "", finish: "", title: "", victory: "", badges: [] },   // the cosmetics you picked
+    cos: { visor: "", trail: "", finish: "", title: "", victory: "", badges: [], hat: "crown" },   // the cosmetics you picked
     life: { perfects: 0, mutants: 0, fusions: {}, evos: {}, evoGuns: {}, rushClears: 0 },   // lifetime counts for achievements
+    sigils: 0,            // the hat currency (progress.js)
+    hats: {},             // hats you bought: id -> when
   };
 }
 
@@ -99,6 +104,10 @@ function migrate(d, saved) {
     const now = Date.now();
     if ((d.best.wins || 0) > 0) d.achv.ladder = now;
     if ((d.best.wave || 0) >= 50) d.achv.beyond = now;
+  }
+  if (from < 3) {
+    // Sigils arrive: the achievements you already have pay out, as if earned today
+    d.sigils = (d.sigils || 0) + Object.keys(d.achv || {}).length * BALANCE.sigils.achievement;
   }
   d.ver = SAVE_VER;
   return d;
@@ -136,6 +145,7 @@ export const store = {
           daily: { ...d.daily, ...(saved.daily || {}) },
           rush: { ...d.rush, ...(saved.rush || {}) },
           achv: { ...(saved.achv || {}) },
+          hats: { ...(saved.hats || {}) },
           cos: { ...d.cos, ...(saved.cos || {}) },
           life: { ...d.life, ...(saved.life || {}) },
         };

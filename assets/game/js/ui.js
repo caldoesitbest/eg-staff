@@ -8,7 +8,7 @@ import { store, SUITS, GFX_PRESETS, GFX_KEYS } from "./storage.js";
 import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
 import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
 import { evoChoices } from "./evolve.js";
-import { ACHIEVEMENTS, ACH_BY_ID, COSMETICS, cosUnlocked, cosOf, unlockedAch, rewardNames, lookSuit } from "./progress.js";
+import { ACHIEVEMENTS, ACH_BY_ID, COSMETICS, cosUnlocked, cosOf, unlockedAch, rewardNames, lookSuit, HATS, HAT_BY_ID, hatOwned, hatOf, buyHat, wearHat } from "./progress.js";
 import { sprites, PAL } from "./sprites.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
@@ -103,6 +103,11 @@ export const ui = {
     click("ptab-locker", () => this.openProfile("locker"));
     click("profile-done", () => this.show("menu"));
     G.on("achv", (a) => this.achvPop(a));
+    G.on("sigils", (s) => {
+      if (s.quiet) return;
+      const why = s.why === "win" ? " · the Ladder is yours" : s.why === "rush" ? " · Boss Rush cleared" : "";
+      this.toast("+" + s.n + " \u25c6 " + (s.n === 1 ? "Sigil" : "Sigils") + why, 2200);
+    });
     click("rush-back", () => this.show("menu"));
     click("rush-start", () => handlers.onRushStart(this.rushMods()));
     click("rushdone-again", () => { if (armed()) handlers.onRushAgain(); });
@@ -459,6 +464,7 @@ export const ui = {
     add("Time", sum.time);
     add("Kills", String(sum.kills));
     add("Hits taken", String(sum.hits));
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
     const client = G.net.role === "client";
     $("win-endless").hidden = client;
     $("win-finish").hidden = client;
@@ -869,12 +875,20 @@ export const ui = {
       box.append(b);
     }
     if (title.id) box.append(el("span", "player-title", title.name));
+    const sg = store.data.sigils || 0;
+    if (sg > 0) {
+      const s = el("span", "sigil-chip");
+      s.title = "Sigils: spend them on hats in your Profile's Locker";
+      s.append(icon("gem"), el("b", "", String(sg)));
+      box.append(s);
+    }
     const n = ACHIEVEMENTS.filter((a) => unlockedAch(a.id)).length;
     const lab = $("profile-label");
     if (lab) lab.textContent = "Profile · " + n + "/" + ACHIEVEMENTS.length;
   },
 
   openProfile(tab) {
+    this.hatPick = null;
     $("ptab-achv").setAttribute("aria-selected", tab === "achv" ? "true" : "false");
     $("ptab-locker").setAttribute("aria-selected", tab === "locker" ? "true" : "false");
     $("ppage-achv").hidden = tab !== "achv";
@@ -927,9 +941,66 @@ export const ui = {
   },
 
   /** The locker: suit, visor, jetpack trail, weapon finish, title, victory effect, with a live preview. */
+  /** Hats: the ones you own swap on with a tap; tap one you don't to try it on in the preview, then buy it with Sigils. */
+  renderHats(box) {
+    const sec = el("div", "locker-sec hats");
+    const head = el("div", "hat-head");
+    const bal = el("span", "sigil-bal");
+    bal.title = "Sigils: from sin bosses, Ladder wins, Boss Rush clears and achievements (more on Hard and Nightmare)";
+    bal.append(icon("gem"), el("b", "", String(store.data.sigils || 0)), el("span", "", " Sigils"));
+    head.append(el("h3", "set-h", "Hat"), bal);
+    sec.append(head);
+    const row = el("div", "locker-row");
+    const cur = hatOf();
+    for (const h of HATS) {
+      const owned = hatOwned(h.id);
+      const b = el("button", "lock-opt" + (h.id === cur ? " on" : "") + (h.id === this.hatPick ? " pick" : ""));
+      b.type = "button";
+      b.setAttribute("aria-pressed", h.id === cur ? "true" : "false");
+      const sw = el("i", "swatch");
+      sw.style.setProperty("--sw", h.col);
+      b.append(sw, el("span", "", h.name));
+      if (!owned) {
+        const p = el("small", "price");
+        p.append(icon("gem"), document.createTextNode(String(h.price)));
+        b.append(p);
+        b.title = "Try it on, then buy it for " + h.price + " Sigils";
+      } else if (h.note) b.title = h.note;
+      b.addEventListener("click", () => {
+        if (owned) { this.hatPick = null; wearHat(h.id); handlers.onHat && handlers.onHat(false); }
+        else { this.hatPick = h.id; handlers.onClick && handlers.onClick(); }
+        this.renderLocker();
+      });
+      row.append(b);
+    }
+    sec.append(row);
+    const pick = this.hatPick && HAT_BY_ID[this.hatPick];
+    if (pick && !hatOwned(pick.id)) {
+      const have = store.data.sigils || 0;
+      const bar = el("div", "hat-buy");
+      const what = el("span", "");
+      what.append(el("b", "", pick.name), document.createTextNode(" · "), icon("gem"), document.createTextNode(" " + pick.price));
+      const buy = el("button", "btn btn-primary btn-sm", have >= pick.price ? "Buy and wear" : "Need " + (pick.price - have) + " more");
+      buy.type = "button";
+      buy.disabled = have < pick.price;
+      buy.addEventListener("click", () => {
+        if (!buyHat(pick.id)) return;
+        this.hatPick = null;
+        handlers.onHat && handlers.onHat(true);
+        this.toast(pick.name + ": yours", 1800);
+        this.renderLocker();
+        this.renderProfileStrip();
+      });
+      bar.append(what, buy, el("small", "", "Trying it on in the preview"));
+      sec.append(bar);
+    }
+    box.append(sec);
+  },
+
   renderLocker() {
     const box = $("locker-opts");
     box.replaceChildren();
+    this.renderHats(box);
     const c = store.data.cos;
     const kinds = [["suit", "Suit"], ["visor", "Visor"], ["trail", "Jetpack trail"], ["finish", "Weapon finish"], ["title", "Title"], ["victory", "Victory effect"]];
     for (const [kind, label] of kinds) {
@@ -977,8 +1048,9 @@ export const ui = {
     const puffs = [];
     const frame = (now) => {
       if (screen !== "profile" || $("ppage-locker").hidden) { this.previewOn = false; return; }
-      const suit = lookSuit(SUITS.find((s) => s.id === store.data.settings.suit) || SUITS[0]);
-      const key = suit.id + suit.visor;
+      const worn = lookSuit(SUITS.find((s) => s.id === store.data.settings.suit) || SUITS[0]);
+      const suit = this.hatPick ? { ...worn, hat: this.hatPick } : worn;        // trying a hat on
+      const key = suit.id + suit.visor + suit.hat;
       if (key !== suitKey || !spr) { suitKey = key; spr = sprites.astronaut(2.4, suit).player; }
       const t = now / 1000;
       g.clearRect(0, 0, cv.width, cv.height);
@@ -1027,7 +1099,7 @@ export const ui = {
       badge.append(icon(x.icon));
       const txt = el("span", "achv-txt");
       const rw = rewardNames(x);
-      txt.append(el("small", "", "Achievement unlocked"), el("b", "", x.name), el("span", "", rw.length ? "Unlocked: " + rw.join(", ") : x.desc));
+      txt.append(el("small", "", "Achievement unlocked"), el("b", "", x.name), el("span", "", (rw.length ? "Unlocked: " + rw.join(", ") : x.desc) + (x.sig ? " · +" + x.sig + " \u25c6" : "")));
       box.append(badge, txt);
       box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
       handlers.onAchv && handlers.onAchv();
@@ -1104,6 +1176,7 @@ export const ui = {
     add("Score", formatScore(sum.score), sum.newScore);
     add("Bosses", sum.beaten + " / 7");
     if (sum.killedBy) add("Got you", sum.killedBy);
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
     const tb = $("rush-splits").tBodies[0];
     tb.replaceChildren();
     for (const s of sum.splits || []) {
@@ -1455,6 +1528,7 @@ export const ui = {
     if (sum.topGun) add("Top gun", sum.topGun);
     if (sum.spent) add("Stars spent", String(sum.spent));
     if (sum.killedBy) add("Got you", sum.killedBy);
+    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
     renderArsenal(buildBox);

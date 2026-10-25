@@ -8,7 +8,7 @@ import { store, SUITS } from "./storage.js";
 import { rand, TAU } from "./util.js";
 import { fx } from "./fx.js";
 import { audio } from "./audio.js";
-import { SIN, PAL, P_WHITE, P_AMBER, P_VIOLET, P_DVIOLET, P_CYAN, P_ORANGE, P_RED } from "./sprites.js";
+import { C, SIN, PAL, P_WHITE, P_AMBER, P_VIOLET, P_DVIOLET, P_CYAN, P_ORANGE, P_RED } from "./sprites.js";
 import { FUSION_IDS } from "./fusion.js";
 import { EVO_LIST } from "./evolve.js";
 
@@ -128,8 +128,9 @@ export function unlock(id) {
   const a = ACH_BY_ID[id];
   if (!a || unlockedAch(id)) return false;
   data().achv[id] = Date.now();
+  const sig = earnSigils(BALANCE.sigils.achievement, "achv", true);
   store.save();
-  G.emit("achv", a);
+  G.emit("achv", sig ? { ...a, sig } : a);
   return true;
 }
 
@@ -143,7 +144,7 @@ export const newCharge = () => ++chgSerial;
 const solo = () => G.net.role === "off";
 const mine = () => G.player === G.me;
 
-G.on("runStart", () => { run.perfects = 0; run.wrathH = -1; run.chg.clear(); });
+G.on("runStart", () => { run.perfects = 0; run.wrathH = -1; run.chg.clear(); G.runSigils = 0; });
 G.on("perfect", () => {
   if (!mine()) return;
   run.perfects++;
@@ -245,11 +246,78 @@ export function finishCol() {
   if (f.prism) return "hsl(" + Math.round((G.time * 90) % 360) + ", 85%, 78%)";
   return f.col || "#c9d0f2";
 }
-/** Your suit with the visor you picked. */
+/** Your suit with the visor and hat you picked. */
 export function lookSuit(suit) {
   const v = cosOf("visor");
-  return v && v.col ? { ...suit, visor: v.col } : suit;
+  return { ...suit, visor: v && v.col ? v.col : suit.visor, hat: hatOf() };
 }
+/** What co-op teammates see of you: "suit/hat" (an older client reads the suit and ignores the rest). */
+export const lookCode = () => (data().settings.suit || "classic") + "/" + hatOf();
+
+// ---------------------------------------------------------------------------
+// hats, bought with Sigils (a rare currency: see balance.sigils). The crown is everyone's from the start,
+// and you can swap between the hats you own any time in the Locker. sprites.js draws them.
+// ---------------------------------------------------------------------------
+const SG = BALANCE.sigils;
+export const HATS = [
+  { id: "crown", name: "Crown", col: C.amber, note: "The original" },
+  { id: "none", name: "No hat", col: "#7f8bb0" },
+  { id: "nightcap", name: "Sloth's Nightcap", col: SIN.sloth },
+  { id: "toque", name: "Gluttony's Toque", col: "#f4f6ff" },
+  { id: "tophat", name: "Greed's Top Hat", col: SIN.greed },
+  { id: "boppers", name: "Lust's Heart Boppers", col: SIN.lust },
+  { id: "horns", name: "Wrath's Horns", col: "#ff4a3d" },
+  { id: "laurels", name: "Pride's Laurels", col: "#ffd45c" },
+  { id: "serpent", name: "Envy's Serpent", col: SIN.envy },
+  { id: "antenna", name: "Machine Antenna", col: C.cyan },
+  { id: "halo", name: "Halo", col: "#ffe9a8", note: "For a reformed sinner" },
+].map((h) => ({ ...h, price: SG.hats[h.id] || 0 }));
+export const HAT_BY_ID = Object.fromEntries(HATS.map((h) => [h.id, h]));
+
+export const hatOwned = (id) => { const h = HAT_BY_ID[id]; return !!h && (h.price === 0 || !!data().hats[id]); };
+export const hatOf = () => (hatOwned(data().cos.hat) ? data().cos.hat : "crown");
+
+/** Spends Sigils on a hat and puts it on. False if it's unknown, already yours, or you can't afford it. */
+export function buyHat(id) {
+  const h = HAT_BY_ID[id];
+  if (!h || hatOwned(id) || (data().sigils || 0) < h.price) return false;
+  data().sigils -= h.price;
+  data().hats[id] = Date.now();
+  data().cos.hat = id;
+  store.save(true);
+  return true;
+}
+export function wearHat(id) {
+  if (!hatOwned(id)) return false;
+  data().cos.hat = id;
+  store.save();
+  return true;
+}
+
+/** Sigils for one of the payouts (before checking whether this run can earn any). */
+export function sigilAmount(kind, rank) {
+  const mul = SG.diff[G.difficulty] || 1;
+  if (kind === "boss") return SG.boss * mul;
+  if (kind === "win") return SG.win * mul;
+  if (kind === "rush") return (SG.rush + (SG.rank[rank] || 0)) * mul;
+  return 0;
+}
+/** Adds Sigils to your save (never in a debug run). quiet: no toast (the achievement card says it). */
+export function earnSigils(n, why, quiet) {
+  if (!(n > 0) || G.debug.on) return 0;
+  data().sigils = (data().sigils || 0) + n;
+  G.runSigils = (G.runSigils || 0) + n;
+  store.save();
+  G.emit("sigils", { n, why, quiet: !!quiet });
+  return n;
+}
+// The host's events pay out here; co-op guests are paid from the host's messages (main.js), same amounts.
+export const sigilsBoss = () => earnSigils(sigilAmount("boss"), "boss");
+export const sigilsWin = () => earnSigils(sigilAmount("win"), "win");
+export const sigilsRush = (sum) => (sum && sum.cleared ? earnSigils(sigilAmount("rush", sum.rank), "rush") : 0);
+G.on("bossDown", () => { if (G.net.role !== "client" && G.mode !== "rush") sigilsBoss(); });
+G.on("ladderWin", () => { if (G.net.role !== "client") sigilsWin(); });
+G.on("rushDone", (sum) => { if (G.net.role !== "client") sigilsRush(sum); });
 
 // victory effects: played over the last boss's death
 const shows = [];

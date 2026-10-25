@@ -32,8 +32,9 @@ const suitCache = new Map();
 function suitSprites(id) {
   let e = suitCache.get(id);
   if (!e || e.P !== sprites.P) {
-    const suit = SUITS.find((x) => x.id === id) || SUITS[0];
-    e = { P: sprites.P, ...sprites.astronaut(sprites.P, suit) };
+    const [sid, hat] = String(id || "").split("/");        // co-op looks are "suit/hat"
+    const suit = SUITS.find((x) => x.id === sid) || SUITS[0];
+    e = { P: sprites.P, ...sprites.astronaut(sprites.P, { ...suit, hat: hat || "crown" }) };
     suitCache.set(id, e);
   }
   return e;

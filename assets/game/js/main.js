@@ -26,7 +26,7 @@ import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patc
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { fusionActivated, fusionWave } from "./fusion.js";
 import { mutKey, mutHint } from "./mutations.js";
-import { progressTick, lookSuit } from "./progress.js";
+import { progressTick, lookSuit, lookCode, sigilsBoss, sigilsWin, sigilsRush } from "./progress.js";
 import { rollChapterEvent, eventWaveStart, eventTick, pendingEvent, eventDone, cacheAway, cacheOptions, relicOptions, takeRelic, altarOptions, takeAltar, acceptAmbush, ambushReward } from "./events.js";
 import { giveItem } from "./armory.js";
 import { net } from "./net.js";
@@ -316,13 +316,13 @@ G.on("waveClear", (n) => {
     G.winTime = G.time;
     clearT = 2.4;
     ui.banner("The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true);
-    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest" });
+    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest", sig: 1 });
     audio.play("newBest");
     setState("clear");
     return;
   }
   const head = waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n;
-  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear" });
+  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear", sig: waves.boss ? 1 : 0 });   // sig: a sin boss fell (guests earn its Sigils)
   ui.banner(head, waves.boss ? "Clear!" : "Clear", text, "good");
   audio.play("clear");
   audio.musicIntensity(1);
@@ -1011,11 +1011,11 @@ ui.init({
   onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
   onLobbyHost: async (name) => {
     store.data.coopName = name; store.save();
-    try { await net.host(name, G.settings.suit); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.host(name, lookCode()); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
   onLobbyJoin: async (code, name) => {
     store.data.coopName = name; store.save();
-    try { await net.join(code, name, G.settings.suit); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.join(code, name, lookCode()); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
   onLobbyMode: (mode) => { coop.mode = mode; coop.mods = store.data.rush.mods || []; },
   onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
@@ -1035,6 +1035,7 @@ ui.init({
   onSettings: applySettings,
   onSuit: (id) => { G.settings.suit = id; store.save(); renderer.setSuit(suitDef()); audio.play("click"); },
   onLook: () => renderer.setSuit(suitDef()),
+  onHat: (bought) => { audio.play(bought ? "buy" : "click"); renderer.setSuit(suitDef()); },
   onAchv: () => audio.play("achv"),
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
@@ -1205,7 +1206,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
 if (G.debug.on && params.get("cohost")) {
   setTimeout(async () => {
     try {
-      const code = await net.host("Host", G.settings.suit);
+      const code = await net.host("Host", lookCode());
       window.__coopCode = code;
       if (G.desktop) window.chrome.webview.postMessage({ type: "status", msg: "code " + code });
       ui.lobbyRoom(code, true);
@@ -1217,7 +1218,7 @@ if (G.debug.on && params.get("cohost")) {
   }, 600);
 }
 if (G.debug.on && params.get("cojoin")) {
-  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), G.settings.suit).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
+  setTimeout(() => net.join(params.get("cojoin"), "Guest" + Math.floor(Math.random() * 90 + 10), lookCode()).then(() => { ui.lobbyRoom(net.code, false); ui.show("lobby"); }).catch((e) => console.log("[coop] " + e.message)), 600);
 }
 if (G.debug.on && params.get("cosmoke") === "1") import("./debug-bot.js").then(({ coopSmoke }) => coopSmoke());
 if (G.debug.on && params.get("scene")) {
@@ -1255,6 +1256,19 @@ if (G.desktop) {
     if (m.type === "auth") online.refresh();
     if (m.type === "pause") pause();
   });
+}
+// The Android app (its WebView adds "EnviousGliderAndroid/" to the user agent) calls these: the system back button
+// (false = nothing left to close, so the app goes to the background) and the app leaving / returning to the screen.
+if (G.androidApp) {
+  window.egApp = {
+    back: () => {
+      if (input.onPause()) return true;
+      if (G.state === "menu" && ui.screen && ui.screen !== "menu") { ui.show("menu"); return true; }
+      return false;
+    },
+    pause: () => { if (G.net.role === "off") pause(); audio.suspend(); },
+    resume: () => { audio.resume(); loop.resetClock(); },
+  };
 }
 G.on("auth", () => { ui.renderAccount(); if (ui.screen === "board") ui.openBoard(ui.boardKindNow || "all"); });
 online.init();
@@ -1308,8 +1322,8 @@ initCoop({
     if (G.mode === "rush") { G.rush.inBreak = false; if (G.rush.t0 < 0) G.rush.t0 = G.time; }
     waveIntro(n);
   },
-  rushDone: (sum) => { lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
-  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); },
+  rushDone: (sum) => { sigilsRush(sum); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) sigilsBoss(); },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
     delete sum.dmg; delete sum.big; delete sum.topGun;
@@ -1317,7 +1331,7 @@ initCoop({
     sum.killedBy = sourceName(G.me && G.me.killedBy);
     lastRun = sum; setState("over"); ui.showGameOver(sum); audio.play("gameOver");
   },
-  showWin: (sum) => { ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
+  showWin: (sum) => { sigilsWin(); ui.clearBanner(); setState("win"); ui.showWin(sum); audio.musicIntensity(0); },
   readyChanged: () => {
     if (G.state === "shop" && coop.waiting) ui.setShopWaiting(waitingOn());
     if (G.state === "upgrade" && coop.waiting) ui.setCardsWaiting(waitingOn());

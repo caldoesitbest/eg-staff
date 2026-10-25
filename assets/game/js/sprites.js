@@ -236,13 +236,198 @@ function drawAstronaut(g, P, suit) {
   g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1; g.stroke();
   g.fillStyle = "rgba(255,255,255,0.85)";
   g.beginPath(); g.ellipse(5.6, -13, 2.2, 1.3, -0.5, 0, TAU); g.fill();
-  // crown
-  glow(g, P, C.amber, 10);
-  g.fillStyle = C.amber;
-  shapeFromPoints(g, [-6, -21, -6, -27, -3, -24, 0, -29, 3, -24, 6, -27, 6, -21]);
-  g.fill();
-  noGlow(g);
-  g.fillStyle = C.magenta; circle(g, 0, -23.6, 1.3); g.fill();
+  drawHat(g, P, suit.hat);
+}
+
+// ---------- hats (bought with Sigils; the crown is everyone's). The helmet is a circle at (0, -10), r 11.5;
+// everything stays inside the sprite's box (y >= -32). ----------
+const HAT_ART = {
+  crown(g, P) {
+    glow(g, P, C.amber, 10);
+    g.fillStyle = C.amber;
+    shapeFromPoints(g, [-6, -21, -6, -27, -3, -24, 0, -29, 3, -24, 6, -27, 6, -21]);
+    g.fill();
+    noGlow(g);
+    g.fillStyle = C.magenta; circle(g, 0, -23.6, 1.3); g.fill();
+  },
+  none() {},
+  nightcap(g, P) {
+    // a floppy cap that slumps over the back of the helmet, pom-pom and all
+    g.fillStyle = SIN.sloth;
+    g.beginPath();
+    g.moveTo(8, -20);
+    g.quadraticCurveTo(6, -30.5, -3, -30);
+    g.quadraticCurveTo(-12, -29.5, -15, -22);
+    g.lineTo(-12.4, -21.4);
+    g.quadraticCurveTo(-10, -25.5, -6, -24.2);
+    g.lineTo(-8.6, -20);
+    g.closePath(); g.fill();
+    g.fillStyle = "rgba(60,64,110,0.35)";
+    g.beginPath(); g.moveTo(2.5, -29.6); g.quadraticCurveTo(-1, -26, -6.5, -26.8); g.lineTo(-6, -24.2); g.quadraticCurveTo(-1, -23.6, 4.6, -27.8); g.closePath(); g.fill();
+    g.fillStyle = "#8a90b8"; rrect(g, -9.5, -22.6, 18.5, 3.6, 1.8); g.fill();
+    glow(g, P, "#ffffff", 6);
+    g.fillStyle = "#ffffff"; circle(g, -15.4, -21, 2.6); g.fill();
+    noGlow(g);
+  },
+  toque(g, P) {
+    // the chef's hat: puffy top, a band in Gluttony's pink
+    glow(g, P, "#ffffff", 6);
+    g.fillStyle = "#f4f6ff";
+    circle(g, -4.4, -25.6, 3.8); g.fill();
+    circle(g, 4.4, -25.6, 3.8); g.fill();
+    circle(g, 0, -27.4, 4.2); g.fill();
+    rrect(g, -6.2, -25.6, 12.4, 5.2, 1.4); g.fill();
+    noGlow(g);
+    g.strokeStyle = "rgba(20,24,60,0.22)"; g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-2.1, -25.2); g.lineTo(-2.1, -21.6); g.moveTo(2.1, -25.2); g.lineTo(2.1, -21.6); g.stroke();
+    g.fillStyle = SIN.glutton; g.fillRect(-6.2, -22.2, 12.4, 1.7);
+  },
+  tophat(g, P) {
+    // black silk with a gold band: Greed dresses for the occasion
+    g.fillStyle = "#1a1530";
+    rrect(g, -6, -31, 12, 10.2, 1.2); g.fill();
+    g.beginPath(); g.ellipse(0, -21, 10.5, 2.2, 0, 0, TAU); g.fill();
+    g.strokeStyle = "rgba(255,212,92,0.5)"; g.lineWidth = 0.8;
+    rrect(g, -6, -31, 12, 10.2, 1.2); g.stroke();
+    g.beginPath(); g.ellipse(0, -21, 10.5, 2.2, 0, 0, TAU); g.stroke();
+    glow(g, P, SIN.greed, 8);
+    g.fillStyle = SIN.greed; g.fillRect(-6, -24.8, 12, 2.4);
+    noGlow(g);
+    g.fillStyle = "rgba(255,255,255,0.14)"; g.fillRect(2.4, -30, 1.6, 4.6);
+  },
+  boppers(g, P) {
+    // a headband with two hearts on springs
+    g.strokeStyle = SIN.lust; g.lineWidth = 1.6;
+    g.beginPath(); g.arc(0, -10, 12.4, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+    g.strokeStyle = "#f2b8d8"; g.lineWidth = 1.1;
+    g.beginPath();
+    g.moveTo(-4.4, -21.6); g.quadraticCurveTo(-5.6, -25.5, -8.6, -26.6);
+    g.moveTo(4.4, -21.6); g.quadraticCurveTo(5.6, -25.5, 8.6, -26.6);
+    g.stroke();
+    glow(g, P, SIN.lust, 8);
+    g.fillStyle = "#ff6fb5";
+    for (const x of [-8.8, 8.8]) { g.save(); g.translate(x, -27.6); heartPath(g, 3); g.fill(); g.restore(); }
+    noGlow(g);
+  },
+  horns(g, P) {
+    // Wrath's horns, curling up off the helmet
+    glow(g, P, "#ff3b3b", 8);
+    g.fillStyle = "#ff4a3d";
+    g.beginPath(); g.moveTo(-8.5, -17.5); g.quadraticCurveTo(-12.8, -24, -10.6, -30.6); g.quadraticCurveTo(-8.4, -24.6, -3.8, -20.6); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(3.8, -20.6); g.quadraticCurveTo(8.4, -24.6, 10.6, -30.6); g.quadraticCurveTo(12.8, -24, 8.5, -17.5); g.closePath(); g.fill();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,214,190,0.6)"; g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-7.4, -19.6); g.quadraticCurveTo(-10, -24, -10, -28); g.moveTo(7.4, -19.6); g.quadraticCurveTo(10, -24, 10, -28); g.stroke();
+  },
+  laurels(g, P) {
+    // a victor's wreath around the top of the helmet, a Pride gem where the branches meet
+    const R = 12.2;
+    g.strokeStyle = "#c9962e"; g.lineWidth = 0.9;
+    g.beginPath(); g.arc(0, -10, R, Math.PI * 1.13, Math.PI * 1.45); g.stroke();
+    g.beginPath(); g.arc(0, -10, R, Math.PI * 1.55, Math.PI * 1.87); g.stroke();
+    glow(g, P, C.amber, 5);
+    g.fillStyle = "#ffd45c";
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 4; k++) {
+        // pairs of leaves along each stem, angled up toward the front of the wreath
+        const a = -Math.PI / 2 + side * (0.2 + k * 0.3);
+        const x = Math.cos(a) * R, y = -10 + Math.sin(a) * R, t = a - side * Math.PI / 2;
+        for (const off of [-0.55, 0.55]) {
+          g.beginPath();
+          g.ellipse(x + Math.cos(t + off * 2) * 1.6, y + Math.sin(t + off * 2) * 1.6, 2.2, 0.95, t + off, 0, TAU);
+          g.fill();
+        }
+      }
+    }
+    noGlow(g);
+    g.fillStyle = SIN.pride; circle(g, 0, -23.2, 1.6); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.8)"; circle(g, -0.5, -23.7, 0.5); g.fill();
+  },
+  serpent(g, P) {
+    // Envy's snake: a tapering tail down the back of the helmet, one coil over the top, then the neck rears
+    // up in an S to a wedge head over the visor, slit-eyed with its tongue out. The body is a smooth tube
+    // along that spine (thin at the tail) with a diamond-back pattern and a lit top edge.
+    const R = 12.3, pts = [];
+    for (let i = 0; i < 10; i++) {                                        // the tail
+      const t = i / 10, u = 1 - t;
+      pts.push([u * u * -12.6 + 2 * u * t * -14.8 + t * t * -R, u * u * -2.2 + 2 * u * t * -6.4 + t * t * -10]);
+    }
+    for (let i = 0; i < 30; i++) {                                        // the coil
+      const a = Math.PI * (1 + 0.78 * i / 30);
+      pts.push([Math.cos(a) * R, -10 + Math.sin(a) * R]);
+    }
+    const a1 = Math.PI * 1.78, x1 = Math.cos(a1) * R, y1 = -10 + Math.sin(a1) * R;
+    const hx = 10.6, hy = -27.9;
+    for (let i = 0; i <= 18; i++) {                                       // the neck's S
+      const t = i / 18, u = 1 - t;
+      pts.push([u * u * u * x1 + 3 * u * u * t * 13.8 + 3 * u * t * t * 6.6 + t * t * t * hx,
+        u * u * u * y1 + 3 * u * u * t * -21.2 + 3 * u * t * t * -24 + t * t * t * hy]);
+    }
+    const n = pts.length;
+    const rad = (i) => { const s = i / (n - 1); return s < 0.3 ? 0.4 + (s / 0.3) * 1.5 : 1.9 - (s - 0.3) * 0.55; };
+    const tube = (extra, col, dx, dy, k) => {
+      g.strokeStyle = col; g.lineCap = "round";
+      for (let i = 1; i < n; i++) {
+        g.lineWidth = Math.max(0.3, (rad(i) * k + extra) * 2);
+        g.beginPath(); g.moveTo(pts[i - 1][0] + dx * rad(i), pts[i - 1][1] + dy * rad(i)); g.lineTo(pts[i][0] + dx * rad(i), pts[i][1] + dy * rad(i)); g.stroke();
+      }
+    };
+    tube(0.55, "#1d2160", 0, 0, 1);                                       // outline
+    tube(0, SIN.envy, 0, 0, 1);                                           // body
+    tube(0, "rgba(190,200,255,0.55)", -0.25, -0.4, 0.38);                 // light along the top
+    // diamond-back: a dark rhombus every few units along the body, turned with it
+    g.fillStyle = "#2f379c";
+    let len = 0, next = 2.4;
+    for (let i = 1; i < n - 3; i++) {
+      const dx = pts[i][0] - pts[i - 1][0], dy = pts[i][1] - pts[i - 1][1];
+      len += Math.hypot(dx, dy);
+      if (len < next) continue;
+      next += 2.4;
+      const r = rad(i), a = Math.atan2(dy, dx);
+      g.save(); g.translate(pts[i][0], pts[i][1]); g.rotate(a);
+      g.beginPath(); g.moveTo(-r * 0.75, 0); g.lineTo(0, -r * 0.62); g.lineTo(r * 0.75, 0); g.lineTo(0, r * 0.62); g.closePath(); g.fill();
+      g.restore();
+    }
+    g.lineCap = "butt";
+    // the head
+    g.beginPath();
+    g.moveTo(hx - 1.2, hy - 2.1);
+    g.quadraticCurveTo(hx + 2.8, hy - 3.3, hx + 6.2, hy - 0.2);
+    g.quadraticCurveTo(hx + 2.8, hy + 2.6, hx - 1.2, hy + 2.0);
+    g.closePath();
+    g.lineWidth = 1.1; g.strokeStyle = "#1d2160"; g.stroke();
+    g.fillStyle = SIN.envy; g.fill();
+    g.fillStyle = "#2f379c";
+    g.beginPath(); g.moveTo(hx + 0.2, hy - 1.2); g.lineTo(hx + 1.4, hy - 1.9); g.lineTo(hx + 1.4, hy - 0.5); g.closePath(); g.fill();
+    g.fillStyle = "#a9b4ff";
+    g.beginPath(); g.moveTo(hx, hy + 0.8); g.quadraticCurveTo(hx + 3, hy + 1.9, hx + 5.6, hy + 0.3); g.quadraticCurveTo(hx + 3, hy + 1.0, hx, hy + 0.8); g.fill();
+    g.fillStyle = "#ffe45c"; circle(g, hx + 2.6, hy - 0.9, 0.95); g.fill();
+    g.fillStyle = "#14082e"; g.beginPath(); g.ellipse(hx + 2.7, hy - 0.9, 0.28, 0.8, 0, 0, TAU); g.fill();
+    g.fillStyle = "#14082e"; circle(g, hx + 5.2, hy - 0.6, 0.3); g.fill();      // nostril
+    g.strokeStyle = "#ff4f8b"; g.lineWidth = 0.7;
+    g.beginPath(); g.moveTo(hx + 6, hy); g.lineTo(hx + 8.2, hy + 0.1); g.lineTo(hx + 9.3, hy - 0.8); g.moveTo(hx + 8.2, hy + 0.1); g.lineTo(hx + 9.3, hy + 0.9); g.stroke();
+  },
+  antenna(g, P) {
+    // one of theirs: a bent robot antenna with a glowing tip
+    g.fillStyle = "#8a93c2"; rrect(g, -3.4, -23, 4.6, 2.4, 1); g.fill();
+    g.strokeStyle = "#8a93c2"; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(-1.1, -22); g.lineTo(-1.1, -25.6); g.lineTo(2.6, -28.6); g.stroke();
+    glow(g, P, C.cyan, 10);
+    g.fillStyle = C.cyan; circle(g, 2.8, -29.2, 2.3); g.fill();
+    noGlow(g);
+    g.fillStyle = "#ffffff"; circle(g, 2.2, -29.8, 0.8); g.fill();
+  },
+  halo(g, P) {
+    glow(g, P, "#fff3c4", 12);
+    g.strokeStyle = "#ffe9a8"; g.lineWidth = 2.2;
+    g.beginPath(); g.ellipse(0, -27, 8.5, 2.6, 0, 0, TAU); g.stroke();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 0.8;
+    g.beginPath(); g.ellipse(0, -27, 8.5, 2.6, 0, Math.PI * 1.1, Math.PI * 1.6); g.stroke();
+  },
+};
+function drawHat(g, P, id) {
+  (HAT_ART[id] || HAT_ART.crown)(g, P);
 }
 
 // ---------- pickups + bullets ----------
