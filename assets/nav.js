@@ -52,6 +52,7 @@
       ]));
     }
     items.push(link("/", "house", "Home", { current: path === "/" }));
+    items.push(link("/shop/", "shopping-bag", "Shop", { current: path === "/shop/" }));
     items.push(link("/apply/", "clipboard-list", "Staff Recruitment", { current: path === "/apply/" }));
     items.push(link("/game/", "zap", "Play the game", { current: path === "/game/" }));
     if (sections.length) {
