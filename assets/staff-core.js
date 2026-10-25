@@ -286,7 +286,7 @@
   /* ---------- drawer ---------- */
   const drawer = (() => {
     const box = $("drawer"), scrim = $("drawer-scrim"), title = $("drawer-title"), body = $("drawer-body");
-    let back = null, onClose = null, open_ = false, timer = 0;
+    let back = null, onClose = null, open_ = false, timer = 0, guard = null;
     function hide() {
       box.hidden = true; scrim.hidden = true;
       box.classList.remove("wide", "out"); scrim.classList.remove("out");
@@ -294,6 +294,7 @@
     function close() {
       if (!open_) return;
       open_ = false;
+      guard = null;
       document.body.style.overflow = "";
       const cb = onClose; onClose = null;
       if (reduce) hide();
@@ -307,19 +308,24 @@
       if (!open_) back = document.activeElement;
       open_ = true;
       title.textContent = opts.title || "";
-      body.replaceChildren(...[].concat(opts.body || []));
+      body.replaceChildren(...[].concat(opts.body || []).filter((n) => n !== null && n !== undefined && n !== false));
       box.classList.toggle("wide", !!opts.wide);
       box.hidden = false; scrim.hidden = false;
       document.body.style.overflow = "hidden";
       onClose = opts.onClose || null;
+      guard = opts.guard || null;          // optional: () => true/false (or a promise), asked before the close button, scrim or Esc close it
       window.egIcons && window.egIcons(box);
       title.focus({ preventScroll: true });
       body.scrollTop = 0;
     }
-    $("drawer-close").addEventListener("click", close);
-    scrim.addEventListener("click", close);
+    async function ask() {
+      if (guard && !(await guard())) return;
+      close();
+    }
+    $("drawer-close").addEventListener("click", ask);
+    scrim.addEventListener("click", ask);
     box.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { e.preventDefault(); close(); return; }
+      if (e.key === "Escape") { e.preventDefault(); ask(); return; }
       if (e.key !== "Tab") return;
       const f = Array.from(box.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])"))
         .filter((n) => !n.disabled && n.offsetParent !== null);
@@ -327,7 +333,7 @@
       if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
       else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
     });
-    return { open: open, close: close, get isOpen() { return open_; }, set: (nodes) => { body.replaceChildren(...[].concat(nodes)); window.egIcons && window.egIcons(body); } };
+    return { open: open, close: close, get isOpen() { return open_; }, set: (nodes) => { body.replaceChildren(...[].concat(nodes).filter((n) => n !== null && n !== undefined && n !== false)); window.egIcons && window.egIcons(body); } };
   })();
 
   /* ---------- confirm ---------- */
@@ -360,7 +366,7 @@
   const state = { me: null, tier: null, current: null, sections: [], leaving: null, polls: 0 };
   const can = (min) => (RANK[state.tier] || 0) >= (RANK[min] || 99);
   function register(def) { state.sections.push(def); }
-  const visible = () => state.sections.filter((s) => can(s.min || "helper"));
+  const visible = () => state.sections.filter((s) => can(s.min || "helper") && !s.hidden);   // hidden: a section that decides for itself (the shop)
 
   const navInd = el("span", { class: "nav-ind", "aria-hidden": "true" });
   function placeNav() {
