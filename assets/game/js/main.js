@@ -42,6 +42,7 @@ G.debug.speed = G.debug.on ? Math.max(1, Math.min(8, parseInt(params.get("speed"
 
 // The Windows app (WebView2) talks to its launcher through window.chrome.webview.
 G.desktop = !!(window.chrome && window.chrome.webview);
+G.androidApp = /EnviousGliderAndroid\//.test(navigator.userAgent);     // the Android app's WebView adds this to its user agent
 
 store.load();
 G.settings = store.data.settings;
@@ -414,6 +415,7 @@ function finishRush(cleared) {
     }
   }
   sum.solo = record;
+  if (!record) sum.recordNote = G.net.role !== "off" ? "co-op run: records are kept for solo runs" : "debug run, records not saved";
   store.data.totals.kills += G.kills;
   store.save(true);
   G.emit("rushDone", sum);
@@ -1063,7 +1065,7 @@ input.onPause = () => {
     resume();
     return true;
   }
-  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
+  if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
   if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
@@ -1073,7 +1075,7 @@ input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
-  else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush") ui.show("menu");
+  else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download") ui.show("menu");
   else if (G.state === "paused") resume();
 };
 
@@ -1240,6 +1242,7 @@ if (G.debug.on) {
 // ---------------------------------------------------------------------------
 // desktop app + online
 // ---------------------------------------------------------------------------
+ui.setApp(G.desktop || G.androidApp);
 if (G.desktop) {
   ui.setDesktop(true);
   // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)

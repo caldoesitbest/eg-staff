@@ -1504,3 +1504,30 @@ body.eg-game::before { display: none; }
 @keyframes ambush-pulse { 50% { box-shadow: 0 0 12px -2px rgba(255, 59, 59, 0.7); } }
 @media (max-width: 760px) { .event-opts, .event-opts.two { grid-template-columns: 1fr; } }
 .game.reduced .ambush-chip { animation: none; }
+
+/* ---------------- download the app (website only) ---------------- */
+.download .panel-title, .download .kicker, .download .set-note { text-align: center; }
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 320px)); justify-content: center; gap: 12px; margin: 4px 0 2px; }
+.dl-card {
+  --dl-col: #63f4ff;
+  display: grid; justify-items: center; gap: 6px; padding: 20px 16px 16px;
+  border: 1px solid transparent; border-radius: 18px;
+  background: linear-gradient(#0b1029, #0b1029) padding-box, linear-gradient(150deg, var(--dl-col), rgba(142, 68, 255, 0.3) 60%, rgba(99, 244, 255, 0.2)) border-box;
+  color: #f4f6ff; text-align: center; text-decoration: none;
+  box-shadow: 0 18px 46px -30px var(--dl-col);
+  transition: transform 0.14s ease, box-shadow 0.18s ease;
+  animation: card-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1.2) backwards;
+}
+.dl-card[hidden] { display: none; }
+.dl-card + .dl-card { animation-delay: 0.06s; }
+#dl-android { --dl-col: #9dff5c; }
+.dl-card > .i { width: 34px; height: 34px; color: var(--dl-col); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--dl-col) 55%, transparent)); }
+.dl-card b { font: 700 1.2rem var(--g-num); letter-spacing: 0.04em; text-transform: uppercase; }
+.dl-card > span { color: #9aa7c7; font-size: 0.85rem; }
+.dl-card em { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 7px 14px; border-radius: 999px; background: color-mix(in srgb, var(--dl-col) 14%, transparent); color: var(--dl-col); font: 700 0.82rem var(--g-num); font-style: normal; letter-spacing: 0.04em; }
+.dl-card em .i { width: 15px; height: 15px; }
+.dl-card:hover, .dl-card:focus-visible { transform: translateY(-4px); box-shadow: 0 22px 56px -22px var(--dl-col); }
+.dl-card:focus-visible { outline: 2px solid var(--dl-col); outline-offset: 3px; }
+.dl-notes { font-size: 0.86rem; text-align: left; }
+.dl-notes li[hidden] { display: none; }
+.game.reduced .dl-card { animation: none; transition: none; }

@@ -94,6 +94,8 @@ export const ui = {
     click("evo-later", () => { if (armed()) handlers.onEvoLater(); });
     click("event-leave", () => { if (armed()) handlers.onEvent(-1); });
     click("news-btn", () => this.show("news"));
+    click("download-btn", () => this.show("download"));
+    click("download-done", () => this.show("menu"));
     click("coop-btn", () => handlers.onCoop());
     click("rush-btn", () => handlers.onRush());
     click("profile-btn", () => this.openProfile("achv"));
@@ -206,7 +208,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "profile", "event"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "profile", "event", "download"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -217,6 +219,7 @@ export const ui = {
     screen = name;
     if (name === "upgrade" || name === "over" || name === "win" || name === "shop" || name === "evo" || name === "rushdone" || name === "event") armedAt = performance.now() + (name === "upgrade" ? 450 : name === "shop" ? 350 : name === "evo" ? 700 : 800);
     if (name === "how") this.renderHow();
+    if (name === "download") this.renderDownload();
     if (name === "menu") this.refreshMenu();
     const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
@@ -465,6 +468,26 @@ export const ui = {
 
   setDesktop(on) {
     for (const id of ["exit-btn", "pause-exit-btn"]) { const n = $(id); if (n) n.hidden = !on; }
+  },
+
+  /** Inside the Windows or Android app there's nothing to download. */
+  setApp(on) {
+    const b = $("download-btn");
+    if (b) b.hidden = on;
+  },
+
+  /** The download screen: your own platform's app first; iPhone and iPad get the Home Screen tip instead. */
+  renderDownload() {
+    const ua = navigator.userAgent || "";
+    const apk = $("dl-android"), win = $("dl-win"), grid = $("dl-grid");
+    const hasApk = !!(apk && $("dl-apk-size").textContent);
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (apk) apk.hidden = !hasApk;
+    $("dl-note-android").hidden = !hasApk;
+    $("dl-note-ios").hidden = !ios;
+    if (grid && apk && win) { if (/Android/.test(ua)) grid.prepend(apk); else grid.prepend(win); }
+    const an = $("dl-note-android");
+    if (/Android/.test(ua) && an) an.parentNode.prepend(an);
   },
 
   /** The menu's difficulty picker (applies to the Ladder and to co-op games you host). */
@@ -1092,7 +1115,7 @@ export const ui = {
         el("td", s.pb ? (d <= 0 ? "good" : "bad") : "", s.pb ? (d <= 0 ? "−" : "+") + fmtClock(Math.abs(d)) : "first"), el("td", s.hits ? "" : "good", s.hits ? String(s.hits) : "none"));
       tb.append(tr);
     }
-    renderBuild($("rushdone-build"), sum.build, sum.buildTitle + (sum.solo === false ? " · records are kept for solo runs" : ""));
+    renderBuild($("rushdone-build"), sum.build, sum.buildTitle + (sum.recordNote ? " · " + sum.recordNote : ""));
     const client = G.net.role === "client";
     $("rushdone-again").disabled = client;
     $("rushdone-again").lastChild.textContent = client ? "Waiting for the host" : G.net.role === "host" ? "Run it back (everyone)" : "Run it back";

@@ -124,6 +124,7 @@
         <button class="btn btn-ghost btn-sm" id="how-btn" type="button"><i data-icon="circle-help"></i>How to play</button>
         <button class="btn btn-ghost btn-sm" id="settings-btn" type="button"><i data-icon="settings"></i>Settings</button>
         <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
+        <button class="btn btn-ghost btn-sm" id="download-btn" type="button"><i data-icon="download"></i>Download</button>
         <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
@@ -473,6 +474,32 @@
         <li><b>From 4.1:</b> Normal, Hard and Nightmare, smarter robots and squads, harder bosses, a darker Greed theme and a polish pass.</li>
       </ul>
       <button class="btn btn-primary" id="news-done" type="button">Let's go</button>
+    </div>
+  </section>
+
+  <!-- download the app (website only: hidden inside the apps) -->
+  <section class="screen screen-download" id="screen-download" hidden aria-labelledby="download-title">
+    <div class="panel panel-wide glow-card download">
+      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.2</span></p>
+      <h2 class="panel-title" id="download-title">Get the app</h2>
+      <p class="set-note">The same game as this page, in its own full-screen app. Leaderboards, sign-in and co-op work whenever you're online.</p>
+      <div class="dl-grid" id="dl-grid">
+        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.2" download="EnviousGlider.exe">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+          <b>Windows</b><span>Windows 10 or 11 &middot; <span id="dl-win-size">1.8 MB</span></span><em><i data-icon="download"></i>Download .exe</em>
+        </a>
+        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.2" download="EnviousGlider.apk" hidden>
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+          <b>Android</b><span>Android 7 or later &middot; <span id="dl-apk-size"></span></span><em><i data-icon="download"></i>Download .apk</em>
+        </a>
+      </div>
+      <ul class="news-list dl-notes">
+        <li><b>Windows:</b> the app isn't code-signed yet, so Windows may say <em>&ldquo;Windows protected your PC&rdquo;</em>. Choose <b>More info</b>, then <b>Run anyway</b>. It uses Microsoft Edge WebView2, which Windows 10 and 11 already have.</li>
+        <li id="dl-note-android" hidden><b>Android:</b> open the file when it finishes downloading. The first time, your phone asks you to allow installs from your browser. To update, install the new version over the old one: your progress stays.</li>
+        <li id="dl-note-ios"><b>iPhone and iPad:</b> play right here. In Safari, tap <b>Share</b>, then <b>Add to Home Screen</b> for a full-screen icon.</li>
+        <li>The app keeps its own save, separate from this browser's.</li>
+      </ul>
+      <button class="btn btn-primary" id="download-done" type="button">Back</button>
     </div>
   </section>
 
