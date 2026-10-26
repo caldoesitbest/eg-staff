@@ -16,6 +16,7 @@ import { audio } from "./audio.js";
 import { addZone, Z } from "./zones.js";
 import { hostileCount, visible } from "./enemies/index.js";
 import { waves } from "./waves.js";
+import { PAL, P_RED } from "./sprites.js";
 
 const PR = BALANCE.pressure;
 const DI = { normal: 0, hard: 1, nightmare: 2 };
@@ -68,7 +69,7 @@ function strikeAt(P, x, y, dmg) {
   const S = PR.strike;
   const z = addZone(Z.DELAY, x, y, S.r, at(S.fuse));
   if (!z) return;
-  z.dmg = 0; z.y2 = dmg || S.dmg; z.col = S.col; z.pal = 0; z.src = "orbital strike"; z.by = null; z.big = true;
+  z.dmg = 0; z.y2 = dmg || S.dmg; z.col = S.col; z.pal = PAL.indexOf(S.col) >= 0 ? PAL.indexOf(S.col) : P_RED; z.src = "orbital strike"; z.by = null; z.big = true;
   audio.play("warn", x, y, 0.7);
   fx.ring(x, y, S.r * 1.4, S.r, 0.35, S.col, 2);
 }

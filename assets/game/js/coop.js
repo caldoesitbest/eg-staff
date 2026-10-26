@@ -127,6 +127,23 @@ function playerRow(P) {
     P.gorge || 0, Math.round((P.frenzy || 0) * 10) / 10, Math.round((P.goldT || 0) * 10) / 10, Math.round((P.judgeT || 0) * 10) / 10];
 }
 
+/** 4.6: the boss portal (it's drawn from G.bossPortal, not the boss). */
+function portalRow() {
+  const p = G.bossPortal;
+  return p ? [r1(p.x), r1(p.y), Math.round(p.t0 * 1000) / 1000, p.col, r1(p.r), p.life] : 0;
+}
+/** 4.6: what the robot rows don't carry for mini-bosses: the Warden's ram line, the Lancer's aim and reach,
+    their real health and resolve flash. */
+function miniRows() {
+  const out = [];
+  const en = G.enemies;
+  for (let i = 0; i < en.count; i++) {
+    const e = en.items[i];
+    if (!e.dead && e.miniboss) out.push([e.id, Math.round((e.tx || 0) * 1000) / 1000, Math.round(e.tl || 0), Math.round(e.maxHp), Math.round((e.resT || 0) * 100) / 100]);
+  }
+  return out.length ? out : 0;
+}
+
 /** Host: everything a client needs to draw this moment. */
 function encodeSnapshot() {
   const boss = G.boss && !G.boss.dead ? G.boss : null;
@@ -135,6 +152,7 @@ function encodeSnapshot() {
     left: waves.remaining(), bo: waves.boss ? waves.bossType : "", fz: G.freezeT > 0 ? 1 : 0,
     ts: G.hitstop > 0 ? 0 : G.slowmo > 0 ? G.slowScale : 1,       // how fast the world is running (slow-mo, hit-stop)
     p: G.players.map(playerRow), B: boss ? bossJSON(boss) : null, fx: recFx, au: recAu,
+    bp: portalRow(), mb: miniRows(),
   };
   recFx = []; recAu = [];
   const json = new TextEncoder().encode(JSON.stringify(meta));
@@ -280,10 +298,11 @@ function applySnapshot(data) {
     const st = r8(), mut = r8(), mv = r8();
     const e = en.get();
     if (!e) continue;
-    const kind = ROSTER[type] || BOSS_MINIONS[type];
+    const kind = ROSTER[type] || MINIBOSSES[type] || BOSS_MINIONS[type];
+    if (!kind) { e.dead = true; continue; }
     const def = BALANCE.enemies[type];
     const prev = prevEnemy.get(id);
-    e.dead = false; e.id = id; e.type = type; e.kind = kind; e.def = def; e.boss = false;
+    e.dead = false; e.id = id; e.type = type; e.kind = kind; e.def = def; e.boss = false; e.miniboss = !!MINIBOSSES[type];
     e.art = sprites.robots[type] || null;
     e.r = def ? def.r : 14; e.scale = scale;
     e.ox = prev ? prev.x : x; e.oy = prev ? prev.y : y; e.oang = prev ? prev.ang : ang;
@@ -303,6 +322,18 @@ function applySnapshot(data) {
     seen.add(id);
   }
   for (const id of prevEnemy.keys()) if (!seen.has(id)) prevEnemy.delete(id);
+  // mini-bosses: aim lines, real health, the resolve flash
+  if (meta.mb) {
+    const byId = new Map(meta.mb.map((r) => [r[0], r]));
+    for (let i = 0; i < en.count; i++) {
+      const e = en.items[i], r = !e.dead && e.miniboss && byId.get(e.id);
+      if (!r) continue;
+      const f = e.maxHp > 0 ? e.hp / e.maxHp : 1;
+      e.tx = r[1]; e.tl = r[2]; e.maxHp = r[3] || e.maxHp; e.hp = f * e.maxHp; e.resT = r[4] || 0;
+    }
+  }
+  // the boss portal
+  G.bossPortal = meta.bp ? { x: meta.bp[0], y: meta.bp[1], t0: meta.bp[2], col: meta.bp[3], r: meta.bp[4], life: meta.bp[5] } : null;
   // the boss
   G.boss = null;
   if (meta.B) {
@@ -618,6 +649,7 @@ function onMessage(from, msg) {
     case "pmode": if (H.partyPick) H.partyPick(msg); break;
     case "pcheck": if (H.partyCheck) H.partyCheck(msg); break;
     case "kick": if (H.kicked) H.kicked(); break;
+    case "mini": if (H.miniWarn && MINIBOSSES[msg.type]) H.miniWarn(msg.type); break;
   }
 }
 

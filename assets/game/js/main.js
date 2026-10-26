@@ -1406,7 +1406,8 @@ const MINI_HINT = {
   lancer: "It paints a line, then dashes along it and the line bursts. Step off before it locks red.",
   siege: "Its shells land where you are and where you're heading. Keep turning, and don't hug it.",
 };
-G.on("minibossWarn", (type) => { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("minibossAlarm"); });
+function miniWarn(type) { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("minibossAlarm"); }
+G.on("minibossWarn", (type) => { miniWarn(type); if (G.net.role === "host") hostSend({ k: "mini", type }); });
 G.on("minibossDown", (e) => {
   G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); });
 G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });
@@ -1502,6 +1503,7 @@ initCoop({
     waveIntro(n);
   },
   rushDone: (sum) => { sigilsRush(sum); fileRun(); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
+  miniWarn: (type) => miniWarn(type),
   waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(msg.sig); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
