@@ -65,6 +65,9 @@ export const glutton = {
         const dx = mx - o.x, dy = my - o.y;
         const dd = Math.hypot(dx, dy) || 1;
         if (dd > range) continue;
+        // 4.5: the feast hauls them in hard (faster the closer they get), so it eats before you can pick them off
+        const sp = d.pullSpeed * (1 + (1 - dd / range) * 1.4) * Math.min(1, (d.inhaleTime - e.t + 0.15) / 0.35);
+        o.vx = (dx / dd) * sp; o.vy = (dy / dd) * sp;
         o.kx += (dx / dd) * d.pull * dt * 4;
         o.ky += (dy / dd) * d.pull * dt * 4;
         if (dd < R * 0.75 + o.r) {

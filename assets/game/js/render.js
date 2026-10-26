@@ -1,6 +1,8 @@
 /* Camera, background (parallax stars, nebula, the cyan ringed planet) and drawing.
    Everything bright is a pre-rendered sprite; no shadowBlur in the frame loop. */
 
+import { drawPressure } from "./pressure.js";
+import { drawBossPortal } from "./enemies/boss-common.js";
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { sprites, C, P_CYAN, P_VIOLET, P_WHITE, P_MAGENTA, P_AMBER } from "./sprites.js";
@@ -392,6 +394,105 @@ function lerpAng(a, b, t) {
   return a + d * t;
 }
 
+// ---------- the boss / mini-boss pointer (4.5) ----------
+// Pre-rendered at the screen's pixel density: the badge (face, ring, glow), the chevron and the name tag.
+const faces = {};
+function bossFace(emoji) {
+  let im = faces[emoji];
+  if (!im) { im = new Image(); im.src = "/assets/home/emoji/" + emoji + ".webp"; faces[emoji] = im; }
+  return im.complete && im.naturalWidth ? im : null;
+}
+const pointerArt = new Map();
+function hexRgba(hex, a) {
+  const n = parseInt(String(hex).replace("#", "").slice(0, 6), 16);
+  return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+}
+function pointerParts(e) {
+  const boss = e.boss, col = boss ? e.def.c1 : e.kind.accent;
+  const face = boss ? bossFace(e.def.emoji) : (sprites.robots[e.type] && sprites.robots[e.type].base) || null;
+  const key = e.type + "|" + dpr + "|" + (face ? 1 : 0);
+  let art = pointerArt.get(key);
+  if (art) return art;
+  const r = boss ? 30 : 22, pad = 15, S = (r + pad) * 2, k = dpr;
+  // the badge
+  const badge = document.createElement("canvas");
+  badge.width = badge.height = Math.ceil(S * k);
+  let g = badge.getContext("2d");
+  g.scale(k, k); g.translate(S / 2, S / 2);
+  const halo = g.createRadialGradient(0, 0, r * 0.6, 0, 0, r + pad);
+  halo.addColorStop(0, hexRgba(col, 0.55)); halo.addColorStop(1, hexRgba(col, 0));
+  g.fillStyle = halo; g.beginPath(); g.arc(0, 0, r + pad, 0, Math.PI * 2); g.fill();
+  const bg = g.createRadialGradient(0, -r * 0.3, 2, 0, 0, r);
+  bg.addColorStop(0, "#1d2350"); bg.addColorStop(1, "#070a1f");
+  g.fillStyle = bg; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+  if (face) {
+    g.save(); g.beginPath(); g.arc(0, 0, r - 3, 0, Math.PI * 2); g.clip();
+    const fw = boss ? r * 1.7 : r * 2.3;
+    g.drawImage(face.c || face, -fw / 2, -fw / 2, fw, fw);
+    g.restore();
+  } else {
+    g.fillStyle = col; g.font = "800 " + Math.round(r * 0.9) + "px 'Plus Jakarta Sans', sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle"; g.fillText((boss ? e.def.name : e.kind.name.replace(/^The /, ""))[0], 0, 1);
+  }
+  g.lineWidth = 3; g.strokeStyle = col; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = 1.2; g.strokeStyle = "rgba(255,255,255,0.85)"; g.beginPath(); g.arc(0, 0, r - 2.5, Math.PI * 1.1, Math.PI * 1.75); g.stroke();
+  // the chevron (points along +x)
+  const chev = document.createElement("canvas");
+  const cw = boss ? 30 : 26, ch = boss ? 34 : 30;
+  chev.width = Math.ceil(cw * k); chev.height = Math.ceil(ch * k);
+  g = chev.getContext("2d");
+  g.scale(k, k); g.translate(4, ch / 2);
+  const cg = g.createLinearGradient(0, 0, 18, 0);
+  cg.addColorStop(0, col); cg.addColorStop(1, "#ffffff");
+  g.shadowColor = col; g.shadowBlur = 8;                      // fine here: drawn once, not every frame
+  g.fillStyle = cg;
+  g.beginPath(); g.moveTo(18, 0); g.lineTo(0, -11); g.lineTo(5, 0); g.lineTo(0, 11); g.closePath(); g.fill();
+  g.shadowBlur = 0;
+  g.lineWidth = 1; g.strokeStyle = "rgba(255,255,255,0.7)"; g.stroke();
+  // the name tag
+  const name = boss ? "@" + e.def.name : e.kind.name.replace(/^The /, "");
+  const tag = document.createElement("canvas");
+  g = tag.getContext("2d");
+  const font = "800 " + (boss ? 12 : 11) + "px 'Plus Jakarta Sans', sans-serif";
+  g.font = font;
+  const tw = Math.ceil(g.measureText(name).width) + 18, th = boss ? 20 : 18;
+  tag.width = Math.ceil(tw * k); tag.height = Math.ceil(th * k);
+  g = tag.getContext("2d");
+  g.scale(k, k);
+  g.fillStyle = "rgba(5,7,22,0.88)"; g.strokeStyle = hexRgba(col, 0.9); g.lineWidth = 1.2;
+  g.beginPath(); g.roundRect ? g.roundRect(0.6, 0.6, tw - 1.2, th - 1.2, th / 2) : g.rect(0.6, 0.6, tw - 1.2, th - 1.2); g.fill(); g.stroke();
+  g.font = font; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#ffffff";
+  g.fillText(name, tw / 2, th / 2 + 0.5);
+  art = { badge, S, r, chev, cw, ch, tag, tw, th, col };
+  if (pointerArt.size > 40) pointerArt.clear();
+  pointerArt.set(key, art);
+  return art;
+}
+/** One pointer: at the edge of the screen, toward e (sx, sy: its offset from the screen centre in CSS pixels). */
+function drawPointer(g, e, sx, sy) {
+  const a = pointerParts(e);
+  const ang = Math.atan2(sy, sx);
+  const insX = a.r + 36, insY = sy < 0 ? a.r + 96 : a.r + 36;           // clear of the boss and mini-boss bars at the top
+  const k = Math.min((W / 2 - insX) / Math.abs(sx || 1e-6), (H / 2 - insY) / Math.abs(sy || 1e-6));
+  const px = W / 2 + sx * k, py = H / 2 + sy * k;
+  const t = G.time, pulse = 1 + Math.sin(t * 5) * 0.045;
+  // a ring sent out now and then
+  const ph = (t * 0.7) % 1;
+  g.globalAlpha = (1 - ph) * 0.55; g.strokeStyle = a.col; g.lineWidth = 2;
+  g.beginPath(); g.arc(px, py, a.r * (1 + ph * 0.9), 0, Math.PI * 2); g.stroke();
+  g.globalAlpha = 1;
+  const bs = a.S * pulse;
+  g.drawImage(a.badge, px - bs / 2, py - bs / 2, bs, bs);
+  // the chevron, riding the ring, aimed at it
+  const cx = px + Math.cos(ang) * (a.r + 4), cy = py + Math.sin(ang) * (a.r + 4);
+  g.save(); g.translate(cx, cy); g.rotate(ang);
+  g.drawImage(a.chev, -4, -a.ch / 2, a.cw, a.ch);
+  g.restore();
+  // the name, on the side toward the middle of the screen
+  const ly = py + (py > H / 2 ? -(a.r + a.th / 2 + 10) : a.r + a.th / 2 + 10);
+  g.drawImage(a.tag, Math.round(px - a.tw / 2), Math.round(ly - a.th / 2), a.tw, a.th);
+}
+
 export const renderer = {
   get ctx() { return g; },
 
@@ -619,6 +720,7 @@ export const renderer = {
     g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
     const vx0 = camX - cam.viewW / 2 - 40, vx1 = camX + cam.viewW / 2 + 40;
     const vy0 = camY - cam.viewH / 2 - 40, vy1 = camY + cam.viewH / 2 + 40;
+    fx.vx0 = vx0 - 40; fx.vx1 = vx1 + 40; fx.vy0 = vy0 - 40; fx.vy1 = vy1 + 40;      // 4.5: effects skip what's off screen
 
     // outside the arena: darker
     g.fillStyle = "rgba(2,3,12,0.6)";
@@ -740,7 +842,8 @@ export const renderer = {
       const q = pk.items[i];
       if (q.life < 3 && Math.floor(q.life * 8) % 2 === 0) continue;
       const x = lerp(q.px, q.x, alpha), y = lerp(q.py, q.y, alpha);
-      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : q.kind === 3 ? sprites.covet : sprites.star;
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;          // off screen
+      const spr = q.kind === 2 ? sprites.heart : q.kind === 1 ? sprites.gold : q.kind === 3 ? sprites.covet : q.kind === 4 ? sprites.sigil : sprites.star;
       const pulse = 1 + Math.sin(G.time * 6 + i) * 0.1;
       const sz = spr.w * pulse * (q.t < 0.15 ? q.t / 0.15 : 1);
       g.drawImage(spr.c, x - sz / 2, y - sz / 2, sz, sz);
@@ -774,6 +877,8 @@ export const renderer = {
       e.kind.drawUnder(g, e, lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha));
     }
     if (G.zones.count) drawZonesUnder(g);
+    drawPressure(g);
+    if (G.bossPortal) drawBossPortal(g);
 
     fx.drawBelow(g);
 
@@ -868,7 +973,16 @@ export const renderer = {
       const e = en.items[i];
       if (e.dead || !e.boss) continue;
       const k = e.pop > 0 ? e.pop / 0.12 : 0;
-      e.kind.draw(g, e, lerp(e.px, e.x, alpha) + e.popX * k * 3, lerp(e.py, e.y, alpha) + e.popY * k * 3, lerpAng(e.pang, e.ang, alpha));
+      const bx = lerp(e.px, e.x, alpha) + e.popX * k * 3, by = lerp(e.py, e.y, alpha) + e.popY * k * 3;
+      const rise = e.state === -1 && e.introK !== undefined ? e.introK : 1;      // coming up out of the portal
+      if (rise < 1) {
+        if (rise <= 0.01) continue;
+        const s = 0.25 + 0.75 * rise * rise * (3 - 2 * rise);
+        g.save(); g.globalAlpha = Math.min(1, rise * 1.6);
+        g.translate(bx, by); g.scale(s, s); g.translate(-bx, -by);
+        e.kind.draw(g, e, bx, by, lerpAng(e.pang, e.ang, alpha));
+        g.restore();
+      } else e.kind.draw(g, e, bx, by, lerpAng(e.pang, e.ang, alpha));
       g.setTransform(P, 0, 0, P, offX - camX * P, offY - camY * P);
       if (e.resT > 0) {
         // resolve: it's shrugging off the overflow
@@ -1330,9 +1444,18 @@ export const renderer = {
       return [px, py];
     };
     const en = G.enemies;
+    // 4.5: bosses and mini-bosses always get a pointer badge at the screen's edge (whatever the setting): their face in
+    // a glowing ring, a chevron aimed at them, a slow pulse and a name tag. All of it drawn once, reused every frame.
+    for (let i = 0; i < en.count; i++) {
+      const e = en.items[i];
+      if (e.dead || e.ally > 0 || !(e.boss || e.miniboss) || (e.boss && e.state === -1)) continue;
+      const sx = (e.x - cam.x) * z, sy = (e.y - cam.y) * z;
+      if (Math.abs(sx) < W / 2 + e.r * z * 0.5 && Math.abs(sy) < H / 2 + e.r * z * 0.5) continue;
+      drawPointer(g, e, sx, sy);
+    }
     for (let i = 0; i < en.count && drawn < 24 && G.settings.arrows; i++) {
       const e = en.items[i];
-      if (e.dead || e.ally > 0) continue;
+      if (e.dead || e.ally > 0 || e.boss || e.miniboss) continue;
       const sx = (e.x - cam.x) * z, sy = (e.y - cam.y) * z;
       if (Math.abs(sx) < W / 2 + e.r * z && Math.abs(sy) < H / 2 + e.r * z) continue;
       const d = Math.hypot(sx, sy) / z;

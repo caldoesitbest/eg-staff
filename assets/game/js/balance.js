@@ -81,6 +81,15 @@ export const BALANCE = {
     mini:     { hp: 10, r: 9, speed: 155, contact: 1, score: 5, stars: 0.4, mass: 0.6, threat: 0 },
     bulwark:  { hp: 115, r: 22, speed: 64, contact: 1, score: 45, stars: 4, mass: 4, threat: 5,
                 turn: 1.3, shieldArc: 1.95, vent: { every: [5, 7], time: 1.4 } },   // shield vents (goes dark) every 5-7s
+    // 4.5 mini-bosses (enemies/minibosses.js): health grows with the wave like any robot's; burst is capped (miniboss.resolve)
+    warden:   { hp: 1150, r: 32, speed: 70, contact: 1, score: 600, stars: 26, mass: 9, threat: 14,
+                shieldArc: 2.2, shieldTurn: 1.15, vent: 1.6, windup: 0.75, reload: [3.2, 4.2], seekers: 3, seekSpeed: 190, seekTurn: 1.9, seekHome: 1.6,
+                ramEvery: [5, 7], ramWindup: 0.8, ramTime: 0.42, ramSpeed: 720 },
+    lancer:   { hp: 900, r: 26, speed: 230, contact: 1, score: 600, stars: 26, mass: 6, threat: 14,
+                windup: 1.0, lock: 0.32, chainWindup: 0.55, dashSpeed: 1050, burstGap: 70, burstR: 52, burstFuse: 0.7, fan: 7, fanSpeed: 250, reload: [2.6, 3.4] },
+    siege:    { hp: 1300, r: 34, speed: 55, contact: 1, score: 650, stars: 28, mass: 12, threat: 15,
+                windup: 0.9, reload: [3.4, 4.4], shells: 3, fuse: 1.25, lead: 0.85, blast: 70, pulseRange: 230, pulseWindup: 0.6, pulseEvery: 4,
+                pulseReach: 360, pulseSpeed: 380, callEvery: 12 },
     boomer:   { hp: 26, r: 15, speed: 170, contact: 0, score: 20, stars: 1.5, mass: 1, threat: 2.5,
                 trigger: 100, fuse: 0.75, blast: 118, blastDmg: 2, blastEnemyDmg: 60 },
     sniper:   { hp: 30, r: 14, speed: 85, contact: 1, score: 35, stars: 3, mass: 1, threat: 4,
@@ -155,11 +164,16 @@ export const BALANCE = {
   // 4.2: everything a notch harder on every difficulty (players asked for it, and weapon evolutions and Sin
   // Fusions add power). Bosses ramp up the Ladder, [first rung, last rung] (Sloth stays a teacher, Envy doesn't):
   // health, attack cadence (x pace), shot speed, minions. Robots: aggression and crowd size (health is in waves).
-  threat: { bossHp: [1, 1.25], bossPace: [0.95, 0.84], bossShot: [1, 1.1], bossMinions: [1, 1.3], aggro: 0.95, budget: 1.05, alive: 1.05 },
+  // 4.5: every sin before Envy a good notch harder (Envy, the last rung, stays as it was)
+  threat: { bossHp: [1.22, 1.25], bossPace: [0.86, 0.84], bossShot: [1.06, 1.1], bossMinions: [1.15, 1.3], aggro: 0.95, budget: 1.05, alive: 1.05 },
   // Boss resolve: a boss can lose about `rate` of its health a second at full speed; damage beyond that pace
   // lands at `over`. Weak and average builds never reach it (it never touches them); strong ones still kill
   // fastest, just not in four seconds. A shimmer shows when it's resisting.
-  resolve: { rate: [0.08, 0.04], over: 0.35 },                   // [Sloth, Envy]: early bosses are teachers, late ones walls
+  resolve: { rate: [0.065, 0.04], over: 0.35 },                   // [Sloth, Envy]: early bosses are teachers, late ones walls (x difficulty resolve / over)
+  // Boss surges (4.5): at these health marks a boss shrugs damage off for `guard` seconds, throws a ring out (boost
+  // through it), fires a burst with gaps in it, and attacks `pace` faster for the rest of the fight (per surge).
+  surge: { at: { normal: [0.5], hard: [0.66, 0.33], nightmare: [0.7, 0.45, 0.2] }, guard: 1.1, pace: 0.07, reach: 640, speed: 430, dmg: 1,
+           shots: [16, 20, 26], shotSpeed: 230, gaps: 3 },
 
   // Difficulty: chosen before a run (the Daily Challenge is always Normal). Harder modes change how
   // robots behave and how much room you get, never by inflating health.
@@ -168,10 +182,47 @@ export const BALANCE = {
   //   mark: robots evolve this many waves earlier                     boss: boss cooldowns ×
   //   heal: healing drops and sustain ×                               shot: robot shot speed ×
   //   squads: chance of coordinated squads ×                          score: score ×
+  // 4.5: how robots fight, not how much health they have:
+  //   flank: share of chasers that swing round to your side ×        punish: how much faster they attack while your boost recharges ×
+  //   keep: how close gunners hold ×                                  sync: seconds between coordinated volleys (0: none)
+  //   bossHp: boss health × (the one place health moves: modestly)   resolve / over: how much burst a boss shrugs off (lower = more)
+  //   mini: mini-boss chance per wave ×, and the wave they start (miniFrom)
   difficulty: {
-    normal:    { name: "Normal", aggro: 1, lead: 1, iframes: 1, budget: 1, alive: 1, elite: 1, mark: 0, boss: 1, heal: 1, shot: 1, squads: 1, score: 1 },
-    hard:      { name: "Hard", aggro: 0.85, lead: 1.2, iframes: 0.85, budget: 1.15, alive: 1.15, elite: 1.6, mark: 6, boss: 0.86, heal: 0.75, shot: 1.06, squads: 1.5, score: 1.3 },
-    nightmare: { name: "Nightmare", aggro: 0.72, lead: 1.4, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.3, mark: 8, boss: 0.8, heal: 0.6, shot: 1.14, squads: 2, score: 1.7 },   // Mk II from wave 4 (4.2: bosses x0.8 and heal x0.6, as the 4.2 threat sits on top)
+    normal:    { name: "Normal", aggro: 1, lead: 1, iframes: 1, budget: 1, alive: 1, elite: 1, mark: 0, boss: 1, heal: 1, shot: 1, squads: 1, score: 1,
+                 flank: 1, punish: 1, keep: 1, sync: 0, bossHp: 1, resolve: 1, over: 1, mini: 1, miniFrom: 7 },
+    hard:      { name: "Hard", aggro: 0.82, lead: 1.3, iframes: 0.85, budget: 1.15, alive: 1.15, elite: 1.7, mark: 6, boss: 0.82, heal: 0.75, shot: 1.1, squads: 1.6, score: 1.3,
+                 flank: 1.5, punish: 1.12, keep: 0.88, sync: 8.5, bossHp: 1.2, resolve: 0.85, over: 0.8, mini: 1.5, miniFrom: 5 },
+    nightmare: { name: "Nightmare", aggro: 0.66, lead: 1.6, iframes: 0.72, budget: 1.3, alive: 1.32, elite: 2.6, mark: 8, boss: 0.72, heal: 0.6, shot: 1.2, squads: 2.2, score: 1.7,
+                 flank: 2.1, punish: 1.25, keep: 0.76, sync: 6, bossHp: 1.45, resolve: 0.7, over: 0.65, mini: 2.1, miniFrom: 4 },   // Mk II from wave 4
+  },
+
+  // Levels (4.5, xp.js): XP from every run (waves, bosses, wins, endless, more on harder difficulties and in co-op),
+  // daily contracts and achievements. Level L needs base + step·L XP for the next (past 100 it grows by `late`).
+  levels: {
+    base: 350, step: 45, late: 20, max: 1000,
+    run: { wave: 12, kill: 0.6, boss: 120, mini: 60, win: 800, rushBoss: 90, rushClear: 600, endlessWave: 30, perfect: 4 },
+    diff: { normal: 1, hard: 1.3, nightmare: 1.6 }, coop: 1.1, firstOfDay: 1.5, idle: 0.25, idleBelow: 0.3,
+    contract: [250, 400, 650], achv: [200, 400, 800, 1500],
+    sigils: { every: 10, fifth: 40 }, milestone: 250,      // Sigils each level (every fifth: more), and with each hat
+    hats: { 10: "cadet", 25: "comet", 50: "ringed", 100: "nebula", 250: "pulsar", 500: "corona", 1000: "ascended" },
+  },
+
+  // Mini-bosses (4.5): the chance one joins a wave (from the difficulty's miniFrom, x its mini), which wave each
+  // appears from (after miniFrom), Nightmare's pairs, team scaling, and the burst cap (like a boss's resolve, looser).
+  miniboss: { chance: 0.16, chancePerWave: 0.012, chanceMax: 0.5, unlock: { warden: 0, lancer: 3, siege: 6 }, pairFrom: 22, pair: 0.3,
+              crew: 0.5, resolve: { rate: 0.16, over: 0.45 }, scale: 1.22 },
+
+  // Standing still (4.5, pressure.js): by difficulty [normal, hard, nightmare]. Inside `radius` for `settle` seconds
+  // and robots come round behind you; after `strike.after`, orbital strikes land where you stand every `strike.every`
+  // (a ring fills for `fuse` seconds first: step out or boost through it); after `pair`, two at a time.
+  pressure: {
+    radius: 115, keep: 0.3,                  // moving out of the circle keeps this much of the stillness (shuffling in place doesn't reset it)
+    settle: [2.6, 2.1, 1.7],
+    // standing still is never safe: every rampEvery seconds the strikes hit 1 harder and come faster, and after
+    // `lethal` seconds each one takes a third of your health (shields and full auto-aim won't save you)
+    strike: { after: [4.2, 3.4, 2.8], every: [2.5, 2, 1.6], fuse: [1.2, 1.05, 0.95], pair: [9, 7.5, 6], r: 74, dmg: 1, col: "#ff3b5c",
+              rampEvery: 4, faster: 0.06, minEvery: 0.4, lethal: [14, 11, 9], lethalPct: 0.34 },
+    volley: { gunner: 1, sniper: 1, splitter: 0 }, volleyLead: 0.55,
   },
 
   // Boss Rush (unlocked by beating Envy): the seven sin bosses back to back. You open with a draft
@@ -379,11 +430,28 @@ export const BALANCE = {
   // Ladder, Ladder wins and Boss Rush clears (all x the difficulty: Normal 1, Hard 2, Nightmare 3), achievements
   // and daily contracts (contracts.js); never in debug runs. A Normal Ladder win pays about 20 and a day's three
   // contracts about 18: a Rare item every few days of play, a Legendary in a week or two.
+  // Sigils (4.5): earned by doing hard things. Daily contracts and achievements pay the most, one-time firsts
+  // pay well, an ordinary run pays a little (only for real play, and only so much a day), and rare finds add a few.
+  // Harder difficulties pay a bit more, never enough to make picking one the way to farm.
   sigils: {
-    boss: 2, win: 6, rush: 4, rank: { S: 4, A: 2 }, achievement: 3,
-    diff: { normal: 1, hard: 2, nightmare: 3 },
-    price: [20, 40, 75, 120, 200, 320],      // Item Shop prices by rarity: Common, Uncommon, Rare, Epic, Legendary, Mythic
-    contracts: [4, 6, 8],                    // a daily contract's reward: easy, medium, hard
+    price: [100, 200, 375, 600, 1000, 1600],  // Item Shop prices by rarity: Common, Uncommon, Rare, Epic, Legendary, Mythic
+    contracts: [50, 90, 150],                 // a daily contract's reward: easy, medium, hard
+    achv: [40, 80, 150, 250],                 // an achievement, by tier (achvTier): easy, medium, hard, legendary
+    // a run: base + 1 at each of these waves + 1 for a win, x diff, rounded. Only a real run counts (long enough,
+    // enough kills and waves, moving for most of it: auto-fire standing still is not playing), and only dayCap a day.
+    run: { base: 1, waves: [10, 20], win: 1, minTime: 150, minKills: 40, minWave: 5, minActive: 0.5, dayCap: 15 },
+    first: { boss: 25, win: [150, 250, 400], rush: [200, 300, 450] },   // once ever: each boss, a Ladder win, a Boss Rush clear (per difficulty)
+    rush: { clear: 30, rank: { S: 40, A: 20 }, dayClears: 3 },          // each Boss Rush clear (the first three a day)
+    drop: { elite: 0.012, mini: 0.6, miniN: [1, 2], runCap: 6 },          // rare Sigil shards: an elite's tiny chance, a mini-boss's better one
+    diff: { normal: 1, hard: 1.2, nightmare: 1.4 },
+    rescale: 5,                               // the 4.5 save migration: prices went x5, so balances do too
+    achvTier: {
+      untouchable: 1, matador: 1, ghost: 2, deadeye: 1, overkill: 1, fiend: 2, mutants: 1,
+      sinmax: 0, seven: 2, fused: 0, unholy: 3, evolved: 0, arsenal: 2, allpaths: 3,
+      m_blaster: 1, m_scatter: 1, m_smg: 1, m_rail: 1, m_nova: 1, m_arc: 1, m_heart: 1,
+      rude: 1, diet: 1, crown: 0, calm: 2, mirror: 3,
+      ladder: 1, hard: 2, nightmare: 3, gauntlet: 2, speed: 3, best: 0, beyond: 2, daily: 0,
+    },
   },
 
   // Special events on the Ladder: at most one per chapter (from chapter 2), on one of its first three waves.
@@ -402,7 +470,13 @@ export const BALANCE = {
   // Boss health climbs up the ladder on a gentle curve (builds snowball, so later rungs climb faster):
   // ×(1 + rungHp·w + rungHp2·w²) for w waves past wave 5, so about ×1.2 at Gluttony, ×1.75 at Lust,
   // ×2.5 at Pride and ×3 at Envy. Per extra lap: boss health +60%, cooldowns ×0.85.
-  ladder: { rungs: 7, lapHp: 0.6, lapPace: 0.85, rungHp: 0.03, rungHp2: 0.0012 },
+  ladder: { rungs: 7, lapHp: 0.9, lapPace: 0.8, rungHp: 0.03, rungHp2: 0.0012 },     // 4.5: endless bosses steeper (were 0.6 / 0.85)
+  // Endless (4.5): past wave 35 everything steepens every single wave (k = waves past 35), on top of the rest, so a
+  // maxed-out build still has to fight for its life: tougher, faster, angrier robots that hit harder, more of them,
+  // more elites, mutants and mini-bosses, less time to recover after a hit and fewer hearts.
+  endless: { hp: [0.05, 0.0022], dmg: 0.045, dmgCap: 4, speed: 0.012, speedCap: 1.5, aggro: 0.012, aggroFloor: 0.5, shot: 0.012, shotCap: 1.6,
+             iframes: 0.01, iframesFloor: 0.55, heal: 0.02, healFloor: 0.3, budget: 0.03, alive: 0.015, aliveCap: 1.8, elite: 0.02, mini: 0.035, mut: 0.012,
+             pressure: 0.012, pressureFloor: 0.5 },
 
   // Boss health depends on the boss, the rung, the lap and the crew size, never on your build:
   // a strong build is supposed to melt bosses faster.
@@ -422,7 +496,7 @@ export const BALANCE = {
       name: "Gluttony", title: "The Gluttony Engine", tagline: "It eats its own. Starve it.", emoji: "gluttony", c1: "#ff4f8b", c2: "#c2307a",
       hp: 2000, r: 58, speed: 52, contact: 2, score: 1800,
       mealHeal: 0.035, mealFalloff: 0.12, healCap: 0.4, mealGrow: 0.05, maxGrow: 1.6,   // each meal heals less; never more than 40% back per fight
-      inhaleEvery: [6, 8], inhaleTime: 2.4, inhaleRange: 540, pull: 300, playerPull: 85,
+      inhaleEvery: [5.5, 7.5], inhaleTime: 2.4, inhaleRange: 640, pull: 900, pullSpeed: 820, playerPull: 120,     // 4.5: the feast drags them in fast
       slamEvery: [3.4, 4.4], slamWindup: 0.95, slamRadius: 215, slamDmg: 2, slamGrowCap: 1.3, aftershock: { windup: 0.55, scale: 1.25 },   // starving: a second, wider slam
       spit: { count: 9, speed: 250, arc: 1.1, every: [2.6, 3.6] },
       minionEvery: 1.9, minionMax: 12,

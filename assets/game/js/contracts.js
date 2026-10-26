@@ -7,6 +7,7 @@ import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { store } from "./storage.js";
 import { dayKey, earnSigils } from "./catalog.js";
+import { addXp } from "./xp.js";
 
 // how: "sum" adds up across the day's runs, "max" is your best single run. need: easy, medium, hard.
 const POOL = [
@@ -95,7 +96,9 @@ export function reportRun(r, force) {
       c.have = c.need;
       c.done = true;
       const paid = force ? contractReward(c) : earnSigils(contractReward(c), "contract", true);
-      done.push({ text: contractText(c), sigils: paid });
+      const xp = BALANCE.levels.contract[c.tier];
+      if (!force) addXp(xp, "contract");
+      done.push({ text: contractText(c), sigils: paid, xp });
     }
   }
   store.save(true);

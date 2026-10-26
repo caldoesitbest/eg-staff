@@ -20,7 +20,7 @@ export const input = {
   mouse: { x: 0, y: 0, inside: false, down: false, charge: false, seen: false },
   sticks: { move: makeStick(), aim: makeStick() },
   keys: new Set(),
-  pad: { connected: false, index: -1, prevButtons: [], navCooldown: 0 },
+  pad: { connected: false, seen: false, index: -1, prevButtons: [], navCooldown: 0, navDir: null },
   queued: { boost: false, swap: false },
   swapTo: undefined,         // a slot for the queued swap (1/2 keys), or undefined to flip
   touchCharge: false,
@@ -30,6 +30,8 @@ export const input = {
   onMenuNav: null,            // (dir: "up"|"down"|"left"|"right") for gamepad menu navigation
   onMenuConfirm: null,
   onMenuBack: null,
+  onMenuTab: null,            // (step: -1 | 1, sub: bool) LB / RB (tabs) and LT / RT (sections) in menus
+  onBuild: null,              // View / Select: your build (in a fight or a menu)
   rect: { left: 0, top: 0, width: 1, height: 1 },
 
   setMode(m) {
@@ -220,7 +222,7 @@ export const input = {
       chargeButton.addEventListener("lostpointercapture", up);
     }
 
-    window.addEventListener("gamepadconnected", (e) => { self.pad.connected = true; self.pad.index = e.gamepad.index; });
+    window.addEventListener("gamepadconnected", (e) => { self.pad.connected = true; self.pad.seen = true; self.pad.index = e.gamepad.index; });
     window.addEventListener("gamepaddisconnected", (e) => {
       if (e.gamepad.index === self.pad.index) { self.pad.connected = false; self.pad.index = -1; }
     });
@@ -257,7 +259,7 @@ export const input = {
 
     // ---------- gamepad ----------
     this.pad.navCooldown -= dt;
-    const pads = navigator.getGamepads ? navigator.getGamepads() : null;
+    const pads = navigator.getGamepads && this.pad.seen ? navigator.getGamepads() : null;     // 4.5: nothing to poll until a pad connects
     let gp = null;
     if (pads) {
       if (this.pad.index >= 0) gp = pads[this.pad.index];
@@ -284,6 +286,7 @@ export const input = {
           if (pressed(0) || pressed(4) || pressed(5) || pressed(10)) this.queued.boost = true;
           if (pressed(3)) { this.queued.swap = true; this.swapTo = undefined; }
           if (pressed(9) && this.onPause) this.onPause(null);
+          if (pressed(8) && this.onBuild) this.onBuild();
         } else {
           // Menu navigation
           let dir = null;
@@ -291,10 +294,15 @@ export const input = {
           else if (btn(13) || ly > 0.6) dir = "down";
           else if (btn(14) || lx < -0.6) dir = "left";
           else if (btn(15) || lx > 0.6) dir = "right";
-          if (dir && this.pad.navCooldown <= 0 && this.onMenuNav) { this.onMenuNav(dir); this.pad.navCooldown = 0.2; }
-          if (!dir) this.pad.navCooldown = Math.min(this.pad.navCooldown, 0);
+          // one step per press; held, it waits a moment and then repeats
+          if (dir && dir !== this.pad.navDir) { this.pad.navDir = dir; this.pad.navCooldown = 0.36; if (this.onMenuNav) this.onMenuNav(dir); }
+          else if (dir && this.pad.navCooldown <= 0) { this.pad.navCooldown = 0.11; if (this.onMenuNav) this.onMenuNav(dir); }
+          else if (!dir) this.pad.navDir = null;
           if (pressed(0) && this.onMenuConfirm) this.onMenuConfirm();
           if ((pressed(1) || pressed(9)) && this.onMenuBack) this.onMenuBack(pressed(9));
+          if ((pressed(4) || pressed(5)) && this.onMenuTab) this.onMenuTab(pressed(4) ? -1 : 1, false);
+          if ((pressed(6) || pressed(7)) && this.onMenuTab) this.onMenuTab(pressed(6) ? -1 : 1, true);
+          if (pressed(8) && this.onBuild) this.onBuild();
         }
       }
       for (let i = 0; i < gp.buttons.length; i++) prev[i] = btn(i);

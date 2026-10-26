@@ -5,7 +5,8 @@
 import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { store } from "./storage.js";
-import { item, equipped, earnSigils, sigilAmount } from "./catalog.js";
+import { item, equipped, earnSigils, achvSigils, firstBoss, firstWin, rushClear } from "./catalog.js";
+import { addXp } from "./xp.js";
 import { rand, TAU } from "./util.js";
 import { fx } from "./fx.js";
 import { audio } from "./audio.js";
@@ -75,9 +76,11 @@ export function unlock(id) {
   const a = ACH_BY_ID[id];
   if (!a || unlockedAch(id)) return false;
   data().achv[id] = Date.now();
-  const sig = earnSigils(BALANCE.sigils.achievement, "achv", true);
+  const sig = earnSigils(achvSigils(id), "achv", true);
+  const tier = BALANCE.sigils.achvTier[id] || 0, xp = BALANCE.levels.achv[tier];
+  addXp(xp, "achv");
   store.save();
-  G.emit("achv", sig ? { ...a, sig } : a);
+  G.emit("achv", { ...a, sig, xp: G.debug.on ? 0 : xp, tier });
   return true;
 }
 
@@ -179,10 +182,12 @@ G.on("runOver", (sum) => {
 // Sigil payouts (catalog.js has the economy)
 // ---------------------------------------------------------------------------
 // The host's events pay out here; co-op guests are paid from the host's messages (main.js), same amounts.
-export const sigilsBoss = () => earnSigils(sigilAmount("boss"), "boss");
-export const sigilsWin = () => earnSigils(sigilAmount("win"), "win");
-export const sigilsRush = (sum) => (sum && sum.cleared ? earnSigils(sigilAmount("rush", sum.rank), "rush") : 0);
-G.on("bossDown", () => { if (G.net.role !== "client" && G.mode !== "rush") sigilsBoss(); });
+// 4.5: a boss pays the first time you beat it on a difficulty, a win the first time you climb the Ladder on one;
+// after that an ordinary run pays a little (catalog.runPay, from main.js when the run is filed).
+export const sigilsBoss = (type) => (type && type !== 1 ? firstBoss(type) : 0);
+export const sigilsWin = () => firstWin();
+export const sigilsRush = (sum) => (sum && sum.cleared ? rushClear(sum.rank) : 0);
+G.on("bossDown", (f) => { if (G.net.role !== "client" && G.mode !== "rush") sigilsBoss(f && f.type); });
 G.on("ladderWin", () => { if (G.net.role !== "client") sigilsWin(); });
 G.on("rushDone", (sum) => { if (G.net.role !== "client") sigilsRush(sum); });
 

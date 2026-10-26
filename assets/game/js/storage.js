@@ -6,7 +6,10 @@ import { BALANCE } from "./balance.js";
 const KEY = "eg-glider-v1";
 // Save format version. 1: up to 4.1. 2 (4.2): Boss Rush records, achievements, cosmetics, lifetime stats.
 // 3 (4.2): Sigils and hats. 4 (4.3): one cosmetics inventory (owned), loadout presets, daily contracts.
-const SAVE_VER = 4;
+// 5 (4.4): friends (social.js): per account, the friends list, requests and blocks; per device, privacy choices.
+// 6 (4.5): the Sigil economy: prices x5 (balances x5 with them), achievements by tier, one-time firsts (claims),
+//    daily caps (sigilDay), the tutorial.
+const SAVE_VER = 6;
 
 function prefersReducedMotion() {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
@@ -83,6 +86,12 @@ function defaults() {
     presets: [null, null, null],   // three saved outfits (catalog.js)
     contracts: { day: "", list: [] },   // today's contracts (contracts.js)
     shopSeen: "",         // the last day you looked at the Item Shop's featured row
+    social: { prefs: {}, acct: {} },   // friends (social.js): prefs on this device, and per account code its friends, requests and blocks
+    claims: {},           // one-time Sigil rewards already paid: "boss:sloth:hard", "win:nightmare", "rush:normal" (catalog.js)
+    sigilDay: { day: "", run: 0, rush: 0 },   // today's capped Sigils: from runs, Boss Rush clears paid
+    tutorial: 0,          // 0: not done, 1: finished or skipped (tutorial.js)
+    xp: 0,                // your XP (xp.js makes your level from it)
+    xpDay: "",            // the day your first run's bonus was used
   };
 }
 
@@ -97,13 +106,33 @@ function migrate(d, saved) {
     if ((d.best.wave || 0) >= 50) d.achv.beyond = now;
   }
   if (from < 3) {
-    // Sigils arrive: the achievements you already have pay out, as if earned today
-    d.sigils = (d.sigils || 0) + Object.keys(d.achv || {}).length * BALANCE.sigils.achievement;
+    // Sigils arrive: the achievements you already have pay out, as if earned today (3 each, the 4.2 rate)
+    d.sigils = (d.sigils || 0) + Object.keys(d.achv || {}).length * 3;
   }
   if (from < 4) {
     // 4.3: hats bought in 4.2 join the one cosmetics inventory
     for (const id of Object.keys(saved.hats || {})) d.owned["hat:" + id] = saved.hats[id];
     delete d.hats;
+  }
+  if (from < 6) {
+    // 4.5: Sigils are worth more. Prices went x5, so balances go x5 (what you could buy, you still can), and the
+    // achievements you'd earned are topped up to what they pay now (they paid 3, which is 15 at the new scale).
+    const SG = BALANCE.sigils, k = SG.rescale;
+    d.sigils = Math.round((d.sigils || 0) * k);
+    d.life.sigils = Math.round((d.life.sigils || 0) * k);
+    let top = 0;
+    for (const id of Object.keys(d.achv || {})) top += Math.max(0, SG.achv[SG.achvTier[id] || 0] - 3 * k);
+    d.sigils += top; d.life.sigils += top;
+    // firsts you'd already done are counted as done (their achievements were just topped up instead)
+    const c = d.claims || (d.claims = {});
+    const now = Date.now();
+    if (d.achv.ladder) c["win:normal"] = now;
+    if (d.achv.hard) c["win:hard"] = now;
+    if (d.achv.nightmare) c["win:nightmare"] = now;
+    if (d.achv.gauntlet || (d.rush && d.rush.clears > 0)) c["rush:normal"] = now;
+    BALANCE.bosses.order.slice(0, d.best.rung || 0).forEach((b) => { c["boss:" + b + ":normal"] = now; });
+    // a player who's already played doesn't need the tutorial
+    if ((d.totals.runs || 0) > 0) d.tutorial = 1;
   }
   d.ver = SAVE_VER;
   return d;
@@ -146,6 +175,9 @@ export const store = {
           contracts: saved.contracts && Array.isArray(saved.contracts.list) ? saved.contracts : { day: "", list: [] },
           cos: { ...d.cos, ...(saved.cos || {}) },
           life: { ...d.life, ...(saved.life || {}) },
+          social: saved.social && typeof saved.social === "object" ? { prefs: { ...(saved.social.prefs || {}) }, acct: { ...(saved.social.acct || {}) } } : d.social,
+          claims: { ...(saved.claims || {}) },
+          sigilDay: { ...d.sigilDay, ...(saved.sigilDay || {}) },
         };
         migrate(data, saved);
         // v3 saves: auto-aim became a mode, screen shake a strength

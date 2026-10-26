@@ -129,7 +129,7 @@ export async function runTests(h) {
     const ct = await import("./contracts.js");
     const { sprites } = await import("./sprites.js");
     const d0 = store.data;
-    const keep = JSON.stringify({ sigils: d0.sigils, owned: d0.owned, cos: d0.cos, suit: d0.settings.suit, presets: d0.presets, contracts: d0.contracts, achv: d0.achv, wave: d0.best.wave });
+    const keep = JSON.stringify({ sigils: d0.sigils, owned: d0.owned, cos: d0.cos, suit: d0.settings.suit, presets: d0.presets, contracts: d0.contracts, achv: d0.achv, wave: d0.best.wave, claims: d0.claims, sigilDay: d0.sigilDay, life: d0.life.sigils });
     const keepDiff = G.difficulty;
     try {
       const keys = new Set(cat.ITEMS.map((i) => i.key));
@@ -171,8 +171,32 @@ export async function runTests(h) {
       check("co-op: unknown ids in a teammate's look become defaults", bad.suit === "classic" && bad.hat === "blackhole" && bad.visor === "" && bad.trail === "" && bad.finish === "");
       const before = d0.sigils;
       check("Sigils: none in a debug run", cat.earnSigils(5, "test") === 0 && d0.sigils === before);
-      G.difficulty = "nightmare";
-      check("Sigils: x3 on Nightmare", cat.sigilAmount("win") === BALANCE.sigils.win * 3 && cat.sigilAmount("rush", "S") === (BALANCE.sigils.rush + BALANCE.sigils.rank.S) * 3);
+      // 4.5: the economy (real payouts: debug off for these few lines, everything put back after)
+      const SG = BALANCE.sigils;
+      G.debug.on = false;
+      try {
+        d0.claims = {}; d0.sigilDay = { day: "", run: 0, rush: 0 };
+        G.difficulty = "normal";
+        const s0 = d0.sigils;
+        const idle = cat.runPay({ time: 600, kills: 400, wave: 20, active: 0.1 });
+        const short = cat.runPay({ time: 40, kills: 3, wave: 2, active: 1 });
+        const real = cat.runPay({ time: 900, kills: 600, wave: 22, won: false, active: 0.9 });
+        check("Sigils: a real run pays a little (1-3), a short or idle one nothing", idle.n === 0 && idle.why === "idle" && short.n === 0 && real.n === 3 && d0.sigils === s0 + 3, idle.why + "/" + short.why + "/" + real.n);
+        let farmed = 0;
+        for (let i = 0; i < 20; i++) farmed += cat.runPay({ time: 900, kills: 600, wave: 22, active: 0.9 }).n;
+        check("Sigils: run Sigils stop at the daily cap", 3 + farmed === SG.run.dayCap, "total " + (3 + farmed));
+        G.difficulty = "nightmare";
+        const f1 = cat.firstWin(), f2 = cat.firstWin();
+        check("Sigils: a first win pays once (more on Nightmare), never twice", f1 === SG.first.win[2] && f2 === 0);
+        const b1 = cat.firstBoss("sloth"), b2 = cat.firstBoss("sloth");
+        G.difficulty = "hard";
+        const b3 = cat.firstBoss("sloth");
+        check("Sigils: each boss's first defeat pays once per difficulty", b1 === Math.round(SG.first.boss * SG.diff.nightmare) && b2 === 0 && b3 === Math.round(SG.first.boss * SG.diff.hard));
+        let rush = 0;
+        for (let i = 0; i < 5; i++) rush += cat.rushClear("S");
+        check("Sigils: Boss Rush clears pay three a day (plus the first-ever bonus)", rush === SG.first.rush[1] + 3 * Math.round((SG.rush.clear + SG.rush.rank.S) * SG.diff.hard), "paid " + rush);
+        check("Sigils: challenges pay far more than a run", SG.contracts[0] >= 10 * SG.run.dayCap / 3 && SG.contracts[2] >= 100 && cat.achvSigils("nightmare") >= 200);
+      } finally { G.debug.on = true; }
       // daily contracts
       const c1 = ct.pickContracts("2026-10-25", true), c2 = ct.pickContracts("2026-10-25", true);
       check("contracts: three a day, one of each tier, the same all day", c1.length === 3 && c1.map((c) => c.tier).join() === "0,1,2" && JSON.stringify(c1) === JSON.stringify(c2) && new Set(c1.map((c) => c.id)).size === 3);
@@ -186,8 +210,87 @@ export async function runTests(h) {
     } finally {
       const k = JSON.parse(keep);
       d0.sigils = k.sigils; d0.owned = k.owned; d0.cos = k.cos; d0.settings.suit = k.suit; d0.presets = k.presets; d0.contracts = k.contracts; d0.achv = k.achv; d0.best.wave = k.wave;
+      d0.claims = k.claims || {}; d0.sigilDay = k.sigilDay || { day: "", run: 0, rush: 0 }; d0.life.sigils = k.life || 0;
       G.difficulty = keepDiff;
       store.save(true);
+    }
+    // --- 4.4: buying a gun with both slots full asks which one goes; nothing is spent until you confirm ------
+    if (h.shopBuy && h.openArmory) {
+      const arm = await import("./armory.js");
+      const { ui } = await import("./ui.js");
+      fresh([]);
+      G.guns[0] = { id: "blaster", tier: 3 }; G.guns[1] = { id: "rail", tier: 2 }; G.gunSlot = 0;
+      G.stars = 500; G.wave = 4;
+      h.openArmory();
+      G.shop.offers[0] = { kind: "gun", id: "nova", locked: false, sold: false };
+      check("swap: a new gun with both slots full needs a pick", arm.needsSlotPick(G.shop.offers[0]) && !arm.needsSlotPick({ kind: "gun", id: "rail" }) && !arm.needsSlotPick({ kind: "item", id: "nanoweave" }));
+      h.shopBuy(0);
+      const asked = ui.swapOpen, starsAsked = G.stars;
+      ui.closeSwapPick();
+      check("swap: asking (then cancelling) spends nothing and changes nothing", asked && starsAsked === 500 && G.stars === 500 && !G.shop.offers[0].sold && G.guns.map((g) => g.id + g.tier).join() === "blaster3,rail2");
+      const price = arm.offerPrice(G.shop.offers[0]);
+      h.shopBuy(0, 1);
+      check("swap: confirming replaces the slot you picked (not the gun in hand)", G.guns.map((g) => g.id + g.tier).join() === "blaster3,nova1" && G.stars === 500 - price && G.shop.offers[0].sold);
+      G.stars = 0;
+      G.shop.offers[1] = { kind: "gun", id: "smg", locked: false, sold: false };
+      h.shopBuy(1);
+      check("swap: can't afford it, no dialog", !ui.swapOpen && !G.shop.offers[1].sold);
+      ui.closeSwapPick();
+      // the build screen draws all four pages without throwing
+      let pages = 0;
+      for (const t of ["guns", "sins", "gear", "stats"]) { ui.buildTab = t; ui.renderBuildView(); if (document.getElementById("bv-page").children.length > 0) pages++; }
+      check("build screen: every page has something on it", pages === 4, pages + "/4");
+      ui.buildTab = "guns";
+      ui.show(null);
+    }
+    // --- 4.4: friend codes ----------------------------------------------------------------------------------
+    {
+      const so = await import("./social.js");
+      const k1 = "a".repeat(64), k2 = "b".repeat(64);
+      const c1 = await so.codeOf(k1), c1b = await so.codeOf(k1), c2 = await so.codeOf(k2);
+      check("friend codes: 8 characters, the same every time, different per player", c1.length === 8 && c1 === c1b && c1 !== c2 && so.cleanCode(c1) === c1, c1 + " / " + c2);
+      check("friend codes: typed with a dash, spaces or lower case still work", so.cleanCode(" " + so.fmtCode(c1).toLowerCase() + " ") === c1 && so.cleanCode("ABCD-EFG0") === "" && so.cleanCode("short") === "");
+      check("friend codes: a teammate's look carries their code (and only that)", so.tagOf("void/halo/mirror/stars/gold/~" + c1) === c1 && so.tagOf("void/halo/mirror/stars/gold") === "");
+    }
+    // --- 4.5: levels -----------------------------------------------------------------------------------------
+    {
+      const xp = await import("./xp.js");
+      const total = (L) => { let t = 0; for (let i = 1; i < L; i++) t += xp.xpNeed(i); return t; };
+      check("levels: XP makes the level, with the remainder carried", xp.levelOf(0).level === 1 && xp.levelOf(total(10)).level === 10 && xp.levelOf(total(10) - 1).level === 9 && xp.levelOf(total(25) + 7).into === 7);
+      check("levels: level 1000 is the top (and a long way off)", xp.levelOf(1e12).level === 1000 && total(1000) > 5e6 && total(100) > 1e5, "to 1000: " + total(1000));
+      const cat2 = await import("./catalog.js");
+      const { store: st2 } = await import("./storage.js");
+      const keepXp = st2.data.xp;
+      st2.data.xp = total(25);
+      const ok25 = cat2.owns(cat2.item("hat", "cadet")) && cat2.owns(cat2.item("hat", "comet")) && !cat2.owns(cat2.item("hat", "ringed"));
+      st2.data.xp = keepXp;
+      check("levels: the level hats unlock at their level, not before", ok25 && cat2.source(cat2.item("hat", "ascended")).level === 1000);
+      const rx = xp.runXp({ wave: 20, kills: 300, bosses: 4, active: 1 }), idle = xp.runXp({ wave: 20, kills: 300, bosses: 4, active: 0.05 });
+      check("levels: a run's XP adds up, and standing still earns a quarter", rx.total > 0 && Math.abs(idle.total - rx.total * 0.25) <= 1, rx.total + " vs " + idle.total);
+    }
+    // --- 4.5: cloud saves merge without losing or doubling anything -----------------------------------------
+    {
+      const cl = await import("./cloud.js");
+      const mk = (dev, base, earned, spent, owned) => ({ owned, achv: {}, claims: {}, best: { score: 0, wave: 0 }, totals: {}, rush: { clears: 0, best: {}, splits: {} },
+        contracts: { day: "", list: [] }, life: { sigils: 0 }, settings: { suit: "classic" }, cos: {}, presets: [null, null, null], daily: {}, sigils: base + earned - spent, xp: 0,
+        ledger: { dev, base: { [dev]: base }, earned: { [dev]: earned }, spent: { [dev]: spent }, xpBase: { [dev]: 0 }, xp: {} } });
+      const web = mk("dweb", 300, 50, 100, { "hat:halo": 1 }), exe = mk("dexe", 200, 20, 0, { "hat:tophat": 2 });
+      const s1 = JSON.parse(JSON.stringify(web));
+      cl.mergeInto(s1, JSON.parse(JSON.stringify(exe)));
+      const once = JSON.stringify({ o: s1.owned, s: s1.sigils });
+      cl.mergeInto(s1, JSON.parse(JSON.stringify(exe)));
+      check("cloud: items are a union, Sigils add up across devices (no doubles)", s1.owned["hat:halo"] && s1.owned["hat:tophat"] && s1.sigils === (300 + 50 - 100) + (200 + 20), "sigils " + s1.sigils);
+      check("cloud: merging the same copy twice changes nothing", JSON.stringify({ o: s1.owned, s: s1.sigils }) === once);
+    }
+    // --- 4.5: endless steepens every wave ------------------------------------------------------------------------
+    {
+      const stx = await import("./state.js");
+      const keepW = G.wave, keepM = G.mode, keepDaily = G.daily;
+      G.mode = "ladder"; G.daily = null;
+      G.wave = 30; const a = [stx.endless("hp"), stx.endless("dmg")];
+      G.wave = 60; const b = [stx.endless("hp"), stx.endless("dmg"), stx.endless("aggro")];
+      G.wave = keepW; G.mode = keepM; G.daily = keepDaily;
+      check("endless: nothing changes before wave 35, then robots get tougher, hit harder, attack faster", a[0] === 1 && a[1] === 1 && b[0] > 3 && b[1] > 2 && b[2] < 0.8, b.map((x) => x.toFixed(2)).join("/"));
     }
     // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted (and paid in Sigils)
     const KEY = "eg-glider-v1";
@@ -197,14 +300,21 @@ export async function runTests(h) {
       localStorage.setItem(KEY, JSON.stringify({ best: { score: 4242, wave: 52, wins: 1 }, totals: { runs: 9, kills: 900 }, settings: { suit: "mint", difficulty: "hard" } }));
       store.load();
       const d = store.data;
-      check("save migration: 4.1 save upgraded to version 4", d.ver === 4 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
+      check("save migration: 4.1 save upgraded to version 6", d.ver === 6 && d.best.score === 4242 && d.settings.suit === "mint", "ver " + d.ver);
       check("save migration: Boss Rush open, past achievements counted", store.rushUnlocked() && !!d.achv.ladder && !!d.achv.beyond);
-      check("save migration: past achievements pay Sigils, crown on", d.sigils === 2 * BALANCE.sigils.achievement && d.cos.hat === "crown", "sigils " + d.sigils);
+      // two achievements (ladder, beyond): 3 each in 4.2, x5 in 4.5, then topped up to their tier's reward
+      const SGm = BALANCE.sigils, want41 = 2 * 3 * SGm.rescale + (SGm.achv[SGm.achvTier.ladder] - 15) + (SGm.achv[SGm.achvTier.beyond] - 15);
+      check("save migration: past achievements pay Sigils (topped up in 4.5), crown on", d.sigils === want41 && d.cos.hat === "crown" && d.claims["win:normal"] && d.tutorial === 1, "sigils " + d.sigils + " want " + want41);
       // a 4.2 save (version 3) with two hats bought: they're still yours, in the one inventory
       localStorage.setItem(KEY, JSON.stringify({ ver: 3, best: { score: 10, wave: 5 }, sigils: 33, hats: { tophat: 111, halo: 222 }, cos: { hat: "halo" }, settings: { suit: "classic" } }));
       store.load();
       const d2 = store.data;
-      check("save migration: 4.2 hats carry over", d2.ver === 4 && d2.owned["hat:tophat"] === 111 && d2.owned["hat:halo"] === 222 && d2.sigils === 33 && !d2.hats && cat.equipped("hat").id === "halo");
+      check("save migration: 4.2 hats carry over (balance x5 in 4.5)", d2.ver === 6 && d2.owned["hat:tophat"] === 111 && d2.owned["hat:halo"] === 222 && d2.sigils === 33 * BALANCE.sigils.rescale && !d2.hats && cat.equipped("hat").id === "halo");
+      // a 4.3 save (version 4): everything kept, and an empty friends section added
+      localStorage.setItem(KEY, JSON.stringify({ ver: 4, best: { score: 99, wave: 9 }, sigils: 120, owned: { "hat:halo": 5, "suit:void": 6 }, cos: { hat: "halo" }, presets: [null, { suit: "void" }, null], settings: { suit: "void" } }));
+      store.load();
+      const d3 = store.data;
+      check("save migration: 4.3 save keeps its cosmetics and gets friends", d3.ver === 6 && d3.sigils === 120 * BALANCE.sigils.rescale && d3.owned["suit:void"] === 6 && d3.presets[1] && d3.social && typeof d3.social.acct === "object" && typeof d3.social.prefs === "object");
     } finally {
       try { if (backup === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, backup); } catch (err) { /* ignore */ }
       store.load();

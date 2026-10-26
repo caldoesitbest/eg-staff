@@ -490,3 +490,85 @@ output). Heartseeker is first in line for the weapon pass.
 6. Per-gun feel and Tier IV signatures.
 7. Per-boss music stingers on phase changes.
 8. Server-side leaderboard plausibility checks (score vs wave vs time).
+
+
+---
+
+# Phase V: 4.4 "Cosmic Connections" and Phase VI: 4.5 "Cosmic Legends"
+
+Both ship together as 4.5 (save format 6). All in `game/` and `assets/game/`; the site's other pages are untouched.
+
+## The server update (optional, one SQL file)
+
+`assets/game/docs/game-4.5.sql` adds two private tables and four functions (cloud saves; the difficulty, co-op and
+Boss Rush boards). Run it once in the Supabase SQL editor. It doesn't modify anything that exists. Until it's run the
+game behaves as before: saves stay on each device, and the leaderboard shows the original board (with a note).
+
+## 4.4: friends, parties, build screen, controllers
+
+- **Friends** (`social.js`, `friends.js`): Supabase Realtime only (no tables). A friend code is a hash of a hash of
+  the account id. Requests use a one-time ECDH key, so a code alone can't read or fake anything; later messages
+  between friends use AES-GCM under a key only the pair can make. Online status is friends-only (your presence
+  channel is named from your key). Lists are kept per device; friends refill a new device when they see you online.
+  Discord's friends list can't be read (Discord restricts that scope), so "find your Discord friends" works through
+  invite links and an opt-in "Find players" list that shows Discord names.
+- **Parties** (`party.js`): a party is a co-op lobby opened from the Hangar's portals. The leader picks the mode and
+  difficulty; guests ready up; PLAY starts the run for everyone once all are ready. The Co-op mode card is gone.
+  After a run, the leader's "back to the Hangar" brings the whole party home together.
+- **Your build** screen (pause, the Armory, the card pick, a HUD button on touch, I, View), **pick which gun a new
+  one replaces** (nothing is spent until you confirm), a compact Armory loadout on phones.
+- **Controllers**: spatial d-pad navigation, an always-visible highlight, a repeat delay, LB/RB tabs, LT/RT sections,
+  button hints, focus kept after a press redraws a list.
+- Tested: a two-player run over the live Realtime server (request, accept with both keys checked, presence, invite
+  delivered and seen, join from the card, ready-up, co-op run, home together, kick, unfriend) with no console errors.
+
+## 4.5: progression, difficulty, onboarding, performance
+
+- **Sigils** (`catalog.js`): contracts 50/90/150; achievements 40/80/150/250 by tier; one-time firsts (each boss per
+  difficulty, a Ladder win, a Boss Rush clear); a run pays 1-3 (×difficulty) only if it was real play (long enough,
+  enough kills, moving at least half the time) and at most 15 a day; Boss Rush clears pay 3 a day; rare shards from
+  elites and mini-bosses (6 a run at most). Prices ×5 and balances ×5 with them (save migration 6); past
+  achievements topped up to their new rewards. Sigils show under stars in the HUD.
+- **Levels** (`xp.js`): XP from runs (waves, bosses, wins, endless, mini-boss kills, perfects; ×difficulty, ×co-op,
+  ×1.5 for the first run of the day, ×0.25 if you mostly stood still), contracts and achievements. Level L needs
+  350 + 45·L XP (past 100: +20 per level); level 1000 is about 13 M XP. Every level pays 10 Sigils (every fifth 40);
+  hats at 10, 25, 50, 100, 250, 500 and 1000 (+250 Sigils each). A results-screen breakdown, a top-bar badge, a
+  Profile card with the hat track, level-up cards.
+- **Cloud saves** (`cloud.js`): items/achievements/one-time rewards merge as a union; Sigils and XP are a per-device
+  ledger (start, earned, spent per device) so nothing doubles or vanishes; records keep the best; the outfit follows
+  whichever device changed it last. Restore button in Profile.
+- **Standing still** (`pressure.js`): a few seconds still in a wave and robots flank you; then telegraphed strikes
+  that hit harder and faster the longer you stay, and past 14/11/9 seconds (Normal/Hard/Nightmare) each one takes a
+  third of your health. Measured: a strong build standing still on full auto used to reach wave 6/4/4 (Normal/Hard/
+  Nightmare); now a maxed build standing still dies within about a minute on Normal and inside the wave on Nightmare.
+- **Difficulty**: Hard/Nightmare robots flank more, punish a spent boost harder, hold closer, and three ranged
+  robots line their shots up every 8.5 s / 6 s. Bosses: health ×1.2/×1.45 on Hard/Nightmare, a tighter burst cap,
+  and surges at health marks (a guard moment, a ring to boost through, a gapped burst, faster attacks after); every
+  boss before Envy a notch harder. Nightmare boss fights for the autopilot went from ~16 s to ~25-31 s.
+- **Bosses arrive through a portal** in the middle of the arena; the off-screen boss/mini-boss arrow is large,
+  outlined, pulsing and named (always shown). Gluttony's Feast hauls minions in at ~800-1900 px/s.
+- **Mini-bosses** (`enemies/minibosses.js`): the Warden (turning shield, seeker volleys, ram), the Lancer (painted
+  lance lines that burst, fans), the Siege Engine (mortars where you are and where you're heading, shock pulse,
+  drones on Nightmare). From wave 7/5/4; a mid-game build kills one in ~15 s; a burst cap stops one-frame kills.
+- **Endless** (past wave 35): robot health, damage, speed, aggression, shot speed, numbers, elites, mutants and
+  mini-bosses all steepen every wave; less recovery time and fewer hearts. Measured with a maxed build on Normal:
+  4.4's autopilot never died (still alive at wave 172); 4.5's dies around wave 60-64 (a skilled player can go further).
+- **Flight school** (`tutorial.js`): ten hands-on steps (fly, shoot, charged shot, boost, perfect boost, swap, build,
+  upgrades, keep moving), controls shown for keyboard, controller or touch, skippable, replayable from How to play.
+- **Leaderboards**: a difficulty tag on every row, a difficulty filter, Co-op and Boss Rush boards (needs the SQL).
+- **Discord** (Windows app): Rich Presence over Discord's local pipe (mode, wave, difficulty, boss, party size, a
+  Play button), using the site's Discord app id. Not tested against a live Discord client (it would set the
+  tester's own status).
+- **Achievement cards**: a Steam-style holographic card (tier tag, Sigils and XP), level-ups share the queue.
+- **@r0wzzy**: a rotating Hangar splash line; rarely (1 in 20) "It all started with @r0wzzy." Tap it five times or
+  type r0wzzy to see it on purpose; a rare credit line in the intro too.
+- **Performance**: profiled a heavy scene (70 robots, 2 mini-bosses, a maxed build) at 6× CPU throttling: about
+  16 ms of work a frame, led by draw calls. Fixes: particles and pickups off screen are skipped, boss arrow labels
+  are drawn once, the HUD's counting runs 20 times a second, the boss bar only writes when it moves, gamepads are
+  polled only after one connects. Unthrottled the same scene costs ~1.6 ms a frame.
+
+## Tests
+
+`?debug=1&tests=1`: 78 checks (all pass), including the swap dialog (cancel spends nothing), friend codes, the
+economy (idle/short runs pay nothing, the daily cap, firsts pay once, Rush's daily clears), levels, cloud merge
+(union and ledger, idempotent), endless scaling, and migrations from 4.1/4.2/4.3 saves to version 6.

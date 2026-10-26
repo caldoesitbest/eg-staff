@@ -118,6 +118,42 @@ export const online = {
     }
   },
 
+  /** 4.5: posts a run to the difficulty boards (mode: ladder | daily | rush | coop). Quietly does nothing without
+      the 4.5 server update. Resolves { ok, rank } or { skipped }. */
+  v2Missing: false,
+  async submitRun(r) {
+    if (G.debug.on) return { skipped: "debug" };
+    if (!this.available || !this.user) return { skipped: "signed-out" };
+    if (!store.data.settings.postScores) return { skipped: "off" };
+    if (this.v2Missing) return { skipped: "missing" };
+    try {
+      const { data, error, expired } = await this.rpc("submit_game_run", {
+        p_mode: r.mode, p_difficulty: r.difficulty || "normal", p_score: Math.floor(r.score || 0), p_wave: r.wave | 0, p_won: !!r.won,
+        p_seconds: Math.floor(r.seconds || 0), p_daily: r.daily || null, p_team: r.team || null, p_players: r.players || 1,
+        p_client: (G.desktop ? "desktop-" : G.androidApp ? "android-" : "web-") + VERSION,
+      }, false);
+      if (expired) return { skipped: "expired" };
+      if (error) { if (friendly(error) === "missing") { this.v2Missing = true; return { skipped: "missing" }; } return { ok: false, error: friendly(error) }; }
+      const row = Array.isArray(data) ? data[0] : data;
+      return row && row.ok ? { ok: true, rank: row.rank } : { ok: false, error: "Not posted (too many runs this hour?)" };
+    } catch (e) { return { ok: false, error: friendly(e) }; }
+  },
+  /** 4.5 boards: mode, difficulty (null: all), daily date. Falls back to the original board where it can. */
+  async board2(mode, difficulty, daily) {
+    if (!this.available) return { error: "offline" };
+    if (!this.v2Missing) {
+      try {
+        const { data, error } = await this.rpc("game_board", { p_mode: mode, p_difficulty: difficulty || null, p_daily: daily || null, p_limit: 50 }, true);
+        if (!error) return { rows: Array.isArray(data) ? data : [], v2: true };
+        if (friendly(error) !== "missing") return { error: friendly(error) };
+        this.v2Missing = true;
+      } catch (e) { return { error: friendly(e) }; }
+    }
+    if (mode === "coop" || mode === "rush") return { error: "v2" };
+    const old = await this.board(mode === "daily" ? daily : null);
+    return old.error ? old : { rows: old.rows, v2: false };
+  },
+
   /** Top runs (best per player). daily: "YYYY-MM-DD" for that day's Daily Challenge, null for all-time. */
   async board(daily) {
     if (!this.available) return { error: "offline" };
