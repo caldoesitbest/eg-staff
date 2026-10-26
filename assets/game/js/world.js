@@ -2,7 +2,7 @@
    (damage, kills, scoring, pickups, explosions, asteroids). Co-op: every player is checked in turn
    with usePlayer(), so "the player" in damage/heal/kill code is whoever it's happening to. */
 
-import { G, usePlayer, coop, diff, threat, resolveRate } from "./state.js";
+import { G, usePlayer, coop, diff, threat, resolveRate, endless } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { TAU, rand, randInt, chance, fracRound, clamp } from "./util.js";
 import { fx } from "./fx.js";
@@ -20,6 +20,8 @@ import { fusionStar, fusionOverheal, fusionDmg, fusionShot, fusionPerfect, fusio
 import { M, armorMul, replicateAt, vampHeal, volatileDeath } from "./mutations.js";
 import { spawnCopy } from "./enemies/index.js";
 import { progressKill } from "./progress.js";
+import { earnSigils } from "./catalog.js";
+import { net } from "./net.js";
 
 const A = BALANCE.arena;
 const D = BALANCE.drops;
@@ -85,6 +87,10 @@ function showDamage(e, dmg, crit) {
 const VULN = BALANCE.evolution.nova.b.vuln, RESOLVE = BALANCE.resolve;
 export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
   if (e.dead || e.invuln || e.phased) return false;       // a Phantom mid-blink can't be touched
+  if (e.surgeT > 0) {                                      // a boss surging (4.5): it shrugs this off
+    if (Math.random() < 0.3) fx.sparks(e.x - (dirX || 0) * e.r, e.y - (dirY || 0) * e.r, Math.atan2(-(dirY || 0), -(dirX || 0)), 0.8, 2, P_WHITE, 240, 0.15);
+    return false;
+  }
   dmg *= e.dmgMul;
   if (e.mut === M.ARMORED) {
     const k = armorMul(e, dirX, dirY);
@@ -93,11 +99,17 @@ export function damageEnemy(e, dmg, crit, dirX, dirY, knock) {
     else if (k > 1) crit = true;                           // the weak spot: it shows like a crit
   }
   if (e.vuln > 0) dmg *= e.boss ? 1 + (VULN - 1) / 2 : VULN;      // Gravity Well (half as much on a boss)
+  if (e.miniboss) {
+    // a mini-boss's burst cap (balance.miniboss.resolve): looser than a boss's
+    const R = BALANCE.miniboss.resolve, room = Math.max(0, e.maxHp * R.rate - e.res);
+    if (dmg > room) { dmg = room + (dmg - room) * R.over; e.resT = 0.25; }
+    e.res += dmg;
+  }
   if (e.boss) {
     // boss resolve (balance.resolve): a leaky bucket of the last second's damage; past it, damage lands at `over`
     const cap = e.maxHp * resolveRate();
     const room = Math.max(0, cap - e.res);
-    if (dmg > room) { dmg = room + (dmg - room) * RESOLVE.over; e.resT = 0.25; }
+    if (dmg > room) { dmg = room + (dmg - room) * RESOLVE.over * (diff().over || 1); e.resT = 0.25; }
     e.res += dmg;
   }
   if (e.shield > 0) {
@@ -157,9 +169,10 @@ export function killEnemy(e, silent) {
     for (let i = 0; i < n; i++) dropPickup(0, e.x, e.y, s.starValue);
     if (!ally && !e.boss) {
       const low = G.player && G.player.hp <= 2;
-      if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal)) dropPickup(2, e.x, e.y, D.heartHeal);
+      if (chance((low ? D.heartChanceLow : D.heartChance) * diff().heal * endless("heal"))) dropPickup(2, e.x, e.y, D.heartHeal);
     }
-    if (!ally) { onKill(e); evoKill(e); progressKill(e, G.curChg); }
+    if (!ally) { onKill(e); evoKill(e); progressKill(e, G.curChg); sigilShard(e); }
+    if (e.miniboss && !ally) { dropPickup(2, e.x, e.y, D.heartHeal * 2); G.emit("minibossDown", e); }
   }
   if (e.mut === M.VOLATILE && !silent && !ally) {
     const n = Math.max(0, G.wave - 1);
@@ -188,7 +201,8 @@ export function hurtPlayer(dmg, sx, sy) {
   const P = G.player;
   if (!P || P.dead) return false;
   if (P.boostT > 0 || P.grace > 0) { perfectBoost(); return false; }
-  if (P.iframes > 0 || G.debug.god) return false;
+  if (P.iframes > 0 || G.debug.god || G.tutorial) return false;       // flight school: nothing hurts
+  dmg = Math.ceil(dmg * endless("dmg"));                               // 4.5 endless: everything hits harder past wave 35
 
   if (P.bubble) {
     // Bubble Shield (shop): the first hit of a wave just pops it
@@ -211,7 +225,7 @@ export function hurtPlayer(dmg, sx, sy) {
   }
 
   P.hp -= dmg;
-  P.iframes = BALANCE.player.iframes * diff().iframes * (G.stats.iframesMul || 1);
+  P.iframes = BALANCE.player.iframes * diff().iframes * (G.stats.iframesMul || 1) * endless("iframes");
   P.hurtT = 0.45;
   let dx = P.x - sx, dy = P.y - sy;
   const d = Math.hypot(dx, dy) || 1;
@@ -497,7 +511,7 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   if (!b) return null;
   if (!bolt) {
     const W = BALANCE.waves;
-    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot * (G.curEnemy && G.curEnemy.boss ? threat("bossShot") : 1);
+    const k = (1 + Math.min(W.shotSpeedCap, Math.max(0, G.wave - 1) * W.shotSpeedPerWave)) * diff().shot * (G.curEnemy && G.curEnemy.boss ? threat("bossShot") : 1) * endless("shot");
     vx *= k; vy *= k;
   }
   b.dead = false;
@@ -513,6 +527,18 @@ export function fireEnemyBullet(x, y, vx, vy, dmg, look, r, bolt) {
   b.src = G.curEnemy ? G.curEnemy.type : G.hurtSrc || "";     // for "what got you"
   b.from = G.curEnemy; b.fromId = G.curEnemy ? G.curEnemy.id : 0;
   return b;
+}
+
+/** 4.5: now and then a robot leaves a Sigil shard: an elite rarely, a mini-boss often (a few a run at most). */
+function sigilShard(e) {
+  const SD = BALANCE.sigils.drop;
+  if (e.boss || G.mode !== "ladder" && G.mode !== "rush" || (G.runDrops || 0) >= SD.runCap || G.state === "menu" || G.tutorial) return;
+  const p = e.miniboss ? SD.mini : e.elite ? SD.elite : 0;
+  if (!p || !chance(p)) return;
+  G.runDrops = (G.runDrops || 0) + 1;
+  const n = e.miniboss ? randInt(SD.miniN[0], SD.miniN[1]) : 1;
+  const q = dropPickup(4, e.x, e.y, n);
+  if (q) q.life = D.starLife * 2.5;
 }
 
 export function dropPickup(kind, x, y, value) {
@@ -1011,6 +1037,15 @@ function updateEnemyBullets(dt) {
 // ---------------------------------------------------------------------------
 function collect(q) {
   const P = G.player;
+  if (q.kind === 4) {
+    // a rare Sigil shard: it's yours if you grab it (a co-op guest's goes to their own save)
+    if (P === G.me) earnSigils(q.value, "drop");
+    else if (G.net.role === "host") { const m = net.members.find((x) => x.slot === P.slot); if (m) net.send(m.id, { k: "sigil", n: q.value }, true); }
+    audio.play("achv", q.x, q.y, 0.5);
+    fx.burst(q.x, q.y, 12, P_CYAN, 200, 0.6, 1.6);
+    fx.text(q.x, q.y - 16, "+" + q.value + " \u25c6", C.cyan, 15, 0.9);
+    return;
+  }
   if (q.kind === 2) {
     if (P.hp < P.maxHp || (P.maxShield > 0 && P.shield < P.maxShield)) {
       healPlayer(Math.max(1, Math.round(q.value * (G.stats.heartMul || 1))), P.maxShield > 0);
@@ -1195,6 +1230,7 @@ export function stepWorld(dt) {
 }
 
 export function clearWorld() {
+  G.bossPortal = null;
   G.enemies.clear(); G.pb.clear(); G.eb.clear(); G.pickups.clear();
   G.warnings.clear(); G.asteroids.clear(); G.puddles.clear(); G.blasts.clear(); G.mines.clear(); G.zones.clear();
   fx.clear();

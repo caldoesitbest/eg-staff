@@ -5,12 +5,13 @@ import { G } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { input } from "./input.js";
 import { store, GFX_PRESETS, GFX_KEYS } from "./storage.js";
-import { CARD_BY_ID, ENVY_POWERS, estimateDps } from "./upgrades.js";
-import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES } from "./armory.js";
-import { evoChoices } from "./evolve.js";
+import { CARD_BY_ID, ENVY_POWERS, estimateDps, computeStats, buildSummary } from "./upgrades.js";
+import { gunArt, itemArt, offerInfo, offerPrice, ownedItems, rerollCost, patchCost, gunName, gunCol, GUN_COL, TIER_NAMES, itemInfo } from "./armory.js";
+import { evoChoices, evoCode, evoName, EVO_TEXT } from "./evolve.js";
 import { ACHIEVEMENTS, ACH_BY_ID, unlockedAch, rewardNames } from "./progress.js";
 import { equipped } from "./catalog.js";
 import { hangar, lookArt } from "./hangar.js";
+import { party } from "./party.js";
 import { sprites, PAL } from "./sprites.js";
 import { comboMult } from "./world.js";
 import { waves } from "./waves.js";
@@ -19,6 +20,9 @@ import { online, todayUTC } from "./online.js";
 import { SLOT_COL } from "./coop.js";
 import { drawCrosshairAt } from "./render.js";
 import { synergyFor } from "./synergy.js";
+import { MINIBOSSES } from "./enemies/minibosses.js";
+import { levelOf, tierOf, xpNeed } from "./xp.js";
+import { item as catItem } from "./catalog.js";
 
 const $ = (id) => document.getElementById(id);
 const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
@@ -33,8 +37,9 @@ function el(tag, cls, text) {
   return n;
 }
 
-const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "", fusion: "" };
+const last = { hp: -1, maxHp: -1, shield: -1, maxShield: -1, score: -1, combo: -1, stars: -1, sigils: -1, wave: -1, left: "", boss: -1, envy: "", cd: -1, gun: "", charge: -1, team: "", fusion: "" };
 let hudSlowT = 0;         // the bits of the HUD that don't need 60 updates a second
+let hudSlowMini = 0;
 let boardKind = "all";
 
 // The Sin Ladder, lowest to highest (same names, emoji and colours as the homepage Ladder).
@@ -50,7 +55,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 7;
+const NEWS_VERSION = 9;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
@@ -78,7 +83,10 @@ export const ui = {
     const click = (id, fn) => { const n = $(id); if (n) n.addEventListener("click", (e) => { handlers.onClick && handlers.onClick(); fn(e); }); };
     click("play-btn", () => hangar.play());
     for (const b of document.querySelectorAll(".diff-opt")) {
-      b.addEventListener("click", () => { store.data.settings.difficulty = b.dataset.diff; store.save(); this.renderDifficulty(); });
+      b.addEventListener("click", () => {
+        if (party.on && !party.leading) { this.toast("Your party leader picks the difficulty", 2200); return; }
+        store.data.settings.difficulty = b.dataset.diff; store.save(); this.renderDifficulty(); party.sendPick(); hangar.refresh();
+      });
     }
     click("how-btn", () => this.show("how"));
     click("settings-btn", () => this.openSettings("menu"));
@@ -102,7 +110,7 @@ export const ui = {
     hangar.init({ ui: this, handlers, sfx: (n) => handlers.onSfx && handlers.onSfx(n), name: () => (online.user ? "@" + online.name : "Pilot") });
     G.on("sigils", (s) => {
       if (s.quiet) return;
-      const why = s.why === "win" ? " · the Ladder is yours" : s.why === "rush" ? " · Boss Rush cleared" : "";
+      const why = { "first-win": " · first climb on " + (BALANCE.difficulty[G.difficulty] || {}).name, "first-boss": " · first time beating it", "first-rush": " · first Boss Rush clear", rush: " · Boss Rush cleared", drop: " · a rare find" }[s.why] || "";
       this.toast("+" + s.n + " \u25c6 " + (s.n === 1 ? "Sigil" : "Sigils") + why, 2200);
     });
     click("rush-back", () => this.show("menu"));
@@ -123,6 +131,16 @@ export const ui = {
       codeIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("lobby-join").click(); } });
     }
     click("news-done", () => { store.data.seenNews = NEWS_VERSION; store.save(); this.show("menu"); });
+    // your build (pause, the Armory, the card pick, the touch HUD) and the Armory's "replace which gun?"
+    click("pause-build-btn", () => this.openBuild("pause"));
+    click("shop-build", () => this.openBuild("shop"));
+    click("up-build", () => this.openBuild("upgrade"));
+    click("build-btn", () => handlers.onBuild && handlers.onBuild());
+    click("build-back", () => this.closeBuild());
+    click("build-resume", () => handlers.onResume());
+    for (const t of document.querySelectorAll(".bv-tabs .tab")) t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.buildTab = t.dataset.bv; this.renderBuildView(); });
+    click("swap-ok", () => { const i = this.swapOffer, sl = this.swapSlot; this.closeSwapPick(); if (i >= 0) handlers.onBuy(i, sl); });
+    click("swap-cancel", () => this.closeSwapPick());
     // the fusion chip flashes whenever your Sin Fusion does something (throttled)
     let pulseAt = 0;
     G.on("fusionPulse", () => {
@@ -136,11 +154,15 @@ export const ui = {
     document.querySelectorAll("#settings-form .tab").forEach((t) => t.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.settingsTab(t.dataset.tab); }));
     click("settings-done", () => this.closeSettings());
     click("how-done", () => { store.data.seenHowTo = true; store.save(); this.show(this.howBack || "menu"); });
+    click("how-tutorial", () => handlers.onTutorial && handlers.onTutorial());
     click("board-btn", () => this.openBoard("all", "menu"));
     click("board-done", () => this.show(this.boardBack || "menu"));
     click("board-signin", () => online.signIn());
     click("tab-all", () => this.openBoard("all"));
     click("tab-daily", () => this.openBoard("daily"));
+    click("tab-coop", () => this.openBoard("coop"));
+    click("tab-rush", () => this.openBoard("rush"));
+    for (const b of document.querySelectorAll("[data-bdiff]")) b.addEventListener("click", () => { handlers.onClick && handlers.onClick(); this.boardDiff = b.dataset.bdiff; this.openBoard(boardKind); });
     click("account-chip", () => { if (online.user) this.openBoard(boardKind, "menu"); else online.signIn(); });
     click("exit-btn", () => handlers.onExit());
     click("pause-exit-btn", () => handlers.onExit());
@@ -208,7 +230,7 @@ export const ui = {
 
   // ---------------- screens ----------------
   show(name) {
-    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "event", "download"];
+    const names = ["menu", "pause", "upgrade", "shop", "over", "settings", "how", "board", "win", "news", "lobby", "evo", "rush", "rushdone", "event", "download", "build"];
     for (const n of names) {
       const node = $("screen-" + n);
       if (!node) continue;
@@ -221,9 +243,10 @@ export const ui = {
     if (name === "how") this.renderHow();
     if (name === "download") this.renderDownload();
     if (name === "menu") { this.refreshMenu(); hangar.show(); }
-    const first = name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
+    const first = name === "menu" ? (hangar.tabNow === "play" ? $("play-btn") : document.querySelector(".hnav.on")) : name && $("screen-" + name) && $("screen-" + name).querySelector(name === "upgrade" ? ".card" : name === "evo" ? ".evo-card" : name === "event" ? ".event-opt:not([disabled])" : name === "shop" ? "#shop-go" : ".btn-primary, .btn, button");
     if (first && (input.mode !== "touch")) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 30);
     this.updateRotateHint();
+    this.renderPadHints();
   },
   get screen() { return screen; },
   get boardKindNow() { return boardKind; },
@@ -241,6 +264,8 @@ export const ui = {
     const g = this.els.game;
     g.classList.remove("mode-kbm", "mode-touch", "mode-gamepad");
     g.classList.add("mode-" + mode);
+    // a controller picked up in a menu: put the highlight where it can be seen
+    if (mode === "gamepad" && screen) { const r = navRoot(), f = document.activeElement; if (r && (!f || f === document.body || !r.contains(f))) this.navigate("down"); }
     this.renderControlsHint();
     if (screen === "how") this.renderHow();
     if (screen === "upgrade") this.renderUpgradeHint();
@@ -391,8 +416,10 @@ export const ui = {
   async openBoard(kind, back) {
     if (back) this.boardBack = back;
     boardKind = kind;
-    $("tab-all").setAttribute("aria-selected", kind === "all" ? "true" : "false");
-    $("tab-daily").setAttribute("aria-selected", kind === "daily" ? "true" : "false");
+    for (const k of ["all", "daily", "coop", "rush"]) $("tab-" + k).setAttribute("aria-selected", kind === k ? "true" : "false");
+    const bd = this.boardDiff || "";
+    $("board-diffs").hidden = kind === "daily";
+    for (const b of document.querySelectorAll("[data-bdiff]")) b.setAttribute("aria-checked", b.dataset.bdiff === bd ? "true" : "false");
     if (screen !== "board") this.show("board");
     const status = $("board-status"), list = $("board-list");
     list.replaceChildren();
@@ -400,17 +427,26 @@ export const ui = {
     $("board-who").textContent = online.user ? "Signed in as @" + online.name + (store.data.settings.postScores ? "" : " · posting is off in Settings") : "";
     if (!online.available) { status.textContent = "The leaderboard needs an internet connection."; return; }
     status.textContent = "Loading…";
-    const res = await online.board(kind === "daily" ? todayUTC() : null);
-    if (boardKind !== kind) return;
+    const mode = kind === "all" ? "ladder" : kind;
+    const res = await online.board2(mode, kind === "daily" ? null : bd || null, kind === "daily" ? todayUTC() : null);
+    if (boardKind !== kind || (this.boardDiff || "") !== bd) return;
+    if (res.error === "v2") { status.textContent = "The " + (kind === "coop" ? "co-op" : "Boss Rush") + " board turns on with the 4.5 server update. Check back soon."; return; }
     if (res.error === "missing") { status.textContent = "The leaderboard is being set up. Check back soon."; return; }
     if (res.error) { status.textContent = res.error === "offline" ? "The leaderboard needs an internet connection." : res.error; return; }
-    if (!res.rows.length) { status.textContent = kind === "daily" ? "Nobody has posted today's Daily yet. Be first." : "No runs posted yet. Be first."; return; }
-    status.textContent = kind === "daily" ? "Today's Daily Challenge (" + todayUTC() + " UTC): same waves and cards for everyone." : "Best run per player.";
+    if (!res.rows.length) { status.textContent = kind === "daily" ? "Nobody has posted today's Daily yet. Be first." : "No runs posted here yet. Be first."; return; }
+    const dn = bd ? BALANCE.difficulty[bd].name : "";
+    status.textContent = kind === "daily" ? "Today's Daily Challenge (" + todayUTC() + " UTC): same waves and cards for everyone, always Normal."
+      : kind === "coop" ? "Best co-op run per host" + (dn ? " · " + dn : "") + "."
+      : kind === "rush" ? "Best Boss Rush per player" + (dn ? " · " + dn : "") + "."
+      : !res.v2 ? "Best run per player. (Difficulty tags arrive with the 4.5 server update.)" : "Best run per player" + (dn ? " · " + dn : " · every difficulty") + ".";
     for (const r of res.rows) {
       const li = el("li", "board-row" + (r.is_me ? " me" : ""));
       li.append(el("span", "board-rank", "#" + r.rank));
-      li.append(el("span", "board-name", "@" + r.username));
-      li.append(el("span", "board-wave", (r.won ? "👑 " : "") + "W" + r.wave));
+      const nm = el("span", "board-name", kind === "coop" && r.team ? r.team : "@" + r.username);
+      li.append(nm);
+      const df = r.difficulty || "";
+      li.append(el("span", "board-diff d-" + (df || "none"), df ? BALANCE.difficulty[df].name : "\u2014"));
+      li.append(el("span", "board-wave", kind === "rush" ? (r.won ? "Cleared" : r.wave + "/7") : (r.won ? "👑 " : "") + "W" + r.wave));
       li.append(el("span", "board-score", formatScore(r.score)));
       list.append(li);
     }
@@ -481,7 +517,8 @@ export const ui = {
 
   /** The menu's difficulty picker (applies to the Ladder and to co-op games you host). */
   renderDifficulty() {
-    const cur = BALANCE.difficulty[store.data.settings.difficulty] ? store.data.settings.difficulty : "normal";
+    const want = party.on && !party.leading && party.pick ? party.pick.diff : store.data.settings.difficulty;
+    const cur = BALANCE.difficulty[want] ? want : "normal";
     for (const b of document.querySelectorAll(".diff-opt")) b.setAttribute("aria-checked", b.dataset.diff === cur ? "true" : "false");
     const note = $("diff-note");
     if (note) note.textContent = DIFF_NOTES[cur];
@@ -566,13 +603,18 @@ export const ui = {
     const sc = Math.floor(G.score);
     if (sc !== last.score) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
     if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
+    const sig = store.data.sigils || 0;
+    if (sig !== last.sigils) {
+      if (last.sigils >= 0 && sig > last.sigils) { const c = $("sigil-chip"); c.classList.remove("got"); void c.offsetWidth; c.classList.add("got"); }
+      last.sigils = sig; $("hud-sigils").textContent = String(sig);
+    }
     if (G.wave !== last.wave) {
       last.wave = G.wave;
-      E["hud-wave"].textContent = G.mode === "rush" ? "Boss " + Math.min(7, Math.max(1, G.wave / BALANCE.waves.bossEvery)) + "/7" : "Wave " + G.wave;
+      E["hud-wave"].textContent = G.tutorial ? "Flight school" : G.mode === "rush" ? "Boss " + Math.min(7, Math.max(1, G.wave / BALANCE.waves.bossEvery)) + "/7" : "Wave " + G.wave;
       E["rush-chip"].hidden = G.mode !== "rush";
       const r = ladderRungs()[waves.rungOf(Math.max(1, G.wave))];
       const rung = $("hud-rung");
-      rung.textContent = r.name + (G.lap ? " · lap " + (G.lap + 1) : "");
+      rung.textContent = G.tutorial ? "" : r.name + (G.lap ? " · lap " + (G.lap + 1) : "");
       $("wave-chip").style.setProperty("--rung", r.c1);
       $("daily-chip").hidden = !G.daily;
       const dc = $("diff-chip");
@@ -580,9 +622,28 @@ export const ui = {
       dc.textContent = BALANCE.difficulty[G.difficulty] ? BALANCE.difficulty[G.difficulty].name : "";
       dc.classList.toggle("nightmare", G.difficulty === "nightmare");
     }
-    const remaining = G.net.role === "client" ? G.netLeft : waves.remaining();
-    const left = waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? remaining + " left" : "Clear");
-    if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
+    // a mini-boss's bar (the biggest one alive), a few times a second
+    hudSlowMini -= dt;
+    if (hudSlowMini <= 0) {
+      hudSlowMini = 0.1;
+      let mb = null;
+      for (let i = 0; i < G.enemies.count; i++) { const e = G.enemies.items[i]; if (!e.dead && e.ally <= 0 && MINIBOSSES[e.type] && (!mb || e.maxHp > mb.maxHp)) mb = e; }
+      const bar = $("mini-bar");
+      if (!mb) { if (!bar.hidden) bar.hidden = true; }
+      else {
+        if (bar.hidden || bar.dataset.type !== mb.type) { bar.hidden = false; bar.dataset.type = mb.type; $("mini-name").textContent = MINIBOSSES[mb.type].name; bar.style.setProperty("--mini-col", MINIBOSSES[mb.type].accent); }
+        $("mini-fill").style.transform = "scaleX(" + Math.max(0, Math.min(1, mb.hp / mb.maxHp)).toFixed(3) + ")";
+        bar.classList.toggle("resist", mb.resT > 0);
+      }
+    }
+    hudSlowT -= dt;
+    const slowTick = hudSlowT <= 0;          // 4.5: the counting and string-building parts run 20 times a second, not every frame
+    if (slowTick) hudSlowT = 1 / 20;
+    if (slowTick) {
+      const remaining = G.net.role === "client" ? G.netLeft : waves.remaining();
+      const left = G.tutorial ? "" : waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? remaining + " left" : "Clear");
+      if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
+    }
     const m = comboMult();
     if (G.combo !== last.combo) {
       const up = G.combo > last.combo;
@@ -591,9 +652,6 @@ export const ui = {
       E["hud-combo"].classList.toggle("on", G.combo > 0);
       if (up && G.combo > 1) { E["hud-combo"].classList.remove("bump"); void E["hud-combo"].offsetWidth; E["hud-combo"].classList.add("bump"); }
     }
-    hudSlowT -= dt;
-    const slowTick = hudSlowT <= 0;
-    if (slowTick) hudSlowT = 1 / 20;
     if (slowTick) {
       const a = G.ambush, on = !!(a && a.t > 0);
       E["ambush-chip"].hidden = !on;
@@ -609,12 +667,14 @@ export const ui = {
         E["boss-bar"].hidden = false;
         E["boss-name"].textContent = "@" + b.def.name + " · " + b.def.title;
         E["boss-bar"].style.setProperty("--boss-col", b.def.c1 || b.kind.accent);
-        bossGhost = 1;
+        bossGhost = 1; last.bossF = last.bossG = -1;
       }
       const f = Math.max(0, b.hp / b.maxHp);
       if (bossGhost > f) bossGhost = Math.max(f, bossGhost - dt * 0.35); else bossGhost = f;
-      E["boss-fill"].style.transform = "scaleX(" + f.toFixed(4) + ")";
-      E["boss-ghost"].style.transform = "scaleX(" + bossGhost.toFixed(4) + ")";
+      // only touch the page when the bar actually moved (a style write every frame costs a style pass)
+      const fk = Math.round(f * 1000), gk2 = Math.round(bossGhost * 1000);
+      if (fk !== last.bossF) { last.bossF = fk; E["boss-fill"].style.transform = "scaleX(" + (fk / 1000) + ")"; }
+      if (gk2 !== last.bossG) { last.bossG = gk2; E["boss-ghost"].style.transform = "scaleX(" + (gk2 / 1000) + ")"; }
     } else if (!E["boss-bar"].hidden && !G.bossFx) {
       E["boss-bar"].hidden = true;
     }
@@ -623,7 +683,7 @@ export const ui = {
     if (slowTick) this.renderTeam();
 
     // guns
-    const gk = (G.guns[0] ? G.guns[0].id + G.guns[0].tier + (G.guns[0].evo || "") : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier + (G.guns[1].evo || "") : "") + "|" + G.gunSlot;
+    const gk = !slowTick ? last.gun : (G.guns[0] ? G.guns[0].id + G.guns[0].tier + (G.guns[0].evo || "") : "") + "|" + (G.guns[1] ? G.guns[1].id + G.guns[1].tier + (G.guns[1].evo || "") : "") + "|" + G.gunSlot;
     if (gk !== last.gun) {
       last.gun = gk;
       const a = G.guns[G.gunSlot] || G.guns[0], b = G.guns[1 - G.gunSlot];
@@ -637,7 +697,7 @@ export const ui = {
     }
 
     // Sin Fusion
-    const fk = (P.fusions || []).join(",");
+    const fk = !slowTick ? last.fusion : (P.fusions || []).join(",");
     if (fk !== last.fusion) {
       last.fusion = fk;
       const n = E["fusion-chip"];
@@ -894,27 +954,72 @@ export const ui = {
   },
 
   /** An achievement just unlocked: a card slides in at the top (several queue up). */
+  /** 4.5: a holographic card slides in (bottom right; top on touch): achievements and level-ups take turns. */
   achvPop(a) {
     (this.achvQ || (this.achvQ = [])).push(a);
     if (this.achvBusy) return;
+    const TIER = ["Easy", "Medium", "Hard", "Legendary"];
     const next = () => {
       const x = this.achvQ.shift();
       const box = $("achv-pop");
       if (!x || !box) { this.achvBusy = false; return; }
       this.achvBusy = true;
       box.replaceChildren();
-      box.style.setProperty("--b", x.col);
-      const badge = el("span", "badge");
-      badge.append(icon(x.icon));
-      const txt = el("span", "achv-txt");
-      const rw = rewardNames(x);
-      txt.append(el("small", "", "Achievement unlocked"), el("b", "", x.name), el("span", "", (rw.length ? "Unlocked: " + rw.join(", ") : x.desc) + (x.sig ? " · +" + x.sig + " \u25c6" : "")));
-      box.append(badge, txt);
+      const col = x.levelUp ? tierOf(x.level).col : x.col;
+      box.style.setProperty("--b", col);
+      box.className = "achv-pop" + (x.levelUp ? " lvl" : " t" + (x.tier || 0));
+      const tile = el("span", "ap-tile");
+      if (x.levelUp) tile.append(levelBadge(x.level, true));
+      else { const hex = el("span", "ap-hex"); hex.append(icon(x.icon)); tile.append(hex); }
+      tile.append(el("i", "ap-shine"));
+      const txt = el("span", "ap-txt");
+      const kick = el("small", "ap-kick");
+      if (x.levelUp) kick.append(el("span", "", "Level up"));
+      else { kick.append(el("span", "", "Achievement unlocked")); kick.append(el("em", "", TIER[x.tier || 0])); }
+      txt.append(kick);
+      if (x.levelUp) {
+        const hat = x.hat ? catItem("hat", x.hat) : null;
+        txt.append(el("b", "", "Level " + x.level + " \u00b7 " + tierOf(x.level).name),
+          el("span", "ap-desc", hat ? "New hat unlocked: " + hat.name + "!" : "Keep climbing."),
+          el("span", "ap-rw", "+" + x.sigils + " \u25c6"));
+      } else {
+        const rw = rewardNames(x);
+        txt.append(el("b", "", x.name), el("span", "ap-desc", rw.length ? "Unlocked: " + rw.join(", ") : x.desc));
+        const bits = [];
+        if (x.sig) bits.push("+" + x.sig + " \u25c6");
+        if (x.xp) bits.push("+" + x.xp + " XP");
+        if (bits.length) txt.append(el("span", "ap-rw", bits.join("   ")));
+      }
+      box.append(tile, txt, el("i", "ap-timer"), el("i", "ap-scan"));
       box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
       handlers.onAchv && handlers.onAchv();
-      setTimeout(() => { box.classList.remove("show"); setTimeout(next, 350); }, 3600);
+      setTimeout(() => { box.classList.remove("show"); setTimeout(next, 420); }, x.levelUp && x.hat ? 5200 : 4200);
     };
     next();
+  },
+  /** A run's XP on a results screen: what it was for, and the bar filling (past a level, if you made one). */
+  renderXp(id) {
+    const box = $(id), x = G.runXp;
+    if (!box) return;
+    box.hidden = !x || !x.total;
+    if (!x || !x.total) return;
+    box.replaceChildren();
+    const up = x.after.level - x.before.level;
+    const head = el("div", "xp-head");
+    head.append(levelBadge(x.after.level), el("b", "xp-gain", "+" + formatScore(x.total) + " XP"),
+      el("span", "xp-lv" + (up ? " up" : ""), up ? (up > 1 ? "+" + up + " levels!" : "Level up!") : "Level " + x.after.level));
+    const bar = el("div", "xp-bar");
+    const fill = el("i");
+    bar.append(fill, el("span", "", x.after.need ? formatScore(x.after.into) + " / " + formatScore(x.after.need) + " XP" : "Max level"));
+    const lines = el("ul", "xp-lines");
+    for (const [label, n] of x.lines) { const li = el("li"); li.append(el("span", "", label), el("b", "", "+" + formatScore(n))); lines.append(li); }
+    for (const [label] of x.mul) lines.append(el("li", "mul", label));
+    box.append(head, bar, lines);
+    // the bar: from where you were, through any level-ups, to where you are
+    const from = up ? 0 : x.before.need ? x.before.into / x.before.need : 1, to = x.after.need ? x.after.into / x.after.need : 1;
+    fill.style.transform = "scaleX(" + from.toFixed(3) + ")";
+    setTimeout(() => { fill.style.transform = "scaleX(" + Math.max(from, to).toFixed(3) + ")"; }, 250);
+    if (G.debug.on) box.append(el("p", "set-note", "Debug run: XP not saved"));
   },
 
   // ---------------- Boss Rush ----------------
@@ -1003,6 +1108,7 @@ export const ui = {
     $("rushdone-again").disabled = client;
     $("rushdone-again").lastChild.textContent = client ? "Waiting for the host" : G.net.role === "host" ? "Run it back (everyone)" : "Run it back";
     $("rushdone-menu").lastChild.textContent = G.net.role !== "off" ? "Leave co-op" : "Menu";
+    this.renderXp("rushdone-xp");
     this.show("rushdone");
   },
 
@@ -1282,7 +1388,7 @@ export const ui = {
     add("Fire rate", st.rate.toFixed(1) + "/s");
     add("DPS", "~" + Math.round(estimateDps()));
     add("Crit", Math.round(st.crit * 100) + "%");
-    add("Charge", st.chargeTime.toFixed(2) + "s · ×" + st.chargeMul.toFixed(2));
+    add("Charge", st.chargeTime.toFixed(2) + "s · ×" + fmtCharge(st));
     add("Health", (P ? P.hp / 2 : 0) + " / " + st.maxHp / 2 + " 💜");
   },
 
@@ -1291,6 +1397,182 @@ export const ui = {
     if (!n) return;
     n.innerHTML = input.mode === "kbm" ? "<kbd>1</kbd>–<kbd>4</kbd> buy · <kbd>R</kbd> reroll · <kbd>Enter</kbd> next wave · 🔒 keeps an offer for next time"
       : input.mode === "gamepad" ? "D-pad to choose · <kbd>A</kbd> to buy · 🔒 keeps an offer for next time" : "Tap to buy · 🔒 keeps an offer for next time";
+  },
+
+  // ---------------- the Armory: which gun a new one replaces ----------------
+  /** Both slots full and a new gun to buy: pick the one it replaces (nothing is spent until you confirm). */
+  openSwapPick(i) {
+    const o = G.shop.offers[i];
+    if (!o) return;
+    this.swapOffer = i;
+    this.swapSlot = G.gunSlot;
+    $("swap-title").textContent = BALANCE.guns[o.id].name;
+    $("swap-kicker").textContent = "Tier I \u00b7 \u2605" + offerPrice(o);
+    this.renderSwapPick();
+    const box = $("swap-pick");
+    box.hidden = false;
+    box.classList.remove("in"); void box.offsetWidth; box.classList.add("in");
+    setTimeout(() => { const b = box.querySelector(".swap-slot.on"); if (b) b.focus({ preventScroll: true }); }, 30);
+    this.renderPadHints();
+  },
+  get swapOpen() { const b = $("swap-pick"); return !!b && !b.hidden; },
+  pickSwapSlot(sl) { if (!this.swapOpen || !G.guns[sl]) return; this.swapSlot = sl; this.renderSwapPick(); const b = $("swap-slots").children[sl]; if (b) b.focus({ preventScroll: true }); },
+  renderSwapPick() {
+    const o = G.shop.offers[this.swapOffer];
+    const box = $("swap-slots");
+    box.replaceChildren();
+    for (let sl = 0; sl < 2; sl++) {
+      const g = G.guns[sl];
+      if (!g) continue;
+      const st = statsFor(sl);
+      const on = sl === this.swapSlot;
+      const b = el("button", "swap-slot" + (on ? " on" : "") + (g.evo ? " evolved" : ""));
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", on ? "true" : "false");
+      b.style.setProperty("--gun-col", gunCol(g));
+      const top = el("span", "swap-top");
+      top.append(el("span", "swap-k", "Slot " + (sl + 1) + (sl === G.gunSlot ? " \u00b7 in hand" : "")), tierPips(g));
+      const art = el("span", "swap-art");
+      art.append(gunArt(g.id));
+      b.append(top, art, el("b", "swap-name", gunName(g)));
+      const dl = el("span", "swap-stats");
+      for (const [k, v] of [["Damage", fmtDmg(st)], ["Rate", st.rate.toFixed(1) + "/s"], ["DPS", "~" + Math.round(st.dps)]]) {
+        const d = el("span");
+        d.append(el("small", "", k), el("b", "", v));
+        dl.append(d);
+      }
+      b.append(dl, el("span", "swap-charge", gunLine(g)));
+      b.append(el("span", "swap-out", on ? "This one goes" : "Keep"));
+      b.setAttribute("aria-label", "Replace " + gunName(g) + ", Tier " + TIER_NAMES[g.tier - 1] + ", about " + Math.round(st.dps) + " damage a second");
+      b.addEventListener("click", () => { this.swapSlot = sl; handlers.onClick && handlers.onClick(); this.renderSwapPick(); const nb = $("swap-slots").children[sl]; if (nb && input.mode !== "touch") nb.focus({ preventScroll: true }); });
+      box.append(b);
+    }
+    const out = G.guns[this.swapSlot];
+    $("swap-ok-label").textContent = "Replace " + (out ? gunName(out) : "it") + " \u00b7 \u2605" + (o ? offerPrice(o) : 0);
+  },
+  closeSwapPick() {
+    const box = $("swap-pick");
+    if (!box || box.hidden) return false;
+    box.hidden = true;
+    this.swapOffer = -1;
+    this.renderPadHints();
+    if (input.mode !== "touch") { const b = $("shop-go"); if (b) b.focus({ preventScroll: true }); }
+    return true;
+  },
+
+  // ---------------- your build ----------------
+  /** from: the screen to go back to ("pause", "shop" or "upgrade"). */
+  openBuild(from) {
+    this.buildFrom = from || "pause";
+    G.emit("buildView");
+    if (!this.buildTab) this.buildTab = "guns";
+    $("build-kicker").textContent = (G.mode === "rush" ? "Boss Rush" : G.daily ? "Daily Challenge" : "The Sin Ladder") + " \u00b7 wave " + G.wave + (G.net.role !== "off" ? " \u00b7 co-op: the game keeps going" : "");
+    $("build-resume").hidden = this.buildFrom !== "pause";
+    $("build-back").textContent = this.buildFrom === "shop" ? "Back to the Armory" : this.buildFrom === "upgrade" ? "Back to the cards" : "Back";
+    this.renderBuildView();
+    this.show("build");
+  },
+  closeBuild() { this.show(this.buildFrom || "pause"); },
+  renderBuildView() {
+    for (const t of document.querySelectorAll(".bv-tabs .tab")) t.setAttribute("aria-selected", t.dataset.bv === this.buildTab ? "true" : "false");
+    const box = $("bv-page");
+    box.replaceChildren();
+    const tab = this.buildTab;
+    const row = (cls) => { const r = el("div", "bv-row" + (cls ? " " + cls : "")); box.append(r); return r; };
+    if (tab === "guns") {
+      for (let sl = 0; sl < 2; sl++) {
+        const g = G.guns[sl];
+        const r = row("bv-gun" + (sl === G.gunSlot ? " held" : ""));
+        if (!g) { r.classList.add("empty"); r.append(el("span", "bv-empty", "Slot " + (sl + 1) + ": empty. Buy a gun in the Armory.")); continue; }
+        const st = statsFor(sl);
+        r.style.setProperty("--chip-col", gunCol(g));
+        const head = el("div", "bv-head");
+        const art = el("span", "bv-art");
+        art.append(gunArt(g.id));
+        const name = el("div", "bv-name");
+        name.append(el("b", "", gunName(g)), el("small", "", "Slot " + (sl + 1) + (sl === G.gunSlot ? " \u00b7 in hand" : "")));
+        head.append(art, name, tierPips(g));
+        r.append(head);
+        if (g.evo) {
+          const lines = EVO_TEXT[g.id + "_" + g.evo] || [];
+          const ev = el("div", "bv-evo");
+          ev.append(el("b", "", "\u2726 Evolved: " + evoName(evoCode(g.id, g.evo))));
+          for (const l of lines) ev.append(el("span", "", l));
+          r.append(ev);
+        } else r.append(el("p", "bv-note", g.tier >= 4 ? "Tier IV: beat the next sin boss to evolve it." : "Tier " + TIER_NAMES[g.tier - 1] + " of IV. Buying it again in the Armory upgrades it."));
+        r.append(el("p", "bv-text", BALANCE.guns[g.id].blurb));
+        const dl = el("dl", "bv-stats");
+        const add = (k, v) => { const d = el("div"); d.append(el("dt", "", k), el("dd", "", v)); dl.append(d); };
+        add("Damage", fmtDmg(st));
+        add("Fire rate", st.rate.toFixed(1) + "/s");
+        add("Damage/s", "~" + Math.round(st.dps));
+        add("Crit", Math.round(st.crit * 100) + "% \u00b7 \u00d7" + st.critMul.toFixed(1));
+        add("Full charge", st.chargeTime.toFixed(2) + "s \u00b7 \u00d7" + fmtCharge(st));
+        if (st.pierce > 0) add("Pierce", String(st.pierce));
+        if (st.explode > 0) add("Blast", Math.round(st.explode) + " wide");
+        if (st.chain > 0) add("Chains", String(st.chain));
+        if (st.homing > 0) add("Homing", "on");
+        r.append(dl);
+      }
+    } else if (tab === "sins") {
+      const list = buildSummary().sort((a, b) => (a.kind === "fusion" ? -1 : 0) - (b.kind === "fusion" ? -1 : 0));
+      if (!list.length) box.append(el("p", "bv-empty", "No sins or augments yet: you pick one after every wave."));
+      for (const c of list) {
+        const card = CARD_BY_ID[c.id];
+        const r = row(c.kind === "fusion" ? "fusion" : "");
+        r.style.setProperty("--chip-col", c.color);
+        if (c.color2) r.style.setProperty("--chip-col2", c.color2);
+        const head = el("div", "bv-head");
+        const art = el("span", "bv-art");
+        if (c.imgs) for (const src of c.imgs) { const im = el("img"); im.src = src; im.alt = ""; art.append(im); }
+        else if (c.img) { const im = el("img"); im.src = c.img; im.alt = ""; art.append(im); }
+        else art.append(icon(c.icon));
+        const name = el("div", "bv-name");
+        name.append(el("b", "", c.name), el("small", "", c.kind === "fusion" ? "Sin Fusion" : c.kind === "sin" ? "Sin" : "Augment"));
+        const lv = el("span", "bv-lv", c.kind === "fusion" ? "" : c.level >= c.max ? "MAX" : "Level " + c.level + " of " + c.max);
+        head.append(art, name, lv);
+        r.append(head);
+        const levels = card && card.levels;
+        if (levels && levels.length) r.append(el("p", "bv-text", levels[Math.min(levels.length, c.level) - 1]));
+      }
+    } else if (tab === "gear") {
+      const owned = ownedItems();
+      if (!owned.length) box.append(el("p", "bv-empty", "No gear yet: the Armory sells it between waves."));
+      for (const it of owned) {
+        const info = itemInfo(it.id) || { name: it.name, text: "", cost: "", rarity: "", max: 1 };
+        const r = row();
+        r.style.setProperty("--chip-col", it.col);
+        const head = el("div", "bv-head");
+        const art = el("span", "bv-art");
+        art.append(itemArt(it.id));
+        const name = el("div", "bv-name");
+        name.append(el("b", "", info.name), el("small", "", info.rarity));
+        head.append(art, name, el("span", "bv-lv", info.max > 1 ? it.n + " of " + info.max : ""));
+        r.append(head, el("p", "bv-text", info.text + (info.cost ? " \u00b7 Cost: " + info.cost : "")));
+      }
+    } else {
+      const st = G.stats, P = G.player, B = BALANCE.player;
+      const dl = el("dl", "bv-stats wide");
+      const add = (k, v) => { const d = el("div"); d.append(el("dt", "", k), el("dd", "", v)); dl.append(d); };
+      add("Health", (P ? P.hp / 2 : 0) + " / " + st.maxHp / 2 + " 💜");
+      if (st.shieldCap > 0) add("Shield", (P ? P.shield || 0 : 0) + " / " + st.shieldCap);
+      add("Damage (in hand)", fmtDmg(st));
+      add("Fire rate", st.rate.toFixed(1) + "/s");
+      add("Damage/s", "~" + Math.round(estimateDps()));
+      add("Crit chance", Math.round(st.crit * 100) + "%");
+      add("Crit damage", "\u00d7" + st.critMul.toFixed(1));
+      add("Move speed", Math.round((st.moveSpeed / B.speed) * 100) + "%");
+      add("Boost recharge", st.boostCd.toFixed(1) + "s");
+      add("Shots per pull", String(st.projectiles));
+      if (st.pierce > 0) add("Pierce", String(st.pierce));
+      add("Star value", "\u00d7" + st.starValue.toFixed(2).replace(/\.?0+$/, ""));
+      add("Star pickup reach", Math.round(st.magnet) + "");
+      if (st.heartMul !== 1) add("Healing", "\u00d7" + st.heartMul);
+      if (st.iframesMul !== 1) add("Safety after a hit", "\u00d7" + st.iframesMul);
+      if (st.interest > 0) add("Greed interest", Math.round(st.interest * 100) + "%");
+      box.append(dl);
+    }
   },
 
   focusCard(i) {
@@ -1341,6 +1623,7 @@ export const ui = {
     if (sum.killedBy) add("Got you", sum.killedBy);
     if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
     for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
+    this.renderXp("over-xp");
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
     renderArsenal(buildBox);
@@ -1360,29 +1643,115 @@ export const ui = {
   },
 
   // ---------------- gamepad menu navigation ----------------
+  /** D-pad / stick in menus: moves to the nearest control in that direction (what's on screen, not the page's order). */
   navigate(dir) {
-    let root = screen && $("screen-" + screen);
-    // in the Hangar, an open item panel or reveal keeps the focus to itself
-    if (screen === "menu") { const ov = [$("reveal"), $("item-detail")].find((n) => n && !n.hidden); if (ov) root = ov; }
+    const root = navRoot();
     if (!root) return;
-    const list = Array.from(root.querySelectorAll("button:not([disabled]), input, select")).filter((n) => n.offsetParent !== null);
+    const list = focusables(root);
     if (!list.length) return;
-    let i = list.indexOf(document.activeElement);
-    if (i < 0) { list[0].focus(); return; }
-    if (document.activeElement.type === "range" && (dir === "left" || dir === "right")) {
-      const r = document.activeElement;
-      r.value = Number(r.value) + (dir === "right" ? 5 : -5);
-      r.dispatchEvent(new Event("input"));
+    const a = document.activeElement;
+    if (!list.includes(a)) { focusEl(preferredIn(root, list)); return; }
+    if (a.type === "range" && (dir === "left" || dir === "right")) {
+      a.value = Number(a.value) + (dir === "right" ? 5 : -5);
+      a.dispatchEvent(new Event("input"));
       return;
     }
-    i = dir === "up" || dir === "left" ? (i - 1 + list.length) % list.length : (i + 1) % list.length;
-    list[i].focus();
+    if (a.tagName === "SELECT" && (dir === "left" || dir === "right") && a.options.length) {
+      a.selectedIndex = (a.selectedIndex + (dir === "right" ? 1 : a.options.length - 1)) % a.options.length;
+      a.dispatchEvent(new Event("change"));
+      return;
+    }
+    let next = spatialNext(a, list, dir);
+    // nothing roughly that way: up / down take the nearest further up / down, then wrap around; left / right stay put
+    if (!next && (dir === "up" || dir === "down")) next = spatialNext(a, list, dir, false) || list[(list.indexOf(a) + (dir === "up" ? list.length - 1 : 1)) % list.length];
+    if (next) { focusEl(next); if (handlers.onHover) handlers.onHover(); }
   },
   confirm() {
     const a = document.activeElement;
-    if (!a || a === document.body) return;
+    const root = navRoot();
+    if (!a || a === document.body || (root && !root.contains(a))) { if (root) this.navigate("down"); return; }
     if (a.type === "checkbox") { a.checked = !a.checked; a.dispatchEvent(new Event("change")); return; }
-    if (a.click) a.click();
+    if (!a.click) return;
+    // many buttons redraw the list they're in (the Locker, the shops, the tabs): keep the highlight on the same spot
+    const was = screen, before = focusables(root), at = before.indexOf(a), key = focusKey(a);
+    a.click();
+    const restore = () => {
+      if (screen !== was) return;
+      const cur = document.activeElement;
+      if (cur && cur !== document.body && cur.isConnected) return;
+      const r = navRoot();
+      if (!r) return;
+      const list = focusables(r);
+      if (!list.length) return;
+      const same = key ? list.filter((n) => focusKey(n) === key) : [];
+      focusEl(same.length ? same.reduce((x, y) => Math.abs(list.indexOf(y) - at) < Math.abs(list.indexOf(x) - at) ? y : x) : list[Math.min(Math.max(at, 0), list.length - 1)]);
+    };
+    restore();
+    setTimeout(restore, 60);
+  },
+  /** With a controller, something on screen always has the highlight (after Back, a redraw, a tab change). */
+  ensureFocus() {
+    if (input.mode !== "gamepad") return;
+    const r = navRoot(), f = document.activeElement;
+    if (r && (!f || f === document.body || !r.contains(f) || !visible(f))) this.navigate("down");
+  },
+  /** LB / RB: the previous / next tab of whatever's open (the Hangar, your build, settings, the leaderboard). */
+  cycleTab(step) {
+    if (this.swapOpen) { this.pickSwapSlot(this.swapSlot === 0 ? 1 : 0); return true; }
+    let tabs, at;
+    if (screen === "menu") {
+      if (menuOverlay()) return false;
+      tabs = Array.from(document.querySelectorAll(".hnav")).filter(visible);
+      at = tabs.findIndex((b) => b.classList.contains("on"));
+    } else {
+      const root = screen && $("screen-" + screen);
+      const bar = root && root.querySelector("[role=tablist]");
+      if (!bar) return false;
+      tabs = Array.from(bar.querySelectorAll("[role=tab]")).filter(visible);
+      at = tabs.findIndex((b) => b.getAttribute("aria-selected") === "true");
+    }
+    if (!tabs.length) return false;
+    const next = tabs[(Math.max(0, at) + step + tabs.length) % tabs.length];
+    next.click();
+    focusEl(next);
+    return true;
+  },
+  /** LT / RT in the Hangar: the sections inside a tab (the Item Shop's rows, the Locker's slots). */
+  cycleSubTab(step) {
+    if (screen !== "menu" || menuOverlay()) return false;
+    const pane = Array.from(document.querySelectorAll(".hpane")).find((n) => !n.hidden);
+    if (!pane) return false;
+    const bar = pane.querySelector("[role=tablist], .lk-slots");
+    if (!bar) return false;
+    const tabs = Array.from(bar.querySelectorAll("button")).filter(visible);
+    if (!tabs.length) return false;
+    const at = tabs.findIndex((b) => b.getAttribute("aria-selected") === "true" || b.getAttribute("aria-pressed") === "true" || b.classList.contains("on"));
+    const i = (Math.max(0, at) + step + tabs.length) % tabs.length;
+    tabs[i].click();
+    // the bar may have been redrawn by that click
+    const again = Array.from(bar.querySelectorAll("button")).filter(visible);
+    focusEl(again[i] || tabs[i]);
+    return true;
+  },
+  /** The button glyphs along the bottom while a controller drives the menus. */
+  renderPadHints() {
+    const box = $("pad-hints");
+    if (!box) return;
+    const keys = [];
+    const hasTabs = screen === "menu" || !!(screen && $("screen-" + screen) && $("screen-" + screen).querySelector("[role=tablist]"));
+    keys.push(["a", "A", this.swapOpen ? "Buy" : "Select"]);
+    if (screen !== "upgrade" && screen !== "evo" && screen !== "event") keys.push(["b", "B", this.swapOpen ? "Cancel" : "Back"]);
+    if (this.swapOpen) keys.push(["lb", "LB RB", "Pick the gun"]);
+    else if (hasTabs) keys.push(["lb", "LB RB", "Tabs"]);
+    if (screen === "menu" && !this.swapOpen) keys.push(["lb", "LT RT", "Sections"]);
+    if ((screen === "shop" || screen === "upgrade" || screen === "pause") && !this.swapOpen) keys.push(["view", "View", "Your build"]);
+    box.replaceChildren();
+    for (const [cls, k, label] of keys) {
+      const s = el("span", "pad-hint");
+      s.append(el("b", "pad-k " + cls, k), el("span", "", label));
+      box.append(s);
+    }
+    box.hidden = !screen;
   },
 
   // ---------------- portrait hint ----------------
@@ -1414,6 +1783,108 @@ function heartSvg(v, shield) {
 }
 
 /** Guns + gear chips (pause and game over), after the cards. */
+// ---------------- menu navigation (controller) ----------------
+const visible = (n) => n.offsetParent !== null || (n.getClientRects && n.getClientRects().length > 0);
+/** Where the d-pad works right now: the open dialog, else the screen. */
+/** The Hangar's open overlay (topmost first), if any: it keeps the controller to itself. */
+function menuOverlay() {
+  if (screen !== "menu") return null;
+  return ["fr-confirm", "portal-menu", "party-drawer", "reveal", "item-detail"].map($).find((n) => n && !n.hidden) || null;
+}
+function navRoot() {
+  const sw = $("swap-pick");
+  if (sw && !sw.hidden) return sw;
+  return menuOverlay() || (screen ? $("screen-" + screen) : null);
+}
+function focusables(root) {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll("button:not([disabled]):not([tabindex='-1']), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex='-1'])")).filter(visible);
+}
+/** Where the highlight starts on a screen: PLAY (or the open tab) in the Hangar, else its main button. */
+function preferredIn(root, list) {
+  if (root.id === "screen-menu") {
+    const n = hangar.tabNow === "play" ? $("play-btn") : document.querySelector(".hnav.on");
+    if (n && list.includes(n)) return n;
+  }
+  return list.find((n) => n.matches(".btn-primary")) || list.find((n) => n.matches("[aria-selected='true'], [aria-pressed='true']")) || list[0];
+}
+function focusEl(n) {
+  if (!n) return;
+  try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); }
+  if (n.scrollIntoView) n.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+/** Something that survives a redraw: the id, else the data-* values and the first class. */
+function focusKey(n) {
+  if (n.id) return "#" + n.id;
+  const d = Object.keys(n.dataset || {}).sort().map((k) => k + "=" + n.dataset[k]).join("&");
+  return d ? (n.className.split(" ")[0] || n.tagName) + "?" + d : "";
+}
+const overlap = (a0, a1, b0, b1) => Math.max(0, Math.max(a0, b0) - Math.min(a1, b1));
+/** The control nearest to `from` in direction dir, by where they sit on screen. strict: only ones roughly that way
+    (a cone), not anything that happens to be a little further over. */
+function spatialNext(from, list, dir, strict = true) {
+  const r = from.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const flat = dir === "left" || dir === "right";
+  let best = null, bestScore = Infinity;
+  for (const n of list) {
+    if (n === from) continue;
+    const q = n.getBoundingClientRect();
+    if (!q.width && !q.height) continue;
+    const qx = q.left + q.width / 2, qy = q.top + q.height / 2;
+    let along, across;
+    if (dir === "right") { if (qx <= cx + 4 || q.right <= r.right - 2) continue; along = q.left - r.right; across = overlap(q.top, q.bottom, r.top, r.bottom); }
+    else if (dir === "left") { if (qx >= cx - 4 || q.left >= r.left + 2) continue; along = r.left - q.right; across = overlap(q.top, q.bottom, r.top, r.bottom); }
+    else if (dir === "down") { if (qy <= cy + 4 || q.bottom <= r.bottom - 2) continue; along = q.top - r.bottom; across = overlap(q.left, q.right, r.left, r.right); }
+    else { if (qy >= cy - 4 || q.top >= r.top + 2) continue; along = r.top - q.bottom; across = overlap(q.left, q.right, r.left, r.right); }
+    along = Math.max(0, along);
+    if (strict && across > along * 2 + 30) continue;
+    // the same row / column first, then the closest
+    const score = along + across * 2.5 + (across > 0 ? 40 : 0) + Math.abs(flat ? qy - cy : qx - cx) * 0.12;
+    if (score < bestScore) { bestScore = score; best = n; }
+  }
+  return best;
+}
+
+/** One gun's numbers (the stats are computed for the gun in hand, so this borrows its slot for a moment). */
+function statsFor(slot) {
+  const keep = G.gunSlot;
+  G.gunSlot = slot;
+  computeStats();
+  const s = G.stats;
+  const out = { damage: s.damage, projectiles: s.projectiles, rate: s.rate, crit: s.crit, critMul: s.critMul, chargeTime: s.chargeTime,
+    chargeMul: s.chargeMul, pierce: s.pierce, explode: s.explode, chain: s.chain, homing: s.homing, dps: estimateDps() };
+  G.gunSlot = keep;
+  computeStats();
+  return out;
+}
+/** A full charge's damage, as a multiple of a normal shot. */
+const fmtCharge = (st) => (BALANCE.charge.dmg[1] * st.chargeMul).toFixed(1).replace(/\.0$/, "");
+const fmtDmg = (st) => st.damage.toFixed(st.damage < 10 ? 1 : 0) + (st.projectiles > 1 ? " \u00d7" + st.projectiles : "");
+function tierPips(g) {
+  const pips = el("span", "slot-pips");
+  for (let k = 0; k < 4; k++) pips.append(el("i", k < g.tier ? "on" : ""));
+  if (g.evo) pips.append(el("b", "slot-evo", "\u2726"));
+  pips.setAttribute("aria-label", "Tier " + TIER_NAMES[g.tier - 1]);
+  return pips;
+}
+/** The gun's line for the "replace which?" cards: its charged shot, or what it evolved into. */
+function gunLine(g) {
+  if (g.evo) return "\u2726 " + evoName(evoCode(g.id, g.evo));
+  const b = BALANCE.guns[g.id].blurb;
+  const i = b.indexOf("Charged:");
+  return i >= 0 ? b.slice(i) : b;
+}
+
+/** A level badge: a hexagon in the colour of its band, the number in it. */
+export function levelBadge(L, big) {
+  const t = tierOf(L);
+  const b = el("span", "lv-badge" + (big ? " big" : "") + (L >= 1000 ? " max" : ""), String(L));
+  b.style.setProperty("--lv", t.col);
+  b.title = "Level " + L + " · " + t.name;
+  return b;
+}
+
 function renderArsenal(box) {
   for (const g of G.guns) {
     if (!g) continue;

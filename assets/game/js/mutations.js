@@ -3,7 +3,7 @@
    front, Shockwave sends out rings, Phantom blinks to your side, Vampiric heals off your pain, Replicator
    copies itself. Each telegraphs what it's about to do, and none of them run while a robot is charmed. */
 
-import { G, diff } from "./state.js";
+import { G, diff, endless } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { rand, randRange, chance, rng } from "./util.js";
 import { fx } from "./fx.js";
@@ -35,7 +35,7 @@ export function rollMutation(type, wave) {
   const open = list.filter((k) => wave >= fromOf(k));
   if (!open.length) return 0;
   const first = Math.min(...open.map(fromOf));
-  const p = Math.min(MU.max, MU.chance + (wave - first) * MU.perWave) * Math.pow(diff().elite || 1, 0.6);
+  const p = Math.min(MU.max, MU.chance + (wave - first) * MU.perWave) * Math.pow(diff().elite || 1, 0.6) + endless("mut");
   if (!chance(p) || mutatedAlive() >= MU.maxAlive) return 0;
   let total = 0;
   for (const k of open) total += MU.types[k].weight;

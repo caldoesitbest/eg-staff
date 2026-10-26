@@ -262,10 +262,23 @@ export function gunNote(id) {
   if (held) return "Upgrade to Tier " + TIER_NAMES[held.tier];
   const empty = G.guns.findIndex((g) => !g);
   if (empty >= 0) return "Goes in your empty slot";
-  return "Replaces your " + gunName(activeGun());
+  return "You pick which gun it replaces";
 }
 
-export function buy(i) {
+/** Buying this offer needs you to pick which gun it replaces: a gun you don't have, with both slots full. */
+export function needsSlotPick(o) {
+  return !!o && o.kind === "gun" && !heldGun(o.id) && !!G.guns[0] && !!G.guns[1];
+}
+
+/** A piece of gear, for the build screen: name, what it does (and what it costs, for relics). */
+export function itemInfo(id) {
+  const it = ITEMS[id];
+  if (!it) return null;
+  return { name: it.name, text: it.text, cost: it.cost || "", col: RARITY[it.r].col, rarity: RARITY[it.r].name, max: it.max || 1 };
+}
+
+/** Buys offer i. slot: which gun a new gun replaces when both slots are full (default: the one in hand). */
+export function buy(i, slot) {
   const o = G.shop.offers[i];
   if (!o || o.sold) return false;
   const price = offerPrice(o);
@@ -274,18 +287,18 @@ export function buy(i) {
   if (G.runStats && G.player === G.me) G.runStats.spent += price;
   o.sold = true;
   o.locked = false;
-  if (o.kind === "gun") giveGun(o.id); else giveItem(o.id);
+  if (o.kind === "gun") giveGun(o.id, slot); else giveItem(o.id);
   G.emit("buy", o);
   return true;
 }
 
-export function giveGun(id) {
+export function giveGun(id, slot) {
   const slots = G.guns;
   let i = slots.findIndex((g) => g && g.id === id);
   if (i >= 0) slots[i].tier = Math.min(4, slots[i].tier + 1);
   else {
     i = slots.findIndex((g) => !g);
-    if (i < 0) i = G.gunSlot;
+    if (i < 0) i = slot === 0 || slot === 1 ? slot : G.gunSlot;
     slots[i] = { id, tier: 1 };
   }
   G.gunSlot = i;

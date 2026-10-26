@@ -13,10 +13,17 @@ import {
   trailPalOf, trailStyleOf, finishColOf, featured, dayKey, savePreset, applyPreset, setItems, ownedCount, ITEMS, DEFAULTS, parseLook,
 } from "./catalog.js";
 import { contracts, contractText, contractTier, contractReward, contractsResetIn } from "./contracts.js";
+import { achvSigils } from "./catalog.js";
 import { ACHIEVEMENTS, ACH_BY_ID } from "./progress.js";
 import { sprites, PAL, C } from "./sprites.js";
 import { GUN_COL } from "./armory.js";
 import { formatScore } from "./util.js";
+import { friendsUI, portalSlots, placePortals } from "./friends.js";
+import { party } from "./party.js";
+import { levelOf, tierOf, LEVEL_HATS, nextHat } from "./xp.js";
+import { levelBadge } from "./ui.js";
+import { cloud } from "./cloud.js";
+import { online } from "./online.js";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, cls, text) {
@@ -35,8 +42,13 @@ const MODES = {
   ladder: { name: "The Sin Ladder", sub: "Seven sins, one climb" },
   daily: { name: "Daily Challenge", sub: "One seed for everyone today" },
   rush: { name: "Boss Rush", sub: "The seven sins, back to back" },
-  coop: { name: "Co-op", sub: "2 to 4 players" },
 };
+/** The mode the Play tab shows: yours, or in a party you're not leading, the leader's pick. */
+function modeNow() {
+  if (party.on && !party.leading && party.pick) return party.pick.mode;
+  const m = store.data.settings.mode;
+  return MODES[m] ? m : "ladder";
+}
 
 // ---------------------------------------------------------------------------
 // the stage: a big astronaut on a lit platform, aiming at your pointer
@@ -89,7 +101,8 @@ class Stage {
     const fin = o.finish !== undefined ? item("finish", o.finish) || equipped("finish") : equipped("finish");
     const key = L.key + "|" + tr.id + "|" + fin.id + "|" + this.victory;
     if (key !== this.lastKey) { if (this.lastKey && !calm) this.swap = 1; this.lastKey = key; }
-    const u = Math.min(H / 94, W / 70, 7.2 * (window.devicePixelRatio || 1));      // pixels per sprite unit (capped on big screens)
+    const portals = this.cv.id === "stage-play" ? portalSlots() : null;           // 4.4: party portals either side of you
+    const u = Math.min(H / 94, W / (portals ? 84 : 70), 7.2 * (window.devicePixelRatio || 1));      // pixels per sprite unit (capped on big screens)
     const P = Math.max(1, Math.round(u * 2) / 2);
     const sk = L.key + "@" + P;
     if (sk !== this.sprKey && sprites.P) { const a = sprites.astronaut(P, L); this.spr = a.player; this.flash = a.flash; this.sprKey = sk; }
@@ -118,6 +131,15 @@ class Stage {
     const back = g.createRadialGradient(cx, cy, 0, cx, cy, 48 * u);
     back.addColorStop(0, hexA(trim, 0.16)); back.addColorStop(1, hexA(trim, 0));
     g.fillStyle = back; g.fillRect(0, 0, W, H);
+    // the party's portals: two beside you, a third behind once they're full (where they sit goes to the buttons)
+    let spots = null;
+    if (portals) {
+      const base = W / 2, dpr = W / Math.max(1, this.cv.clientWidth);
+      const geo = [{ x: base - 29 * u, fy: floorY, s: 1 }, { x: base + 29 * u, fy: floorY, s: 1 }, { x: base + 14 * u, fy: floorY - 10 * u, s: 0.62 }];
+      spots = geo.map((q, i) => (portals[i] ? { x: q.x / dpr, top: (q.fy - 34 * u * q.s) / dpr, w: 20 * u * q.s / dpr, h: 34 * u * q.s / dpr } : null));
+      if (portals[2]) this.portal(portals[2], geo[2], u, t, calm, 2, base);
+      for (let i = 0; i < 2; i++) if (portals[i]) this.portal(portals[i], geo[i], u, t, calm, i, base);
+    }
     // the platform: a lit disc, rings turning, a beam of light up
     g.save(); g.translate(cx, floorY);
     const beam = g.createLinearGradient(0, 0, 0, -70 * u);
@@ -232,6 +254,51 @@ class Stage {
       this.swap = Math.max(0, this.swap - dt / 0.6);
     }
     if (this.victory !== "") this.victoryPreview(dt, cx, cy - 30 * u, u);
+    if (spots) placePortals(spots);
+  }
+  /** One party portal: a glowing well on a lit disc, and whoever's standing in it. */
+  portal(p, q, u, t, calm, idx, mid) {
+    const g = this.g, s = q.s, col = p.col, x = q.x, fy = q.fy;
+    const R = 9.5 * u * s, Ry = 15.5 * u * s, py = fy - Ry - 1.2 * u * s;
+    const pulse = calm ? 0.5 : Math.sin(t * 2.4 + idx * 1.7) * 0.5 + 0.5;
+    const disc = g.createRadialGradient(x, fy, 0, x, fy, 15 * u * s);
+    disc.addColorStop(0, hexA(col, p.kind === "empty" ? 0.2 : 0.34)); disc.addColorStop(1, hexA(col, 0));
+    g.fillStyle = disc;
+    g.beginPath(); g.ellipse(x, fy, 16 * u * s, 3.8 * u * s, 0, 0, TAU); g.fill();
+    const well = g.createRadialGradient(x, py, 0, x, py, Ry);
+    well.addColorStop(0, hexA(col, p.kind === "member" ? 0.08 : 0.16 + pulse * 0.1)); well.addColorStop(0.72, "rgba(12,8,44,0.5)"); well.addColorStop(1, hexA(col, 0));
+    g.fillStyle = well;
+    g.beginPath(); g.ellipse(x, py, R, Ry, 0, 0, TAU); g.fill();
+    g.save();
+    g.globalCompositeOperation = "lighter";
+    g.lineWidth = Math.max(1, u * 0.55 * s);
+    g.strokeStyle = hexA(col, p.kind === "pending" ? 0.45 + pulse * 0.5 : p.kind === "member" ? 0.5 : 0.7);
+    g.beginPath(); g.ellipse(x, py, R, Ry, 0, 0, TAU); g.stroke();
+    for (let k = 0; k < 3; k++) {
+      const kk = 0.8 - k * 0.2;
+      g.setLineDash([u * s * (3 + k), u * s * (4 + k * 2)]);
+      g.lineDashOffset = calm ? 0 : (k % 2 ? 1 : -1) * t * u * s * (6 + k * 3);
+      g.strokeStyle = hexA(k === 1 ? "#ffffff" : col, (p.kind === "member" ? 0.12 : 0.22) + 0.1 * k);
+      g.beginPath(); g.ellipse(x, py, R * kk, Ry * kk, 0, 0, TAU); g.stroke();
+    }
+    g.setLineDash([]);
+    g.restore();
+    if (p.kind === "empty" || !p.look) return;
+    // the teammate (or a faint shape of the friend you've invited), facing you
+    const P2 = Math.max(1, Math.round(u * s * 0.9 * 2) / 2);
+    const key = p.look + "@" + P2;
+    if (!this.mates) this.mates = new Map();
+    let spr = this.mates.get(key);
+    if (!spr && sprites.P) { spr = sprites.astronaut(P2, look(parseLook(p.look))).player; if (this.mates.size > 12) this.mates.clear(); this.mates.set(key, spr); }
+    if (!spr) return;
+    const S2 = 64 * u * s * 0.9;
+    const bob = calm ? 0 : Math.sin(t * 2.1 + 1.3 + idx) * 1.6 * u * s;
+    g.save();
+    g.globalAlpha = p.kind === "pending" ? 0.28 + pulse * 0.18 : 1;
+    g.translate(x, fy - 21 * u * s * 0.9 + bob);
+    g.scale(x < mid ? 1 : -1, 1);
+    g.drawImage(spr.c, -S2 / 2, -S2 / 2, S2, S2);
+    g.restore();
   }
   /** A small loop of the victory effect over the astronaut's head. */
   victoryPreview(dt, x, y, u) {
@@ -463,6 +530,7 @@ function statusText(it) {
   if (s.type === "shop") return it.price + " Sigils";
   if (s.type === "achv") return "Achievement: " + (ACH_BY_ID[s.achv] ? ACH_BY_ID[s.achv].name : s.achv);
   if (s.type === "wave") return "Reach wave " + s.wave;
+  if (s.type === "level") return "Reach level " + s.level;
   if (s.type === "set") return "Complete " + SET_BY_ID[s.set].name;
   return "";
 }
@@ -473,7 +541,7 @@ function statusTag(it) {
   const src = source(it);
   if (src.type === "shop") { const s = el("span", "icard-state price"); s.append(icon("gem"), document.createTextNode(String(it.price))); if ((store.data.sigils || 0) < it.price) s.classList.add("short"); return s; }
   const s = el("span", "icard-state locked");
-  s.append(icon("lock"), document.createTextNode(src.type === "achv" ? (ACH_BY_ID[src.achv] ? ACH_BY_ID[src.achv].name : "Achievement") : src.type === "wave" ? "Wave " + src.wave : src.type === "set" ? "Collection" : ""));
+  s.append(icon("lock"), document.createTextNode(src.type === "achv" ? (ACH_BY_ID[src.achv] ? ACH_BY_ID[src.achv].name : "Achievement") : src.type === "wave" ? "Wave " + src.wave : src.type === "level" ? "Level " + src.level : src.type === "set" ? "Collection" : ""));
   return s;
 }
 /** The look slots a try-on of this item changes. */
@@ -499,7 +567,11 @@ function renderDots() {
 
 // --- Play ---------------------------------------------------------------------------
 function renderPlay() {
-  const mode = MODES[store.data.settings.mode] ? store.data.settings.mode : "ladder";
+  const mode = modeNow();
+  const guest = party.on && !party.leading;
+  for (const b of document.querySelectorAll(".mode-card, .diff-opt")) b.classList.toggle("party-locked", guest);
+  const dailyBtn = $("daily-btn");
+  if (dailyBtn) dailyBtn.classList.toggle("solo-only", party.on && party.others.length > 0);
   for (const b of document.querySelectorAll(".mode-card")) {
     const on = b.dataset.mode === mode;
     b.classList.toggle("on", on);
@@ -518,8 +590,12 @@ function renderPlay() {
   const daily = store.data.daily;
   const today = dayKey();
   $("daily-label").textContent = daily.date === today && daily.score > 0 ? "Today's best " + formatScore(daily.score) : "Same seed for everyone today";
-  const diff = BALANCE.difficulty[store.data.settings.difficulty] ? BALANCE.difficulty[store.data.settings.difficulty].name : "Normal";
+  const dkey = guest && party.pick ? party.pick.diff : store.data.settings.difficulty;
+  const diff = BALANCE.difficulty[dkey] ? BALANCE.difficulty[dkey].name : "Normal";
   $("play-sub").textContent = MODES[mode].name + (mode === "daily" ? " · Normal" : " · " + diff);
+  $("play-sub").dataset.base = $("play-sub").textContent;
+  if (ui.renderDifficulty) ui.renderDifficulty();          // a party guest sees the leader's difficulty
+  friendsUI.decoratePlay();
   const name = nameOf();
   const tt = equipped("title");
   $("stage-name").textContent = name;
@@ -841,6 +917,7 @@ function renderDetail(confirming) {
     const s = source(it);
     src.append(el("span", "idet-how", s.type === "achv" ? "Earned with the achievement “" + (ACH_BY_ID[s.achv] ? ACH_BY_ID[s.achv].name : s.achv) + "”: " + (ACH_BY_ID[s.achv] ? ACH_BY_ID[s.achv].desc : "") :
       s.type === "wave" ? "Earned by reaching wave " + s.wave + " on the Ladder." :
+      s.type === "level" ? "Earned by reaching level " + s.level + ". It can't be bought." :
       s.type === "set" ? "Earned by owning all of " + SET_BY_ID[s.set].name + "." : ""));
   }
   $("idet-bal").replaceChildren(document.createTextNode("You have "), sigilTag(have), document.createTextNode(" Sigils"));
@@ -931,7 +1008,7 @@ function renderChallenges() {
     const txt = el("span", "near-txt");
     txt.append(el("b", "", a.name), el("span", "", a.desc));
     if (a.goal) { const bar = el("i", "contract-bar"); bar.style.setProperty("--p", p.toFixed(3)); txt.append(bar); }
-    row.append(badge, txt, sigilTag("+" + BALANCE.sigils.achievement));
+    row.append(badge, txt, sigilTag("+" + achvSigils(a.id)));
     near.append(row);
   }
   if (!scored.length) near.append(el("p", "chal-note", "Every achievement is yours. Impressive."));
@@ -985,6 +1062,7 @@ function renderProfile() {
   $("prof-title").textContent = tt.id ? tt.name : "No title";
   ui.renderAchievements();
   ui.renderProfileStrip();
+  renderLevelCard();
 }
 
 // ---------------------------------------------------------------------------
@@ -998,7 +1076,8 @@ function setTab(name, quiet) {
     b.classList.toggle("on", on);
     if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
-  for (const id of ["play", "locker", "shop", "challenges", "profile"]) {
+  friendsUI.tab(name === "friends");
+  for (const id of ["play", "locker", "shop", "challenges", "profile", "friends"]) {
     const p = $("hpane-" + id);
     if (!p) continue;
     const on = id === name;
@@ -1010,14 +1089,86 @@ function setTab(name, quiet) {
   refresh();
   if (stages["stage-" + name]) stages["stage-" + name].dirty = true;
 }
+/** The top bar's level chip: badge, band, and how far into the level you are. */
+function renderLevelChip() {
+  const lv = levelOf(store.data.xp || 0), t = tierOf(lv.level);
+  const b = $("hl-badge");
+  if (!b) return;
+  b.textContent = String(lv.level); b.style.setProperty("--lv", t.col);
+  $("hl-tier").textContent = t.name;
+  $("hl-fill").style.transform = "scaleX(" + (lv.need ? lv.into / lv.need : 1).toFixed(3) + ")";
+  $("hangar-level").setAttribute("aria-label", "Level " + lv.level + ", " + t.name + ". " + (lv.need ? lv.into + " of " + lv.need + " XP to the next" : "Max level"));
+}
+/** Profile: your level, the next hat, and the whole track of level hats. */
+function renderLevelCard() {
+  const box = $("prof-level");
+  if (!box) return;
+  const lv = levelOf(store.data.xp || 0), t = tierOf(lv.level), nh = nextHat(lv.level);
+  box.replaceChildren();
+  box.style.setProperty("--lv", t.col);
+  const top = el("div", "pl-top");
+  const txt = el("div", "pl-txt");
+  txt.append(el("small", "", t.name), el("b", "", "Level " + lv.level), el("span", "", formatScore(lv.total) + " XP in all" + (nh ? " · next hat at level " + nh.level : " · every hat earned")));
+  top.append(levelBadge(lv.level, true), txt);
+  const bar = el("div", "xp-bar");
+  const fill = el("i");
+  fill.style.transform = "scaleX(" + (lv.need ? lv.into / lv.need : 1).toFixed(3) + ")";
+  bar.append(fill, el("span", "", lv.need ? formatScore(lv.into) + " / " + formatScore(lv.need) + " XP to level " + (lv.level + 1) : "Max level"));
+  const track = el("div", "pl-track");
+  for (const [l, id] of LEVEL_HATS) {
+    const it = item("hat", id);
+    const got = lv.level >= l;
+    const c = el("button", "pl-hat" + (got ? " got" : ""));
+    c.type = "button";
+    c.style.setProperty("--r", RARITY[it.rarity].col);
+    const cv = document.createElement("canvas");
+    const src = thumb(it, 70, 60);
+    cv.width = src.width; cv.height = src.height; cv.getContext("2d").drawImage(src, 0, 0);
+    c.append(cv, el("b", "", "Lv " + l), el("small", "", it.name));
+    if (!got) c.append(el("i", "pl-lock"));
+    c.setAttribute("aria-label", it.name + ", level " + l + (got ? ", unlocked" : ", locked"));
+    c.addEventListener("click", () => { sfx("click"); setTab("locker"); lockerKind = "hat"; lockerPreview = null; renderLocker(); });
+    track.append(c);
+  }
+  box.append(top, bar, el("h3", "pl-h", "Level hats"), track);
+  // cloud saves: your stuff on every device
+  const cl = el("div", "pl-cloud");
+  const st = cloud.state;
+  const line = !online.user ? "Sign in to keep your items, Sigils and level on every device (website, Windows and Android)."
+    : st === "missing" ? "Cloud saves switch on with the 4.5 server update. Your items are safe on this device."
+    : st === "error" ? "Couldn't reach your cloud save just now." : cloud.last ? "Synced with your account " + agoText(cloud.last) + "." : "Your items, Sigils and level follow your account.";
+  cl.append(icon("refresh-cw"), el("span", "", line));
+  if (online.user && st !== "missing") {
+    const btn = el("button", "btn btn-ghost btn-sm", "Restore my items");
+    btn.type = "button";
+    btn.addEventListener("click", async () => {
+      sfx("click");
+      btn.disabled = true; btn.textContent = "Checking your account…";
+      const r = await cloud.sync("restore");
+      btn.disabled = false; btn.textContent = "Restore my items";
+      if (!r) { ui.toast(cloud.state === "missing" ? "Cloud saves need the 4.5 server update" : "Couldn't reach your cloud save. Try again in a moment.", 3000); return; }
+      const bits = [];
+      if (r.items > 0) bits.push(r.items + " item" + (r.items === 1 ? "" : "s"));
+      if (r.sigils > 0) bits.push("+" + r.sigils + " Sigils");
+      if (r.xp > 0) bits.push("+" + r.xp + " XP");
+      ui.toast(bits.length ? "Restored " + bits.join(", ") : "Everything's already here: you're all synced", 3200);
+      refresh();
+    });
+    cl.append(btn);
+  }
+  box.append(cl);
+}
+function agoText(t) { const s = (Date.now() - t) / 1000; return s < 60 ? "just now" : s < 3600 ? Math.floor(s / 60) + " min ago" : Math.floor(s / 3600) + " h ago"; }
 function refresh() {
   renderSigils();
+  renderLevelChip();
   renderDots();
   if (tabNow === "play") renderPlay();
   else if (tabNow === "locker") renderLocker();
   else if (tabNow === "shop") renderShop();
   else if (tabNow === "challenges") renderChallenges();
   else if (tabNow === "profile") renderProfile();
+  else if (tabNow === "friends") friendsUI.tab(true);
 }
 
 export const hangar = {
@@ -1027,14 +1178,19 @@ export const hangar = {
     for (const b of document.querySelectorAll(".mode-card")) {
       b.addEventListener("click", () => {
         const m = b.dataset.mode;
+        if (party.on && !party.leading) { sfx("deny"); ui.toast("Your party leader picks the mode", 2200); return; }
+        if (m === "daily" && party.on && party.others.length) { sfx("deny"); ui.toast("The Daily Challenge is solo: leave the party to play it", 2600); return; }
         if (m === "rush" && !store.rushUnlocked() && !G.debug.on) { sfx("deny"); ui.toast("Beat @Envy on the Sin Ladder to open Boss Rush", 2600); return; }
         if (store.data.settings.mode === m) { play(); return; }      // a second tap plays it
         store.data.settings.mode = m; store.save();
         sfx("click");
+        party.sendPick();
         renderPlay();
       });
     }
     for (const b of document.querySelectorAll("[data-goto]")) b.addEventListener("click", () => setTab(b.dataset.goto));
+    const hl = $("hangar-level");
+    if (hl) hl.addEventListener("click", () => { sfx("click"); setTab("profile"); });
     $("idet-close").addEventListener("click", () => { sfx("click"); closeDetail(); });
     $("item-detail").addEventListener("click", (e) => { if (e.target === $("item-detail")) { sfx("click"); closeDetail(); } });
     $("reveal").addEventListener("click", () => closeReveal());
@@ -1051,6 +1207,7 @@ export const hangar = {
   play,
   /** Esc / Back in the Hangar: closes what's open, then goes back to Play. False when there's nothing to close. */
   back() {
+    if (friendsUI.back()) return true;
     if (closeReveal()) return true;
     if (closeDetail()) return true;
     if (tabNow !== "play") { setTab("play"); return true; }
@@ -1059,9 +1216,9 @@ export const hangar = {
   openItem(kind, id) { const it = item(kind, id); if (it) { setTab("shop", true); openDetail(it); } },
 };
 function play() {
-  const mode = MODES[store.data.settings.mode] ? store.data.settings.mode : "ladder";
+  const mode = modeNow();
+  if (handlers.onPartyPlay && handlers.onPartyPlay(mode)) return;          // in a party: guests ready up, the leader starts it for everyone
   if (mode === "daily") handlers.onDaily();
   else if (mode === "rush") handlers.onRush();
-  else if (mode === "coop") handlers.onCoop();
   else handlers.onPlay();
 }

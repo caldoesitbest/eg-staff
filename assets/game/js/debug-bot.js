@@ -15,6 +15,7 @@ const PROFILES = {
   cc:   ["stolen", "bloodlust", "judgment", "covetous", "sloth", "lust", "envy", "orbit", "turret", "mines", "ricochet", "pierce", "arc", "nova", "hollow", "battery"],
   weak: ["greed", "rear", "magnet", "coupon", "piggy", "velocity", "ricochet"],
 };
+PROFILES.camp = PROFILES.tank.concat(PROFILES.dps);     // stands still (tick), and builds tanky and strong to make the most of it
 const rank = (list, id) => { const i = list.indexOf(id); return i < 0 ? 99 : i; };
 
 export const bot = {
@@ -97,6 +98,8 @@ export const bot = {
     if (G.state !== "playing" && G.state !== "clear") { input.mouse.down = false; return; }
     const P = G.player;
     if (!P || P.dead) return;
+    // ?bot=camp: stands still and lets full auto-aim do the shooting (the 4.5 anti-camping checks)
+    if (this.profile === "camp") { G.settings.autoAim = "auto"; input.move.x = 0; input.move.y = 0; input.mouse.down = false; return; }
     let best = null, bd = 1e12, ax = 0, ay = 0;
     for (let i = 0; i < G.enemies.count; i++) {
       const e = G.enemies.items[i];

@@ -160,8 +160,32 @@ export function threat(key, pair) {
   return a + (b - a) * k;
 }
 
+/** Endless (4.5): how many waves past the top of the Ladder (wave 35) you are. 0 below it and in other modes. */
+export const past = () => (G.mode === "ladder" && !G.daily ? Math.max(0, (G.wave || 0) - 35) : 0);
+/** An endless multiplier: hp, dmg, speed, aggro, shot, iframes, heal, budget, alive; or an added chance: elite, mini, mut. */
+export function endless(key) {
+  const k = past();
+  const E = BALANCE.endless;
+  switch (key) {
+    case "hp": return 1 + E.hp[0] * k + E.hp[1] * k * k;
+    case "dmg": return Math.min(E.dmgCap, 1 + E.dmg * k);
+    case "speed": return Math.min(E.speedCap, 1 + E.speed * k);
+    case "aggro": return Math.max(E.aggroFloor, 1 - E.aggro * k);
+    case "shot": return Math.min(E.shotCap, 1 + E.shot * k);
+    case "iframes": return Math.max(E.iframesFloor, 1 - E.iframes * k);
+    case "heal": return Math.max(E.healFloor, 1 - E.heal * k);
+    case "budget": return 1 + E.budget * k;
+    case "alive": return Math.min(E.aliveCap, 1 + E.alive * k);
+    case "pressure": return Math.max(E.pressureFloor, 1 - E.pressure * k);
+    case "elite": return E.elite * k;
+    case "mini": return E.mini * k;
+    case "mut": return E.mut * k;
+  }
+  return 1;
+}
+
 /** How much of its health a boss can lose a second before its resolve kicks in (world.damageEnemy). */
-export const resolveRate = () => threat("", G.mode === "rush" ? BALANCE.rush.resolve : BALANCE.resolve.rate);
+export const resolveRate = () => threat("", G.mode === "rush" ? BALANCE.rush.resolve : BALANCE.resolve.rate) * (diff().resolve || 1);
 
 /** Sets this run's difficulty: the preset, times every Boss Rush modifier that's on. */
 export function setDifficulty(name, mods) {

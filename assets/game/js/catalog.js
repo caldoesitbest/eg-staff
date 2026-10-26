@@ -6,6 +6,8 @@
    so none of this is tamper-proof; it isn't trying to be. */
 
 import { G } from "./state.js";
+import { level } from "./xp.js";
+import { ledgerAdd } from "./cloud.js";
 import { BALANCE } from "./balance.js";
 import { store } from "./storage.js";
 import {
@@ -77,6 +79,14 @@ const RAW = {
     { id: "overlord", name: "Overlord", rarity: LEG, shop: 1, col: "#ff3b3b", desc: "A machine crown with a red eye in the band." },
     { id: "astral", name: "Astral Crown", rarity: LEG, shop: 1, set: "astral", col: "#9fe8ff", desc: "A cyan-violet crown floating over the helmet, a star at its heart." },
     { id: "blackhole", name: "Black Hole", rarity: MYTH, shop: 1, col: "#ff8a3d", desc: "A tiny singularity, spinning just above your head." },
+    // 4.5: earned by level only (xp.js)
+    { id: "cadet", name: "Cadet Wings", rarity: RARE, level: 10, col: "#63f4ff", desc: "A flight cadet's cap with swept wings. Level 10." },
+    { id: "comet", name: "Comet Antenna", rarity: EPIC, level: 25, col: "#bff7ff", desc: "Two stalks and a comet that won't stop orbiting them. Level 25." },
+    { id: "ringed", name: "Saturn Ring", rarity: EPIC, level: 50, col: "#a57bff", desc: "A whole little planet, ring and moon included. Level 50." },
+    { id: "nebula", name: "Nebula Crown", rarity: LEG, level: 100, col: "#ff42d0", desc: "Five spires of living nebula. Level 100." },
+    { id: "pulsar", name: "Pulsar Helm", rarity: LEG, level: 250, col: "#9fe8ff", desc: "A neutron star spinning on your head, beams and all. Level 250." },
+    { id: "corona", name: "Supernova Corona", rarity: MYTH, level: 500, col: "#ffb347", desc: "The moment a star goes out, worn as a crown. Level 500." },
+    { id: "ascended", name: "The Thousandfold", rarity: MYTH, level: 1000, col: "#ffffff", desc: "A crown of gold around a black hole, under a prismatic halo. Level 1000. Very few will ever wear it." },
   ],
   suit: [
     { id: "classic", name: "Classic", rarity: COM, suit: "#eef2ff", trim: "#38e8ff", visor: "#8e44ff", desc: "Standard issue." },
@@ -211,6 +221,7 @@ export const setDone = (id) => setItems(id).every((i) => !!data().owned[i.key]);
 /** Is it yours? */
 export function owns(it) {
   if (!it) return false;
+  if (it.level) return level() >= it.level;
   if (it.shop) return !!data().owned[it.key];
   if (it.achv) return !!data().achv[it.achv];
   if (it.wave) return (data().best.wave || 0) >= it.wave;
@@ -219,6 +230,7 @@ export function owns(it) {
 }
 /** How you get it, for the cards: { type: "free" | "owned" | "shop" | "achv" | "wave" | "set", ... }. */
 export function source(it) {
+  if (it.level) return { type: "level", level: it.level };
   if (it.shop) return { type: "shop", price: it.price };
   if (it.achv) return { type: "achv", achv: it.achv };
   if (it.wave) return { type: "wave", wave: it.wave };
@@ -247,6 +259,7 @@ export function equip(kind, id) {
 /** Spends Sigils on a shop item. False if it isn't for sale, is already yours, or you can't afford it. */
 export function buy(it) {
   if (!it || !it.shop || owns(it) || (data().sigils || 0) < it.price) return false;
+  ledgerAdd("spent", it.price);
   data().sigils -= it.price;
   data().owned[it.key] = Date.now();
   store.save(true);
@@ -380,16 +393,59 @@ export function featured(day) {
 // Sigils: the Hangar's currency. Earned in play only (balance.sigils); never in debug runs.
 // ---------------------------------------------------------------------------
 /** Sigils for one of the payouts (before checking whether this run can earn any). */
-export function sigilAmount(kind, rank) {
-  const mul = SG.diff[G.difficulty] || 1;
-  if (kind === "boss") return SG.boss * mul;
-  if (kind === "win") return SG.win * mul;
-  if (kind === "rush") return (SG.rush + (SG.rank[rank] || 0)) * mul;
-  return 0;
+const DIFF_I = { normal: 0, hard: 1, nightmare: 2 };
+export const diffMul = () => SG.diff[G.difficulty] || 1;
+/** What an achievement pays (once), by its tier. */
+export const achvSigils = (id) => SG.achv[SG.achvTier[id] || 0];
+/** Today's capped payouts: run Sigils so far, Boss Rush clears paid. */
+export function sigilDay() {
+  const d = data();
+  const day = dayKey();
+  if (!d.sigilDay || d.sigilDay.day !== day) d.sigilDay = { day, run: 0, rush: 0 };
+  return d.sigilDay;
+}
+/** A reward that pays once, ever (its key is kept in the save). */
+export function claimOnce(key, n, why) {
+  if (G.debug.on || !(n > 0)) return 0;
+  const c = data().claims || (data().claims = {});
+  if (c[key]) return 0;
+  c[key] = Date.now();
+  return earnSigils(n, why);
+}
+/** The first time you beat each sin boss on a difficulty. */
+export const firstBoss = (type) => claimOnce("boss:" + type + ":" + G.difficulty, Math.round(SG.first.boss * diffMul()), "first-boss");
+/** The first time you climb the whole Ladder on a difficulty. */
+export const firstWin = () => claimOnce("win:" + G.difficulty, SG.first.win[DIFF_I[G.difficulty] || 0], "first-win");
+/** A Boss Rush clear: once-ever bonus for the difficulty, then the clear itself (three a day). */
+export function rushClear(rank) {
+  if (G.debug.on) return 0;
+  let n = claimOnce("rush:" + G.difficulty, SG.first.rush[DIFF_I[G.difficulty] || 0], "first-rush");
+  const t = sigilDay();
+  if (t.rush < SG.rush.dayClears) { t.rush++; n += earnSigils(Math.round((SG.rush.clear + (SG.rush.rank[rank] || 0)) * diffMul()), "rush"); }
+  return n;
+}
+/** What playing a run pays: a little, for a real run, up to a daily cap. r: { time, kills, wave, won, rush, bosses, active }.
+    Returns { n, why } (why: "" paid, "short" not a real run, "idle" mostly standing still, "cap" today's run Sigils are in). */
+export function runPay(r) {
+  const R = SG.run;
+  if (G.debug.on) return { n: 0, why: "debug" };
+  if ((r.time || 0) < R.minTime || (r.kills || 0) < R.minKills || (r.rush ? (r.bosses || 0) < 1 : (r.wave || 0) < R.minWave)) return { n: 0, why: "short" };
+  if ((r.active || 0) < R.minActive) return { n: 0, why: "idle" };
+  let n = R.base;
+  if (r.rush) n += ((r.bosses || 0) >= 4 ? 1 : 0) + ((r.bosses || 0) >= 7 ? 1 : 0);
+  else n += ((r.wave || 0) >= R.waves[0] ? 1 : 0) + ((r.wave || 0) >= R.waves[1] ? 1 : 0) + (r.won ? R.win : 0);
+  n = Math.max(1, Math.round(n * diffMul()));
+  const t = sigilDay();
+  n = Math.min(n, Math.max(0, R.dayCap - t.run));
+  if (!n) return { n: 0, why: "cap" };
+  t.run += n;
+  earnSigils(n, "run", true);
+  return { n, why: "" };
 }
 /** Adds Sigils to your save. quiet: no toast (the achievement card or contract line says it). */
 export function earnSigils(n, why, quiet) {
   if (!(n > 0) || G.debug.on) return 0;
+  ledgerAdd("earned", n);                 // cloud saves count per device (before the balance moves)
   data().sigils = (data().sigils || 0) + n;
   data().life.sigils = (data().life.sigils || 0) + n;
   G.runSigils = (G.runSigils || 0) + n;

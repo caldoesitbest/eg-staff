@@ -239,6 +239,19 @@ export const net = {
     try { peer.pc.close(); } catch (e) { /* ignore */ }
   },
 
+  /** Host: takes a player out of the party (they're told). */
+  kick(id) {
+    if (this.role !== "host" || id === this.id || !this.peers.has(id)) return;
+    this.send(id, { k: "kick" }, true);
+    setTimeout(() => this.lost(id), 200);      // once the message is on its way
+  },
+  /** Host, back in the Hangar after a run: opens the lobby again so more friends can join. */
+  async reopen() {
+    if (this.role !== "host" || this.ch) return;
+    await this.openChannel(this.code);
+    await this.ch.track({ name: this.name, host: true, at: Date.now() });
+  },
+
   lobbyChanged() {
     if (this.role === "host") this.broadcast({ k: "lobby", members: this.members, code: this.code }, true);
     if (this.on.lobby) this.on.lobby(this.members);

@@ -1,7 +1,7 @@
 /* Robot spawning, the shared update loop (slow fields, knockback, charm), separation
    and the steering helpers every robot uses. */
 
-import { G, usePlayer, threat, resolveRate } from "../state.js";
+import { G, usePlayer, threat, resolveRate, diff, endless } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, turnTowards, rand } from "../util.js";
 import { sprites, C, P_HEART, P_WHITE, P_ORANGE, PAL } from "../sprites.js";
@@ -9,7 +9,10 @@ import { fx } from "../fx.js";
 import { audio } from "../audio.js";
 import { ROSTER } from "./roster.js";
 import { BOSSES, BOSS_MINIONS } from "./bosses.js";
-import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop } from "../world.js";
+import { MINIBOSSES } from "./minibosses.js";
+import { waves } from "../waves.js";
+import { damageEnemy, killEnemy, queueBlast, TRAIT, flushDamage, hitStop, fireEnemyBullet } from "../world.js";
+import { addZone, Z } from "../zones.js";
 import { evoRobot } from "../evolve.js";
 import { bloodRamp, allyHit, allyPop } from "../fusion.js";
 import { mutate, mutTick, mutBusy } from "../mutations.js";
@@ -45,7 +48,7 @@ export function visible(e, pad = 0) {
 
 // ---------- spawning ----------
 export function spawnEnemy(type, x, y, opts) {
-  const kind = ROSTER[type] || BOSSES[type] || BOSS_MINIONS[type];
+  const kind = ROSTER[type] || MINIBOSSES[type] || BOSSES[type] || BOSS_MINIONS[type];
   if (!kind) return null;
   const e = G.enemies.get();
   if (!e) return null;
@@ -69,12 +72,13 @@ export function spawnEnemy(type, x, y, opts) {
   e.r = def.r; e.scale = 1;
   // co-op: bosses get much tougher per extra player, robots a little (most of the extra comes as more robots)
   const crew = Math.max(1, G.net.n || 1);
-  const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + 0.1 * (crew - 1);
+  const crewMul = boss || type === "gem" ? 1 + 0.7 * (crew - 1) : 1 + (MINIBOSSES[type] ? BALANCE.miniboss.crew : 0.1) * (crew - 1);
   // Boss health is fixed by the boss, the chapter, the endless lap and the team size. It never looks
   // at your build: a strong build is supposed to shorten the fight.
-  const rushMul = boss || type === "gem" ? threat("bossHp") * (G.mode === "rush" ? BALANCE.rush.bossHp : 1) : 1;      // Boss Rush: you have fewer cards
-  e.maxHp = e.hp = def.hp * hpMul * crewMul * rushMul * (elite ? E.hp : 1);
-  e.speed = (def.speed || 0) * spMul * (elite ? E.speed : 1);
+  const rushMul = boss || type === "gem" ? threat("bossHp") * (G.mode === "rush" ? BALANCE.rush.bossHp : 1) * (diff().bossHp || 1) : 1;      // Boss Rush: you have fewer cards; harder difficulties: a little sturdier
+  const deep = boss || type === "gem" ? 1 : endless("hp");             // 4.5 endless: robots toughen every wave past 35
+  e.maxHp = e.hp = def.hp * hpMul * crewMul * rushMul * deep * (elite ? E.hp : 1);
+  e.speed = (def.speed || 0) * spMul * (boss ? 1 : endless("speed")) * (elite ? E.speed : 1);
   e.mass = def.mass || (boss ? 50 : 1);
   e.contact = def.contact === undefined ? 1 : def.contact;
   e.score = def.score * (elite ? E.score : 1);
@@ -91,7 +95,7 @@ export function spawnEnemy(type, x, y, opts) {
   e.tox = 0; e.toxT = 0; e.toxTick = 0; e.toxDmg = 0; e.toxBy = null; e.vuln = 0; e.moon = 0; e.moonBy = null; e.trailCd = 0; e.boomCd = 0;
   e.chill = 0; e.chillMul = 1; e.shatterCd = 0; e.passive = false; e.lastCrit = false;
   e.mut = 0; e.mutT = 0; e.mutCd = 0; e.mutN = 0; e.phased = false; e.mutHeal = 0; e.berserk = false;
-  e.res = 0; e.resT = 0;
+  e.res = 0; e.resT = 0; e.surgeN = 0; e.surgeT = 0; e.surgePace = 1; e.miniboss = false;     // pooled: 4.5 fields start clean
   if (elite) rollTraits(e, n);
   if (kind.init) kind.init(e, opts);
   if (opts && opts.mut && !boss) mutate(e, opts.mut);
@@ -165,11 +169,44 @@ function bossMoments(e, dt) {
     audio.impact();
   }
   const f = e.hp / e.maxHp;
+  if (e.surgeT > 0) e.surgeT -= dt;
+  // early sins surge less: one surge for Sloth, two for Gluttony and Greed, every mark from Lust on (and in endless)
+  const rung = G.mode === "rush" ? Math.min(6, (G.rush && G.rush.i) || 0) : G.lap > 0 ? 6 : waves.rungOf(Math.max(1, G.wave));
+  const marks = (BALANCE.surge.at[G.difficulty] || BALANCE.surge.at.normal).slice(0, rung >= 3 ? 9 : rung >= 1 ? 2 : 1);
+  if (G.net.role !== "client" && (e.surgeN || 0) < marks.length && f <= marks[e.surgeN || 0] && e.hp > 0) surge(e);
   if (f < 0.5 && Math.random() < dt * (f < 0.25 ? 9 : 4)) {
     const a = rand(0, TAU), R = e.r * e.scale;
     fx.p(0, e.x + Math.cos(a) * R * 0.85, e.y + Math.sin(a) * R * 0.85, Math.cos(a) * 140, Math.sin(a) * 140, 0.4, 1.5, Math.random() < 0.6 ? P_ORANGE : P_WHITE, 3);
     if (f < 0.25 && Math.random() < 0.35) fx.smoke(e.x + Math.cos(a) * R * 0.6, e.y + Math.sin(a) * R * 0.6, 1, 14);
   }
+}
+
+/** A boss surge (4.5): a moment of shrugging off damage, a ring to boost through, a burst with gaps, and from
+    then on it attacks a little faster (boss-common pace()). Every surge is telegraphed by the flash and roar. */
+function surge(e) {
+  const S = BALANCE.surge;
+  e.surgeN = (e.surgeN || 0) + 1;
+  e.surgeT = S.guard;
+  e.surgePace = Math.max(0.75, 1 - S.pace * e.surgeN);
+  const R = e.r * e.scale, col = e.def.c1;
+  const z = addZone(Z.SHOCK, e.x, e.y, S.reach, (S.reach - R) / S.speed);
+  if (z) { z.r0 = R; z.k = S.dmg; z.col = col; z.pal = 0; z.src = e.type; z.by = null; }
+  const di = G.difficulty === "nightmare" ? 2 : G.difficulty === "hard" ? 1 : 0;
+  const rung = G.lap > 0 ? 6 : waves.rungOf(Math.max(1, G.wave));
+  const n = Math.round(S.shots[di] * (0.65 + 0.35 * Math.min(1, rung / 4))), a0 = rand(0, TAU), gapAt = new Set();
+  for (let k = 0; k < S.gaps; k++) { const g = Math.floor(((k + 0.5) / S.gaps) * n + rand(-1, 1)) % n; gapAt.add(g); gapAt.add((g + 1) % n); }
+  for (let i = 0; i < n; i++) {
+    if (gapAt.has(i)) continue;
+    const a = a0 + (i / n) * TAU;
+    fireEnemyBullet(e.x + Math.cos(a) * R * 0.8, e.y + Math.sin(a) * R * 0.8, Math.cos(a) * S.shotSpeed, Math.sin(a) * S.shotSpeed, 1, "red", 8);
+  }
+  fx.ring(e.x, e.y, R, R + 220, 0.5, "#ffffff", 5);
+  fx.text(e.x, e.y - R - 34, "SURGE", col, 24, 1.1);
+  fx.screenFlash(col, 0.25, 3);
+  fx.shake(0.5);
+  audio.play("warn", e.x, e.y, 1);
+  audio.impact();
+  G.emit("bossSurge", e);
 }
 
 /** Robots that still count toward finishing the wave. */
@@ -257,6 +294,9 @@ export function updateEnemies(dt) {
     if (e.boss) {
       bossMoments(e, dt);
       if (e.res > 0) e.res = Math.max(0, e.res - e.maxHp * resolveRate() * dt);   // resolve drains back
+      if (e.resT > 0) e.resT -= dt;
+    } else if (e.miniboss) {
+      if (e.res > 0) e.res = Math.max(0, e.res - e.maxHp * BALANCE.miniboss.resolve.rate * dt);
       if (e.resT > 0) e.resT -= dt;
     }
     else if (e.maxHp >= 60 && e.hp < e.maxHp * 0.35 && e.ally <= 0 && Math.random() < dt * 5) {

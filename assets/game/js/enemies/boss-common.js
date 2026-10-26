@@ -12,7 +12,8 @@ import { waves } from "../waves.js";
 
 export const A = BALANCE.arena;
 export const BB = BALANCE.bosses;
-const INTRO = 2.2;
+const INTRO = 2.8;            // 4.5: a portal opens in the middle (0.9s), the boss rises out of it (1.1s), then takes its place
+const OPEN = 0.9, RISE = 1.1;
 
 /** Runs fn for every player still standing, with their build live (area attacks hit everyone). */
 export function eachPlayer(fn) {
@@ -27,7 +28,7 @@ export function eachPlayer(fn) {
 }
 
 /** Cooldown multiplier for endless laps (each lap a bit faster). */
-export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0) * diff().boss * threat("bossPace");
+export const pace = () => Math.pow(BALANCE.ladder.lapPace, G.lap || 0) * diff().boss * threat("bossPace") * ((G.boss && G.boss.surgePace) || 1);      // 4.5: each surge speeds it up
 
 /** Palette index for a boss's main colour (glow dots, particles). */
 export function sinPal(type) {
@@ -39,7 +40,9 @@ export function sinPal(type) {
 export function bossInit(e, cx, cy) {
   e.state = -1; e.t = INTRO; e.invuln = true;
   e.tx = cx; e.ty = cy;
-  e.x = e.px = A.w / 2; e.y = e.py = -140;
+  e.x = e.px = A.w / 2; e.y = e.py = A.h / 2;            // out of a portal in the middle of the arena
+  e.introK = 0; e.contact0 = e.contact; e.contact = 0;
+  G.bossPortal = { x: e.x, y: e.y, t0: G.time, col: e.def.c1, r: e.r * 1.9, life: INTRO + 0.5 };
   e.spawnT = 0;
   e.cd = 2; e.t2 = 3; e.t3 = 1.5; e.c = 1.5; e.a = 0; e.b = 0;
   G.boss = e;
@@ -47,15 +50,33 @@ export function bossInit(e, cx, cy) {
   fx.shake(0.5);
 }
 
-/** Glides in from outside the top edge to its start point; invulnerable meanwhile. */
+/** Rises out of the portal in the middle, then glides to its start point; invulnerable meanwhile. */
 export function introUpdate(e, dt) {
   e.t -= dt;
-  const k = Math.min(1, 2.2 * dt);
-  e.x += (e.tx - e.x) * k;
-  e.y += (e.ty - e.y) * k;
+  const el = INTRO - e.t, p = G.bossPortal;
+  e.introK = el < OPEN ? 0 : Math.min(1, (el - OPEN) / RISE);
   e.vx = e.vy = 0;
+  if (el >= OPEN + RISE) {
+    const k = Math.min(1, 3 * dt);
+    e.x += (e.tx - e.x) * k;
+    e.y += (e.ty - e.y) * k;
+  }
+  if (p && el < OPEN + RISE) {
+    // the portal's mouth pushes you clear (it doesn't hurt), and it crackles
+    const R = p.r * 1.25;
+    eachPlayer((Q) => {
+      const dx = Q.x - p.x, dy = Q.y - p.y, d = Math.hypot(dx, dy) || 1;
+      if (d < R) { Q.vx += (dx / d) * 1600 * dt; Q.vy += (dy / d) * 1600 * dt; }
+    });
+    if (Math.random() < 0.7) {
+      const a = rand(0, TAU), rr = p.r * rand(0.9, 1.3);
+      fx.p(1, p.x + Math.cos(a) * rr, p.y + Math.sin(a) * rr, -Math.cos(a) * 160, -Math.sin(a) * 160, 0.5, 1.4, sinPal(e.type), 0);
+    }
+    if (el >= OPEN && el - dt < OPEN) { fx.ring(p.x, p.y, 10, p.r * 1.6, 0.5, p.col, 6); fx.shake(0.35); audio.play("bigExplode", p.x, p.y, 0.4); }
+  }
   if (e.t <= 0) {
-    e.state = 0; e.invuln = false; G.emit("bossFight", e);
+    e.state = 0; e.invuln = false; e.introK = 1; e.contact = e.contact0 === undefined ? e.contact : e.contact0;
+    G.emit("bossFight", e);
     // it arrives: a shockwave in its colour
     fx.ring(e.x, e.y, e.r, e.r + 260, 0.55, e.def.c1, 7);
     fx.ring(e.x, e.y, e.r * 0.5, e.r + 140, 0.4, "#ffffff", 3);
@@ -129,6 +150,45 @@ export function updateBossFx(dt) {
   G.bossFx = null;
   G.boss = null;
   G.emit("bossDown", f);
+}
+
+/** The boss portal (world space, under the robots): opens, holds while the boss rises, closes behind it. */
+export function drawBossPortal(g) {
+  const p = G.bossPortal;
+  if (!p) return;
+  const t = G.time - p.t0;
+  if (t > p.life) { G.bossPortal = null; return; }
+  const open = Math.min(1, t / 0.5), close = t > p.life - 0.6 ? Math.max(0, (p.life - t) / 0.6) : 1;
+  const k = open * close, R = p.r * k;
+  if (R < 2) return;
+  g.save();
+  const well = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, R);
+  well.addColorStop(0, "rgba(3,2,12,0.95)"); well.addColorStop(0.65, "rgba(20,8,40,0.85)"); well.addColorStop(1, "rgba(20,8,40,0)");
+  g.fillStyle = well;
+  g.beginPath(); g.ellipse(p.x, p.y, R, R * 0.92, 0, 0, TAU); g.fill();
+  g.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 4; i++) {
+    const rr = R * (1 - i * 0.18);
+    g.strokeStyle = i % 2 ? "#ffffff" : p.col;
+    g.globalAlpha = (0.7 - i * 0.12) * k;
+    g.lineWidth = 6 - i;
+    g.setLineDash([rr * 0.5, rr * 0.35]);
+    g.lineDashOffset = (i % 2 ? 1 : -1) * t * 260;
+    g.beginPath(); g.ellipse(p.x, p.y, rr, rr * 0.92, t * (i % 2 ? -1.4 : 1.1), 0, TAU); g.stroke();
+  }
+  g.setLineDash([]);
+  // spiral arms
+  g.globalAlpha = 0.45 * k; g.strokeStyle = p.col; g.lineWidth = 3;
+  for (let a = 0; a < 3; a++) {
+    g.beginPath();
+    for (let s = 0; s <= 24; s++) {
+      const f = s / 24, ang = a * (TAU / 3) + f * 4.2 - t * 3, rr = R * (0.15 + f * 0.85);
+      const x = p.x + Math.cos(ang) * rr, y = p.y + Math.sin(ang) * rr * 0.92;
+      if (s) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.stroke();
+  }
+  g.restore();
 }
 
 export function glowBall(g, x, y, r, pal, a) {

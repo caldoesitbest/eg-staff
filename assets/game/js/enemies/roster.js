@@ -3,7 +3,7 @@
    Robots evolve with their Mark (e.mark: 0 = Mk I, 1 = Mk II from wave 12, 2 = Mk III from wave 24,
    higher in endless). Every new behaviour gets its own warning, so harder never means unfair. */
 
-import { G, diff } from "../state.js";
+import { G, diff, endless } from "../state.js";
 import { BALANCE } from "../balance.js";
 import { TAU, rand, randRange, angDiff, dash, NO_DASH } from "../util.js";
 import { C, P_DANGER, P_VIOLET, P_AMBER, P_MAGENTA, P_BLUE, P_ORANGE, P_RED, P_GREEN, P_WHITE, P_PRIDE } from "../sprites.js";
@@ -51,10 +51,10 @@ export function leadAngle(x, y, P, sp, k) {
 function urge(e, P) {
   if (P.boostCdT <= 0.25) return 1;
   const R = AI.punishRange;
-  return (P.x - e.x) ** 2 + (P.y - e.y) ** 2 < R * R ? AI.punish : 1;
+  return (P.x - e.x) ** 2 + (P.y - e.y) ** 2 < R * R ? AI.punish * (diff().punish || 1) : 1;
 }
 /** A cooldown, scaled by the difficulty's aggression. */
-const cool = (s) => s * diff().aggro;
+const cool = (s) => s * diff().aggro * endless("aggro");
 
 /** Chasers cut you off rather than trailing you; flankers swing wide to come in from your side. */
 function chase(e, P, dt, wobAmp, wobFreq, accel, flank) {
@@ -63,7 +63,7 @@ function chase(e, P, dt, wobAmp, wobFreq, accel, flank) {
   const [vx, vy] = pv(P);
   const t = Math.min(AI.maxLead, d / Math.max(80, e.speed)) * Math.min(1, byMark(AI.pursuit, e.mark) * diff().lead);
   let tx = P.x + vx * t, ty = P.y + vy * t;
-  if (flank && d > 150) {
+  if ((flank || P.campHot) && d > 150) {                 // standing still: everyone comes round the side
     const side = e.id & 1 ? 1 : -1, w = Math.min(AI.flankWide, d * 0.5);
     tx += (-dy / d) * w * side; ty += (dx / d) * w * side;
   }
@@ -72,7 +72,7 @@ function chase(e, P, dt, wobAmp, wobFreq, accel, flank) {
   seek(e, tx + (-dy / d) * wob, ty + (dx / d) * wob, e.speed, accel, dt);
   faceVel(e, 9, dt);
 }
-const flanker = (e) => (e.id * GOLDEN) % 1 < AI.flank;
+const flanker = (e) => (e.id * GOLDEN) % 1 < Math.min(0.8, AI.flank * (diff().flank || 1));
 
 /** The nearest live robot of one of these types (for escorts and medics). */
 function nearestOf(e, types, maxD) {
@@ -286,10 +286,12 @@ export const ROSTER = {
       const nx = dx / dist, ny = dy / dist;
       let tx, ty;
       // each gunner wants its own bearing around you, so a few of them make a crossfire
-      const keep = (d.keep[0] + d.keep[1]) / 2, pref = e.id * GOLDEN;
+      // standing still: they take bearings behind where you're aiming
+      const keep = (d.keep[0] + d.keep[1]) / 2 * (diff().keep || 1);
+      const pref = P.campHot ? (P.aimAng || 0) + Math.PI + (((e.id * GOLDEN) % 1) - 0.5) * 2.4 : e.id * GOLDEN;
       const sx = Math.max(60, Math.min(A.w - 60, P.x + Math.cos(pref) * keep)), sy = Math.max(60, Math.min(A.h - 60, P.y + Math.sin(pref) * keep));
       const mx = sx - e.x, my = sy - e.y, ml = Math.hypot(mx, my) || 1;
-      if (dist < d.keep[0]) { tx = -nx; ty = -ny; }
+      if (dist < d.keep[0] * (diff().keep || 1)) { tx = -nx; ty = -ny; }
       else if (ml > 90) { tx = mx / ml; ty = my / ml; }
       else if (dist > d.keep[1]) { tx = nx; ty = ny; }
       else { tx = -ny * e.b; ty = nx * e.b; }

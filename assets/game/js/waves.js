@@ -1,7 +1,8 @@
 /* The wave director. Difficulty ramps by WHAT shows up (new robots, nastier mixes, more
    at once) far more than by health. Spawns come from the arena edges with a warning marker. */
 
-import { G, diff } from "./state.js";
+import { MINIBOSSES, rollMiniboss } from "./enemies/minibosses.js";
+import { G, diff, endless } from "./state.js";
 import { BALANCE } from "./balance.js";
 import { rand, randInt, randRange, chance, TAU, rng } from "./util.js";
 import { fx } from "./fx.js";
@@ -113,9 +114,9 @@ export const waves = {
     } else {
       mix = {};
       for (const t in W.unlock) if (W.unlock[t] <= n) mix[t] = W.weight[t];
-      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve)) * crewBudget() * diff().budget;
+      budget = Math.min(W.budget.cap, W.budget.base + n * W.budget.perWave + Math.pow(n, W.budget.curve)) * crewBudget() * diff().budget * endless("budget");
       maxGroup = Math.min(W.group.cap, W.group.max + Math.floor(n / W.group.perWaves));
-      this.maxAlive = Math.min(Math.round(W.maxAlive.cap * crewAlive() * diff().alive), Math.round((W.maxAlive.base + n * W.maxAlive.perWave) * crewAlive() * diff().alive));
+      this.maxAlive = Math.round(Math.min(Math.round(W.maxAlive.cap * crewAlive() * diff().alive), Math.round((W.maxAlive.base + n * W.maxAlive.perWave) * crewAlive() * diff().alive)) * endless("alive"));
       const g = W.gap;
       this.gap = [Math.max(g.floorMin, g.min - n * g.perWave), Math.max(g.floorMax, g.max - n * g.perWave)];
     }
@@ -130,6 +131,9 @@ export const waves = {
     // some groups are squads that work together (more often later, and on harder difficulties)
     const squads = W.squads.filter((q) => q.from <= n + diff().mark);
     const squadChance = n >= W.squadFrom ? Math.min(W.squadMax, (n - W.squadFrom + 1) * W.squadPerWave) * diff().squads : 0;
+    // 4.5: now and then a mini-boss joins the wave, partway through (it takes the place of some robots)
+    const minis = rollMiniboss(n);
+    if (minis) for (const t of minis) budget -= BALANCE.enemies[t].threat * 0.6;
     while (budget > 0.3) {
       if (squads.length && chance(squadChance)) {
         const q = squads[randInt(0, squads.length - 1)];
@@ -143,6 +147,7 @@ export const waves = {
       this.queue.push({ type, count });
       budget -= BALANCE.enemies[type].threat * count;
     }
+    if (minis) minis.forEach((t, i) => this.queue.splice(Math.min(this.queue.length, Math.floor(this.queue.length * (0.3 + 0.25 * i)) + 1), 0, { type: t, count: 1, mini: true }));
   },
 
   /** A squad lands together from one edge (a split squad: its halves from opposite edges). */
@@ -167,9 +172,10 @@ export const waves = {
     w.type = type; w.count = count;
     const el = BALANCE.elite;
     const from = Math.max(el.minFrom, el.from - diff().mark);        // harder modes bring them sooner, never in the first waves
-    w.elite = G.wave >= from ? Math.min(el.chanceMax * Math.min(1.6, diff().elite), (G.wave - from + 1) * el.chance * diff().elite) : 0;
+    w.elite = G.wave >= from ? Math.min(el.chanceMax * Math.min(1.6, diff().elite), (G.wave - from + 1) * el.chance * diff().elite) + endless("elite") : 0;
     if (G.mode === "rush" && !G.rush.mods.includes("entourage")) w.elite = 0;      // Boss Rush: plain minions unless you asked for more
     w.spread = 14 + count * 5;
+    if (MINIBOSSES[type]) { w.elite = 0; w.t = w.max = W.spawnWarn * 1.8; w.mini = true; G.emit("minibossWarn", type); }
   },
 
   pending() {

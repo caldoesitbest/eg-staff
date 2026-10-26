@@ -15,6 +15,7 @@ import { updatePlayer } from "./player.js";
 import { computeStats } from "./upgrades.js";
 import { ROSTER } from "./enemies/roster.js";
 import { BOSSES, BOSS_MINIONS } from "./enemies/bosses.js";
+import { MINIBOSSES } from "./enemies/minibosses.js";
 import { collideRocks, newBoostSerial, haptic } from "./world.js";
 import { updateDrones } from "./armory.js";
 import { waves } from "./waves.js";
@@ -22,7 +23,7 @@ import { TAU } from "./util.js";
 import { evoCode, evoTick } from "./evolve.js";
 import { mutVis, M as MUT } from "./mutations.js";
 
-const TYPES = [...Object.keys(ROSTER), ...Object.keys(BOSS_MINIONS)];
+const TYPES = [...Object.keys(ROSTER), ...Object.keys(BOSS_MINIONS), ...Object.keys(MINIBOSSES)];
 const TYPE_IX = Object.fromEntries(TYPES.map((t, i) => [t, i]));
 const GUNS = Object.keys(BALANCE.guns);
 const LOOKS = ["pink", "amber", "violet", "mint", "red", "magenta", "green", "sloth", "glutton", "wrath", "pride", "envy", "coin", "heart"];
@@ -590,12 +591,14 @@ function onMessage(from, msg) {
     return;
   }
   const H = coop.hooks;
-  if (G.net.role === "host") {
+  // (between runs a party's leader is back to G.net.role "off", but still the host here)
+  if (net.role === "host") {
     const m = net.members.find((x) => x.id === from);
     const P = m ? G.players[m.slot] : null;
     if (msg.k === "i" && P) { P.pk = msg; msg.fresh = true; }
     else if (msg.k === "ready" && P) { applyBuild(P, msg.build); coop.ready.add(P.slot); readyChanged(); }
     else if (msg.k === "bye") net.lost(from);
+    else if (msg.k === "pready" && H.partyReady) H.partyReady(from, !!msg.r);
     return;
   }
   // client
@@ -610,6 +613,11 @@ function onMessage(from, msg) {
     case "win": H.showWin(msg.sum); break;
     case "rushdone": H.rushDone(msg.sum); break;
     case "bye": net.lost(from); break;
+    case "home": if (H.partyHome) H.partyHome(); break;
+    case "sigil": if (H.sigilShard) H.sigilShard(msg.n | 0); break;
+    case "pmode": if (H.partyPick) H.partyPick(msg); break;
+    case "pcheck": if (H.partyCheck) H.partyCheck(msg); break;
+    case "kick": if (H.kicked) H.kicked(); break;
   }
 }
 
@@ -658,7 +666,10 @@ export function initCoop(hooks) {
   coop.hooks = hooks;
   hookRecording();
   net.on.message = onMessage;
-  net.on.closed = (why) => { if (G.net.role !== "off") { endCoop(); hooks.toMenu(); hooks.toast(why, 3500); } };
+  net.on.closed = (why) => {
+    if (G.net.role !== "off") { endCoop(); hooks.toMenu(); hooks.toast(why, 3500); }
+    else if (hooks.partyClosed) { endCoop(); hooks.partyClosed(); }       // a party between runs: the leader left
+  };
   net.on.left = (m) => {
     const P = G.players[m.slot];
     if (!P || G.net.role !== "host") return;
@@ -692,6 +703,7 @@ export function startHost() {
 
 function startClient(msg) {
   net.members = msg.members;
+  if (coop.hooks.partyStarted) coop.hooks.partyStarted();
   const me = msg.members.find((m) => m.id === net.id);
   if (!me) return;
   G.net.role = "client";

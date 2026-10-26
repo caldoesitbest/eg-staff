@@ -202,8 +202,10 @@ export const fx = {
     // smoke + debris (normal blending)
     const ps = this.parts;
     const dots = sprites.dots;
+    const x0 = this.vx0, x1 = this.vx1, y0 = this.vy0, y1 = this.vy1;
     for (let i = 0; i < ps.count; i++) {
       const q = ps.items[i];
+      if (q.x < x0 || q.x > x1 || q.y < y0 || q.y > y1) continue;
       if (q.kind === SMOKE) {
         const t = q.life / q.max;
         const s = q.size * (1.6 - t * 0.6);
@@ -229,8 +231,10 @@ export const fx = {
     const ps = this.parts;
     const dots = sprites.dots;
     g.globalCompositeOperation = "lighter";
+    const x0 = this.vx0, x1 = this.vx1, y0 = this.vy0, y1 = this.vy1;
     for (let i = 0; i < ps.count; i++) {
       const q = ps.items[i];
+      if (q.x < x0 || q.x > x1 || q.y < y0 || q.y > y1) continue;
       const t = q.life / q.max;
       if (q.kind === DOT) {
         const s = q.size * (0.4 + t * 0.6) * 4;
@@ -326,6 +330,7 @@ export const fx = {
 
   // camera values the spark transform needs (set by the renderer each frame)
   camX: 0, camY: 0, offX: 0, offY: 0,
+  vx0: -1e9, vx1: 1e9, vy0: -1e9, vy1: 1e9,       // the view (render.js sets it): particles outside it aren't drawn
 };
 
 export const FX_KIND = { DOT, SPARK, SHARD, SMOKE };

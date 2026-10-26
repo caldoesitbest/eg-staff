@@ -22,18 +22,28 @@ import { P_CYAN, P_WHITE, C, sprites } from "./sprites.js";
 import { formatScore, rand, pick, TAU, withSeed, hashStr, seedRng } from "./util.js";
 import { online, todayUTC } from "./online.js";
 import { ladderRungs } from "./ui.js";
-import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName } from "./armory.js";
+import { resetArmory, openShop as rollNewShop, buy, toggleLock, rerollShop, patchCost, swapGun, offerInfo, armoryAfter, nextArmoryWave, armorySoldOut, evoCandidate, evolveGun, gunCol, gunName, needsSlotPick, offerPrice } from "./armory.js";
 import { GAME_VERSION, VERSION_NAME } from "./version.js";
 import { fusionActivated, fusionWave } from "./fusion.js";
 import { mutKey, mutHint } from "./mutations.js";
 import { progressTick, sigilsBoss, sigilsWin, sigilsRush } from "./progress.js";
-import { look, lookCode, itemsOf } from "./catalog.js";
+import { look, lookCode, itemsOf, runPay, earnSigils } from "./catalog.js";
 import { reportRun } from "./contracts.js";
 import { hangar } from "./hangar.js";
 import { rollChapterEvent, eventWaveStart, eventTick, pendingEvent, eventDone, cacheAway, cacheOptions, relicOptions, takeRelic, altarOptions, takeAltar, acceptAmbush, ambushReward } from "./events.js";
 import { giveItem } from "./armory.js";
 import { net } from "./net.js";
 import { coop, initCoop, startHost, setupPlayers, coopRoster, hostBefore, hostAfter, clientStep, hostSend, hostReady, clientReady, resetReady, endCoop, waitingOn } from "./coop.js";
+import { social } from "./social.js";
+import { pressureTick } from "./pressure.js";
+import { MINIBOSSES } from "./enemies/minibosses.js";
+import { splash } from "./splash.js";
+import { tutorial } from "./tutorial.js";
+import { payRun, level, tierOf } from "./xp.js";
+import { cloud } from "./cloud.js";
+import { party } from "./party.js";
+import { friendsUI } from "./friends.js";
+import { lookArt } from "./hangar.js";
 
 // ---------------------------------------------------------------------------
 // boot
@@ -148,7 +158,14 @@ function setupRunPlayers(isCoop) {
 function fileRun() {
   if (G.runFiled) return;
   G.runFiled = true;
+  if (G.tutorial) return;                 // flight school counts for nothing
   const rush = G.mode === "rush";
+  // 4.5: a real run pays a few Sigils (a daily cap; standing still with auto-fire doesn't count as playing)
+  const active = G.time > 0 ? (G.activeT || 0) / G.time : 0, bosses = rush ? (G.rush ? G.rush.i : 0) : G.bossesKilled || 0;
+  G.runPay = runPay({ time: G.time, kills: G.kills, wave: G.wave, won: !!G.won, rush, bosses, active });
+  // 4.5: XP for the run (shown on the results screen)
+  cloud.soon(5000);
+  G.runXp = payRun({ wave: G.wave, kills: G.kills, bosses, won: !!G.won, rush, cleared: rush && bosses >= 7, minis: G.runMinis || 0, perfects: G.perfects || 0, active, coop: G.net.role !== "off" });
   G.runContracts = reportRun({
     kills: G.kills, wave: G.wave, bosses: rush ? (G.rush ? G.rush.i : 0) : G.bossesKilled || 0, perfects: G.perfects || 0,
     stars: G.starsTotal || 0, combo: G.bestCombo || 0, difficulty: G.difficulty, daily: !!G.daily, rush,
@@ -166,7 +183,9 @@ function menuScene() {
 }
 
 function toMenu() {
+  tutorial.abandon();
   menuScene();
+  splash.roll();
   setState("menu");
   ui.clearBanner();
   ui.show("menu");
@@ -179,6 +198,7 @@ function toMenu() {
 // ---------------------------------------------------------------------------
 function startRun(opts) {
   clearWorld();
+  G.tutorial = !!(opts && opts.tutorial);
   const isCoop = !!(opts && opts.coop);
   G.daily = opts && opts.daily ? opts.daily : null;
   G.mode = opts && opts.rush && !G.daily ? "rush" : "ladder";
@@ -196,6 +216,7 @@ function startRun(opts) {
     hitstop: 0, slowmo: 0, slowScale: 1, freezeT: 0, vacuum: false, boss: null, bossFx: null, autoTarget: null,
     lastSlowmo: -9, hitMark: 0, killMark: 0,
     runStats: { dmg: 0, big: 0, byGun: {}, spent: 0 },
+    activeT: 0, runPay: null, runDrops: 0, runXp: null, runMinis: 0,
   });
   setupRunPlayers(isCoop);
   G.emit("runStart");
@@ -215,13 +236,14 @@ function startRun(opts) {
   setState("playing");
   audio.musicStart(1);
   audio.musicIntensity(1);
-  store.data.totals.runs++;
+  if (!G.tutorial) store.data.totals.runs++;
   if (G.daily) {
     const d = store.data.daily;
     if (d.date !== G.daily) { d.date = G.daily; d.score = 0; d.wave = 0; d.tries = 0; }
     d.tries++;
   }
   if (G.net.role === "client") return;     // the host starts the waves
+  if (G.tutorial) { tutorial.begin(); return; }        // flight school: no waves
   if (G.mode === "rush") { openUpgrade(); return; }     // Boss Rush opens with a draft
   startWave(start);
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
@@ -331,13 +353,13 @@ G.on("waveClear", (n) => {
     G.winTime = G.time;
     clearT = 2.4;
     ui.banner("The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true);
-    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest", sig: 1 });
+    hostSend({ k: "clear", b: ["The Sin Ladder", "Cleared!", "Envy can't be earned. You took it.", "good", true], snd: "newBest", sig: "envy" });
     audio.play("newBest");
     setState("clear");
     return;
   }
   const head = waves.boss ? "@" + BALANCE.bosses[waves.bossType].name + " down" : "Wave " + n;
-  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear", sig: waves.boss ? 1 : 0 });   // sig: a sin boss fell (guests earn its Sigils)
+  hostSend({ k: "clear", b: [head, waves.boss ? "Clear!" : "Clear", "+" + formatScore(bonus) + " clear bonus" + (flawless ? " · <b>Flawless</b>" : ""), "good", false], snd: "clear", sig: waves.boss ? waves.bossType : 0 });   // sig: which sin boss fell (guests earn its first-time Sigils)
   ui.banner(head, waves.boss ? "Clear!" : "Clear", text, "good");
   audio.play("clear");
   audio.musicIntensity(1);
@@ -411,6 +433,7 @@ function finishRush(cleared) {
     build: buildSummary(), buildTitle: buildTitle(),
   };
   const record = !G.debug.on && G.net.role === "off";
+  if (!G.debug.on && G.net.role !== "client") online.submitRun({ mode: "rush", difficulty: G.difficulty, score: sum.score, wave: R.i, won: cleared, seconds: fight, players: G.players.length });
   if (record) {
     const rs = store.data.rush;
     const best = (rs.splits[G.difficulty] = rs.splits[G.difficulty] || {});
@@ -574,6 +597,7 @@ function openCards() {
 
 /** After the card: the Armory (if it opens this wave and has anything left for you), else the next wave. */
 function afterCards() {
+  if (G.tutorial) { tutorial.cardPicked(); return; }
   if (G.mode === "rush" && G.rush.picks > 1) { G.rush.picks--; openCards(); return; }
   if (G.bonusPick > 0) { G.bonusPick--; openCards(); return; }            // the Elite Ambush's extra card
   const ev = pendingEvent();
@@ -636,12 +660,19 @@ function openArmory() {
   });
 }
 
-function shopBuy(i) {
+/** slot: which gun a new one replaces when both slots are full; left out, the player is asked first. */
+function shopBuy(i, slot) {
   if (G.state !== "shop") return;
   const o = G.shop.offers[i];
   if (!o || o.sold) return;
   const info = offerInfo(o);
-  if (!buy(i)) { audio.play("deny"); ui.toast("Not enough stars"); return; }
+  if (slot === undefined && needsSlotPick(o)) {
+    if (G.stars < offerPrice(o)) { audio.play("deny"); ui.toast("Not enough stars"); return; }
+    audio.play("click");
+    ui.openSwapPick(i);
+    return;
+  }
+  if (!buy(i, slot)) { audio.play("deny"); ui.toast("Not enough stars"); return; }
   audio.play("buy");
   const P = G.player;
   if (P) fx.ring(P.x, P.y, 10, 90, 0.4, info.col, 3);
@@ -721,6 +752,19 @@ function pause() {
   ui.showPause(buildSummary());
   audio.muffle(true);
 }
+/** Your build (the HUD button, I, a controller's View button): from a fight it pauses first (in co-op the game keeps going). */
+function toggleBuild() {
+  if (ui.swapOpen) return;
+  if (ui.screen === "build") { ui.closeBuild(); return; }
+  const s = G.state;
+  if (s === "playing" || s === "clear") {
+    if (G.netMenu) { ui.openBuild("pause"); return; }
+    pause();
+    if (G.state === "paused" || G.netMenu) ui.openBuild("pause");
+  } else if (s === "paused" && ui.screen === "pause") ui.openBuild("pause");
+  else if (s === "shop" && ui.screen === "shop") ui.openBuild("shop");
+  else if (s === "upgrade" && ui.screen === "upgrade") ui.openBuild("upgrade");
+}
 function resume() {
   if (G.netMenu) {
     G.netMenu = false;
@@ -782,11 +826,22 @@ const TITLES = [
 
 async function postRun(sum) {
   if (G.debug.on) return;
-  if (G.net.role !== "off") { ui.setOnline(null); return; }   // the leaderboard is solo runs
+  if (G.net.role === "client") { ui.setOnline(null); return; }     // a co-op run is posted once, by its host
   if (!online.available) { ui.setOnline(null); return; }
   if (!online.user) { ui.setOnline("signin"); return; }
   if (!store.data.settings.postScores) { ui.setOnline(null); return; }
   ui.setOnline("posting");
+  // 4.5: the difficulty boards (co-op has its own); the original board still gets solo runs below
+  const coopRun = G.net.role === "host";
+  const v2 = online.submitRun({ mode: coopRun ? "coop" : G.daily ? "daily" : "ladder", difficulty: G.daily ? "normal" : G.difficulty, score: sum.score, wave: sum.wave,
+    won: !!G.won, seconds: G.time, daily: G.daily, team: coopRun ? G.players.map((P) => P.name).join(" + ") : null, players: G.players.length });
+  if (coopRun) {
+    const r = await v2;
+    if (G.state !== "over") return;
+    if (r.ok) ui.setOnline("posted", { rank: r.rank, daily: false });
+    else ui.setOnline(r.skipped ? null : "error", r.error);
+    return;
+  }
   const res = await online.submit({
     score: sum.score, wave: sum.wave, kills: sum.kills, combo: sum.combo, seconds: G.time, won: G.won,
     daily: G.daily, buildIds: { ...G.up, guns: G.guns.filter(Boolean).map((g) => g.id + g.tier).join(","), gear: { ...G.items }, difficulty: G.difficulty },
@@ -877,8 +932,22 @@ function menuStep(dt) {
   fx.update(dt);
 }
 
+/** A brand-new player's first PLAY goes to flight school first (skippable; How to play replays it). */
+function firstFlight() {
+  if (store.data.tutorial || G.net.role !== "off" || (store.data.totals.runs || 0) > 0) return false;
+  if (G.debug.on && params.get("tutorial") !== "1") return false;
+  tutorial.start();
+  return true;
+}
+/** Seconds you've actually been flying this run (moving or boosting; auto-fire alone doesn't count): run Sigils need it. */
+function trackActive(dt) {
+  const P = G.me;
+  if (G.state !== "playing" || !P || P.dead) return;
+  if (Math.abs(input.move.x) + Math.abs(input.move.y) > 0.25 || P.boostT > 0) G.activeT += dt;
+}
 function update(dt) {
   const s = G.state;
+  trackActive(dt);
   if (G.net.role === "client" && s !== "menu") { clientStep(dt); return; }
   if (s === "paused" || s === "upgrade" || s === "shop" || s === "over" || s === "win" || s === "evolve" || s === "event") return;
   if (G.hitstop > 0) { G.hitstop -= dt; if (G.net.role === "host") hostAfter(); return; }
@@ -887,6 +956,8 @@ function update(dt) {
   if (s === "menu") { menuStep(sdt); return; }
   if (G.net.role === "host") hostBefore(sdt);
   stepWorld(sdt);
+  pressureTick(sdt);
+  if (G.tutorial) tutorial.tick(sdt);
   if (G.net.role === "host") hostAfter();
   if (s === "playing") eventTick(sdt);
   progressTick(sdt);
@@ -1013,8 +1084,9 @@ function toggleFullscreen() {
 }
 
 ui.init({
-  onPlay: () => { audio.unlock(); startRun(); },
-  onDaily: () => { audio.unlock(); startRun({ daily: todayUTC() }); },
+  onPlay: () => { audio.unlock(); if (firstFlight()) return; startRun(); },
+  onDaily: () => { audio.unlock(); if (firstFlight()) return; startRun({ daily: todayUTC() }); },
+  onTutorial: () => { audio.unlock(); if (G.net.role === "off") tutorial.start(); },
   onRush: () => { if (store.rushUnlocked() || G.debug.on) ui.openRush(); else ui.toast("Beat @Envy on the Sin Ladder to open Boss Rush", 2600); },
   onRushStart: (mods) => { store.data.rush.mods = mods; store.save(); audio.unlock(); startRun({ rush: true, mods }); },
   onRushAgain: () => { if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun({ rush: true, mods: (lastRun && lastRun.mods) || [] }); },
@@ -1024,19 +1096,32 @@ ui.init({
   onPause: pause,
   onResume: resume,
   onRestart: () => { if (G.net.role !== "client") fileRun(); if (G.net.role === "host") startHost(); else if (G.net.role === "off") startRun(G.mode === "rush" ? { rush: true, mods: G.rush.mods } : G.daily ? { daily: todayUTC() } : null); },
-  onQuit: () => { if (G.state !== "menu") fileRun(); if (G.net.role !== "off") endCoop(); toMenu(); },
-  onCoop: () => { audio.unlock(); ui.openLobby(store.data.coopName || online.name || ""); },
+  onQuit: () => {
+    if (G.state !== "menu") fileRun();
+    const done = G.state === "over" || G.state === "win";
+    if (G.net.role === "host" && net.members.length > 1) party.home();           // everyone back to the Hangar, still a party
+    else if (G.net.role === "client" && done) party.home();                        // results screen: back to the Hangar, still in the party
+    else if (G.net.role !== "off") endCoop();                                      // left mid-run: out of the party
+    toMenu();
+  },
+  onCoop: () => {
+    audio.unlock();
+    // already in a party: that's your lobby
+    if (net.role !== "off") { ui.openLobby(store.data.coopName || online.name || ""); ui.lobbyRoom(net.code, net.role === "host"); ui.renderLobby(net.members, net.role === "host"); return; }
+    ui.openLobby(store.data.coopName || online.name || "");
+  },
+  onPartyPlay: (mode) => { audio.unlock(); return party.play(mode); },
   onLobbyHost: async (name) => {
     store.data.coopName = name; store.save();
-    try { await net.host(name, lookCode()); ui.lobbyRoom(net.code, true); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.host(name, lookCode() + social.tag()); ui.lobbyRoom(net.code, true); party.changed(); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
   onLobbyJoin: async (code, name) => {
     store.data.coopName = name; store.save();
-    try { await net.join(code, name, lookCode()); ui.lobbyRoom(net.code, false); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
+    try { await net.join(code, name, lookCode() + social.tag()); ui.lobbyRoom(net.code, false); party.changed(); } catch (e) { ui.lobbyStatus(e.message, "bad"); net.leave(); }
   },
   onLobbyMode: (mode) => { coop.mode = mode; coop.mods = store.data.rush.mods || []; },
   onLobbyStart: () => { if (net.role === "host" && net.members.length >= 2) { audio.unlock(); startHost(); } },
-  onLobbyLeave: () => { endCoop(); ui.show("menu"); },
+  onLobbyLeave: () => { party.leave(true); ui.show("menu"); },
   onPick: pickCard,
   onEvo: pickEvolution,
   onEvent: pickEvent,
@@ -1049,6 +1134,7 @@ ui.init({
   onShopGo: shopGo,
   onSelectSlot: (i) => { if (swapGun(i)) audio.play("swap"); ui.renderShop(); },
   onSwap: () => { if (G.state === "playing" || G.state === "clear") { input.queued.swap = true; input.swapTo = undefined; } },
+  onBuild: () => toggleBuild(),
   onSettings: applySettings,
   onLook: () => renderer.setSuit(suitDef()),
   onSfx: (name) => audio.play(name),
@@ -1059,6 +1145,37 @@ ui.init({
 });
 
 input.init({ root, layer, boostButton: document.getElementById("boost-btn"), chargeButton: document.getElementById("charge-btn") });
+party.init({ lookCode, toast: (t, ms) => ui.toast(t, ms), readyCheck: (name, pick) => friendsUI.readyCheck(name, pick) });
+splash.init({ sfx: (n) => audio.play(n), toast: (t, ms) => ui.toast(t, ms) });
+// Discord (the Windows app shows it on your profile): what you're doing, which wave, who's with you
+if (G.desktop && !G.debug.on) {
+  let lastPresence = "", runT0 = 0;
+  G.on("runStart", () => { runT0 = Date.now(); });
+  setInterval(() => {
+    const diffName = (BALANCE.difficulty[G.difficulty] || {}).name || "Normal";
+    let details, state = "";
+    if (G.state === "menu") {
+      details = "In the Hangar";
+      state = net.role !== "off" ? "In a party" : "Level " + level() + " · " + tierOf(level()).name;
+    } else if (G.tutorial) { details = "Flight school"; state = "Learning to fly"; }
+    else {
+      const what = G.mode === "rush" ? "Boss Rush" : G.daily ? "Daily Challenge" : G.wave > 35 ? "Endless" : "The Sin Ladder";
+      details = G.mode === "rush" ? what + " · " + Math.min(7, (G.rush && G.rush.i) || 0) + "/7 bosses" : what + " · Wave " + G.wave;
+      state = (G.daily ? "Normal" : diffName) + (G.net.role !== "off" ? " · co-op" : " · solo") + (G.boss && !G.boss.dead ? " · fighting @" + G.boss.def.name : "");
+    }
+    const size = net.role !== "off" ? net.members.length : 1;
+    const msg = { type: "presence", details, state, start: G.state === "menu" ? 0 : runT0, size, max: net.role !== "off" ? 4 : 0, party: net.role !== "off" ? net.code : "" };
+    const key = JSON.stringify(msg);
+    if (key === lastPresence) return;
+    lastPresence = key;
+    try { window.chrome.webview.postMessage(msg); } catch (e) { /* not the desktop app */ }
+  }, 2000);
+}
+tutorial.init({ spawnEnemy, startRun, toMenu, openCards, audio, resumePlay: () => { ui.show(null); setState("playing"); } });
+friendsUI.init({
+  ui, lookArt, toast: (t, ms) => ui.toast(t, ms), sfx: (n) => audio.play(n), signIn: () => online.signIn(),
+  hangar: { tab: (t) => { if (ui.screen !== "menu") ui.show("menu"); hangar.tab(t); }, refresh: () => hangar.refresh(), now: () => hangar.tabNow },
+});
 const AIM_NAMES = { off: "Off", assist: "Aim assist", auto: "Full auto" };
 input.onHotkey = (code) => {
   if (code !== "KeyT") return;
@@ -1072,6 +1189,8 @@ input.onHotkey = (code) => {
 input.onModeChange = (m) => { G.touchActive = m === "touch"; ui.setMode(m); };
 input.onPause = () => {
   const s = G.state;
+  if (ui.swapOpen) { ui.closeSwapPick(); return true; }
+  if (ui.screen === "build") { ui.closeBuild(); return true; }
   if ((s === "playing" || s === "clear") && G.netMenu) {
     if (ui.screen === "settings") ui.closeSettings(); else resume();
     return true;
@@ -1084,18 +1203,23 @@ input.onPause = () => {
   }
   if (s === "menu" && ui.screen === "menu") return hangar.back();
   if (s === "menu" && (ui.screen === "settings" || ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download")) { if (ui.screen === "settings") ui.closeSettings(); else ui.show("menu"); return true; }
-  if (s === "menu" && ui.screen === "lobby") { endCoop(); ui.show("menu"); return true; }
+  if (s === "menu" && ui.screen === "lobby") { ui.show("menu"); return true; }        // a party stays open (Leave ends it)
   if (s === "over" && ui.screen === "settings") { ui.closeSettings(); return true; }
   return false;
 };
 input.onMenuNav = (dir) => ui.navigate(dir);
+input.onMenuTab = (step, sub) => { if (sub) ui.cycleSubTab(step); else ui.cycleTab(step); };
+input.onBuild = toggleBuild;
 input.onMenuConfirm = () => { audio.unlock(); ui.confirm(); };
 input.onMenuBack = (start) => {
+  if (ui.swapOpen) { ui.closeSwapPick(); return; }
+  if (ui.screen === "build") { if (start && ui.buildFrom === "pause") resume(); else ui.closeBuild(); return; }
   if (G.state === "paused" && start) { resume(); return; }
   if (ui.screen === "settings") ui.closeSettings();
   else if (G.state === "menu" && ui.screen === "menu") hangar.back();
   else if (ui.screen === "how" || ui.screen === "news" || ui.screen === "profile" || ui.screen === "rush" || ui.screen === "download") ui.show("menu");
   else if (G.state === "paused") resume();
+  setTimeout(() => ui.ensureFocus(), 40);
 };
 
 // first gesture unlocks audio (iOS needs this)
@@ -1115,6 +1239,13 @@ window.addEventListener("keydown", (e) => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
   const s = G.state;
   const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"].indexOf(e.code) % 4;
+  if (ui.swapOpen) {
+    // the "replace which gun?" dialog: 1 / 2 pick the slot, Enter buys, Esc cancels (onPause)
+    if (digit === 0 || digit === 1) { e.preventDefault(); ui.pickSwapSlot(digit); }
+    return;
+  }
+  if (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleBuild(); return; }
+  if (ui.screen === "build") return;
   if (s === "shop") {
     if (digit >= 0) { e.preventDefault(); if (ui.armed) shopBuy(digit); return; }
     if (e.code === "KeyR") { e.preventDefault(); shopReroll(); return; }
@@ -1199,7 +1330,7 @@ if (G.debug.on && params.get("autoplay") === "1") {
     bot.onPick = pickCard;
     bot.onEvo = pickEvolution;
     bot.onEvent = pickEvent;
-    bot.onBuy = shopBuy;
+    bot.onBuy = (i) => shopBuy(i, G.gunSlot);
     bot.onShopGo = shopGo;
     autopilot = bot;
     window.__bot = bot;
@@ -1243,14 +1374,14 @@ if (G.debug.on && params.get("scene")) {
   import("./debug-bot.js").then(({ scene }) => setTimeout(() => scene(params.get("scene"), { startRun, spawnEnemy, waves, input, seedRng }), 900));
 }
 if (G.debug.on && params.get("tests") === "1") {
-  import("./tests.js").then(({ runTests }) => setTimeout(() => runTests({ startRun, spawnEnemy, waves, rushRank }), 800));
+  import("./tests.js").then(({ runTests }) => setTimeout(() => runTests({ startRun, spawnEnemy, waves, rushRank, shopBuy, openArmory }), 800));
 }
 if (G.debug.on && params.get("smoke") === "1") {
   import("./debug-bot.js").then(({ smoke }) => setTimeout(() => smoke({ startRun, openArmory, shopBuy, shopGo, spawnEnemy }), 800));
 }
 if (G.debug.on) {
   import("./armory.js").then((armory) => {
-    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, applySettings, net, coop,
+    window.__eg = { get offered() { return offered; }, G, waves, startRun, startWave, spawnEnemy, applyCard, CARDS, loop, store, hostileCount, ui, input, armory, openArmory, shopGo, shopBuy, toggleBuild, applySettings, net, coop, party, social, friendsUI, tutorial,
       openUpgrade, openEvolve, pickEvolution, openEvent, pickEvent,
       stage: (gun, path, opts) => import("./debug-bot.js").then((m) => m.stage({ spawnEnemy, waves }, gun, path, opts)),
       zoneAt: (t, f) => import("./debug-bot.js").then((m) => m.zoneAt(t, f)) };
@@ -1262,7 +1393,18 @@ if (G.debug.on) {
 // desktop app + online
 // ---------------------------------------------------------------------------
 ui.setApp(G.desktop || G.androidApp);
-G.on("look", () => renderer.setSuit(suitDef()));
+G.on("campWarn", () => ui.toast("Standing still draws fire: keep moving!", 2600));
+G.on("levelUp", (lv) => { ui.achvPop({ levelUp: true, ...lv }); hangar.refresh(); });
+// a mini-boss on its way: who it is and how to fight it
+const MINI_HINT = {
+  warden: "Its shield turns slower than you can circle it. Hit it from behind, or while it vents after a volley.",
+  lancer: "It paints a line, then dashes along it and the line bursts. Step off before it locks red.",
+  siege: "Its shells land where you are and where you're heading. Keep turning, and don't hug it.",
+};
+G.on("minibossWarn", (type) => { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("bossIntro", undefined, undefined, 0.5); });
+G.on("minibossDown", (e) => {
+  G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); });
+G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });
 if (G.desktop) {
   ui.setDesktop(true);
   // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)
@@ -1289,7 +1431,9 @@ if (G.androidApp) {
     resume: () => { audio.resume(); loop.resetClock(); },
   };
 }
-G.on("auth", () => { ui.renderAccount(); if (ui.screen === "board") ui.openBoard(ui.boardKindNow || "all"); });
+cloud.init();
+G.on("cloud", (c) => { if (c.reason === "restore") return; hangar.refresh(); });
+G.on("auth", () => { ui.renderAccount(); if (ui.screen === "board") ui.openBoard(ui.boardKindNow || "all"); social.sync(lookCode()); });
 online.init();
 
 // ---------------------------------------------------------------------------
@@ -1303,6 +1447,8 @@ function playIntro() {
   if (seen || G.debug.on || G.settings.reducedMotion && !G.desktop) { intro.remove(); return; }
   try { sessionStorage.setItem("eg-intro", "1"); } catch (e) { /* storage blocked */ }
   intro.classList.add(G.desktop ? "long" : "short");
+  // now and then, a thank-you on the way in
+  if (Math.random() < 1 / 12) { const c = document.getElementById("intro-credit"); if (c) c.hidden = false; }
   if (G.desktop) { audio.unlock(); setTimeout(() => audio.play("bossDown", undefined, undefined, 0.35), 350); }
   let done = false;
   const finish = () => {
@@ -1322,11 +1468,20 @@ function playIntro() {
 // ---------------------------------------------------------------------------
 // co-op: what a client does when the host says so
 // ---------------------------------------------------------------------------
-net.on.lobby = (members) => ui.renderLobby(members, net.role === "host");
+net.on.lobby = (members) => { ui.renderLobby(members, net.role === "host"); party.lobby(members); };
 net.on.status = (text, kind) => ui.lobbyStatus(text, kind);
 initCoop({
   startRun,
   toMenu,
+  // the party leader went back to the Hangar: so do you (still in the party)
+  partyHome: () => { if (G.state !== "menu") { fileRun(); party.home(); toMenu(); ui.toast("Back in the Hangar with your party", 2400); } },
+  sigilShard: (n) => { if (n > 0 && n <= 3) earnSigils(n, "drop"); },
+  partyReady: (id, r) => party.onReady(id, r),
+  partyPick: (msg) => party.onPick(msg),
+  partyCheck: (msg) => party.onCheck(msg),
+  partyStarted: () => { party.ready = false; },
+  kicked: () => { const inRun = G.state !== "menu"; endCoop(); if (inRun) toMenu(); party.changed(); ui.toast("You were removed from the party", 2800); },
+  partyClosed: () => { party.changed(); ui.toast("The party leader left. You're on your own now.", 3000); },
   toast: (t, ms) => ui.toast(t, ms),
   openUpgrade: (msg) => {
     G.wave = msg.w; G.lastBonus = msg.bonus || "";
@@ -1342,7 +1497,7 @@ initCoop({
     waveIntro(n);
   },
   rushDone: (sum) => { sigilsRush(sum); fileRun(); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
-  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
+  waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(msg.sig); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
     delete sum.dmg; delete sum.big; delete sum.topGun;

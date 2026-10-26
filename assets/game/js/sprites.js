@@ -163,6 +163,45 @@ export const ROBOT_ART = {
     g.strokeStyle = "rgba(255,255,255,0.75)"; g.lineWidth = 1.6;
     g.beginPath(); g.arc(-4, 0, 27, -half + 0.12, half - 0.12); g.stroke();
   } },
+  // 4.5 mini-bosses: big, heavy, unmistakable
+  warden: { size: 104, accent: C.amber, draw(g, P, a) {
+    poly(g, 6, 27, Math.PI / 6); bodyStroke(g, P, a, 3);
+    g.strokeStyle = "rgba(255,200,97,0.4)"; g.lineWidth = 1.6;
+    poly(g, 6, 17, Math.PI / 6); g.stroke();
+    for (let i = 0; i < 6; i++) { const t = (i / 6) * TAU + Math.PI / 6; g.beginPath(); g.moveTo(Math.cos(t) * 17, Math.sin(t) * 17); g.lineTo(Math.cos(t) * 27, Math.sin(t) * 27); g.stroke(); }
+    g.fillStyle = C.steel2; circle(g, 0, 0, 10); g.fill();
+    eye(g, P, 4, 0, 5, C.amber);
+    glow(g, P, C.blue, 8); g.fillStyle = C.blue;
+    for (const [x, y] of [[-14, -14], [-14, 14]]) { circle(g, x, y, 2.6); g.fill(); }
+    noGlow(g);
+  } },
+  lancer: { size: 96, accent: C.magenta, draw(g, P, a) {
+    // a long arrowhead with twin blades swept back
+    g.strokeStyle = "#9aa4cf"; g.lineWidth = 2.6;
+    g.beginPath(); g.moveTo(-6, -10); g.lineTo(-30, -24); g.moveTo(-6, 10); g.lineTo(-30, 24); g.stroke();
+    glow(g, P, a, 10); g.strokeStyle = a; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-14, -15); g.lineTo(-32, -26); g.moveTo(-14, 15); g.lineTo(-32, 26); g.stroke(); noGlow(g);
+    shapeFromPoints(g, [36, 0, 4, -13, -18, -7, -12, 0, -18, 7, 4, 13]); bodyStroke(g, P, a, 2.6);
+    g.strokeStyle = "rgba(255,66,208,0.45)"; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(-8, 0); g.lineTo(28, 0); g.stroke();
+    eye(g, P, 14, 0, 4, C.white);
+    glow(g, P, C.magenta, 12); g.fillStyle = C.magenta; circle(g, -13, 0, 3.4); g.fill(); noGlow(g);
+  } },
+  siege: { size: 108, accent: C.orange, draw(g, P, a) {
+    // treads, a heavy hull, a mortar barrel
+    g.fillStyle = C.steel2;
+    rrect(g, -26, -30, 50, 11, 4); g.fill(); rrect(g, -26, 19, 50, 11, 4); g.fill();
+    g.strokeStyle = "rgba(255,138,61,0.5)"; g.lineWidth = 1.2;
+    for (let x = -22; x < 22; x += 7) { g.beginPath(); g.moveTo(x, -30); g.lineTo(x, -19); g.moveTo(x, 19); g.lineTo(x, 30); g.stroke(); }
+    rrect(g, -22, -18, 42, 36, 9); bodyStroke(g, P, a, 3);
+    g.fillStyle = "#2a3366"; rrect(g, 6, -6, 30, 12, 4); g.fill();
+    g.strokeStyle = a; g.lineWidth = 2; g.stroke();
+    g.fillStyle = "#0b0f26"; circle(g, 36, 0, 4.4); g.fill();
+    eye(g, P, -6, 0, 5.5, C.orange);
+    glow(g, P, C.red, 8); g.fillStyle = C.red;
+    circle(g, -16, -11, 2.2); g.fill(); circle(g, -16, 11, 2.2); g.fill();
+    noGlow(g);
+  } },
   boomer: { size: 50, accent: C.orange, draw(g, P, a) {
     g.strokeStyle = "#8b8fb5"; g.lineWidth = 2; g.beginPath(); g.moveTo(-13, 0); g.quadraticCurveTo(-19, -5, -21, 1); g.stroke();
     eye(g, P, -21, 1, 2.2, C.amber);
@@ -604,6 +643,105 @@ const HAT_ART = {
     g.fillStyle = disk; g.beginPath(); g.ellipse(0, 0, 10.5, 2.8, 0, 0, Math.PI); g.closePath(); g.fill();
     g.restore();
   },
+  // 4.5 level hats: each one more than the last
+  cadet(g, P) {
+    g.fillStyle = "#1b2a5c"; g.beginPath(); g.ellipse(0, -22.4, 9.6, 4.6, 0, Math.PI, TAU); g.fill();
+    g.fillStyle = "#2c4290"; g.beginPath(); g.ellipse(2.2, -21.4, 12.4, 1.9, 0, 0, TAU); g.fill();
+    glow(g, P, "#63f4ff", 9);
+    g.fillStyle = "#63f4ff";
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * 7.5, -24.4); g.lineTo(s * 17.5, -29.6); g.lineTo(s * 15.4, -26.2); g.lineTo(s * 18.4, -25.6); g.lineTo(s * 9.2, -22.4); g.closePath(); g.fill(); }
+    noGlow(g);
+    g.strokeStyle = "#ffe14d"; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-2.6, -24.6); g.lineTo(0, -26.8); g.lineTo(2.6, -24.6); g.stroke();
+  },
+  comet(g, P) {
+    g.strokeStyle = "#8f9cc7"; g.lineWidth = 1.1;
+    g.beginPath(); g.moveTo(-3, -21); g.quadraticCurveTo(-5, -26, -2.5, -29); g.moveTo(3, -21); g.quadraticCurveTo(5, -25, 3.5, -28); g.stroke();
+    glow(g, P, "#bff7ff", 10);
+    g.strokeStyle = "rgba(191,247,255,0.7)"; g.lineWidth = 1.6;
+    g.beginPath(); g.ellipse(0, -27.5, 10, 3.2, -0.25, Math.PI * 0.15, Math.PI * 0.95); g.stroke();
+    g.fillStyle = "#ffffff"; circle(g, -8.6, -29.3, 2.4); g.fill();
+    g.fillStyle = "#63f4ff"; circle(g, -2.5, -29.2, 1.3); g.fill(); circle(g, 3.5, -28.2, 1.3); g.fill();
+    noGlow(g);
+  },
+  ringed(g, P) {
+    const sph = g.createRadialGradient(-1.6, -29, 0.6, 0, -27.4, 5.4);
+    sph.addColorStop(0, "#efe6ff"); sph.addColorStop(0.45, "#a57bff"); sph.addColorStop(1, "#3c1f86");
+    glow(g, P, "#a57bff", 8);
+    g.fillStyle = sph; circle(g, 0, -26.6, 5); g.fill();
+    noGlow(g);
+    g.strokeStyle = "#73ffce"; g.lineWidth = 1.5;
+    g.beginPath(); g.ellipse(0, -26.6, 10.5, 2.4, -0.3, 0, TAU); g.stroke();
+    g.fillStyle = sph; g.beginPath(); g.ellipse(0, -26.6, 5, 5, 0, Math.PI * 1.04, Math.PI * 1.96); g.fill();
+    glow(g, P, "#ffffff", 5); g.fillStyle = "#ffffff"; circle(g, 9.8, -30, 1.2); g.fill(); noGlow(g);
+  },
+  nebula(g, P) {
+    const grad = g.createLinearGradient(0, -31, 0, -21);
+    grad.addColorStop(0, "#63f4ff"); grad.addColorStop(0.45, "#ff42d0"); grad.addColorStop(1, "#8e44ff");
+    glow(g, P, "#ff42d0", 12);
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(-8.5, -21);
+    const tips = [[-8, -27], [-4, -30.6], [0, -27.6], [0, -31.6], [4, -30.6], [8, -27]];
+    g.quadraticCurveTo(-9.5, -24, tips[0][0], tips[0][1]); g.quadraticCurveTo(-5.5, -25, tips[1][0], tips[1][1]);
+    g.quadraticCurveTo(-1.6, -26, tips[3][0], tips[3][1]); g.quadraticCurveTo(1.6, -26, tips[4][0], tips[4][1]);
+    g.quadraticCurveTo(5.5, -25, tips[5][0], tips[5][1]); g.quadraticCurveTo(9.5, -24, 8.5, -21); g.closePath(); g.fill();
+    noGlow(g);
+    g.fillStyle = "#ffffff";
+    for (const [x, y, r] of [[-4, -26, 0.9], [3.2, -24.6, 0.7], [0.6, -28.4, 0.8], [-6.6, -23.2, 0.6]]) { g.save(); g.translate(x, y); starPath(g, r * 1.8, r * 0.7); g.fill(); g.restore(); }
+  },
+  pulsar(g, P) {
+    glow(g, P, "#9fe8ff", 14);
+    const beam = g.createLinearGradient(0, -32, 0, -21);
+    beam.addColorStop(0, "rgba(159,232,255,0)"); beam.addColorStop(0.5, "rgba(159,232,255,0.85)"); beam.addColorStop(1, "rgba(159,232,255,0)");
+    g.fillStyle = beam; g.beginPath(); g.moveTo(-1.2, -32); g.lineTo(1.2, -32); g.lineTo(0.6, -21); g.lineTo(-0.6, -21); g.closePath(); g.fill();
+    g.save(); g.translate(0, -26.6); g.rotate(0.9);
+    g.fillStyle = beam; g.fillRect(-0.9, -9, 1.8, 18);
+    g.restore();
+    g.strokeStyle = "rgba(191,247,255,0.9)"; g.lineWidth = 1;
+    g.beginPath(); g.ellipse(0, -26.6, 9.5, 2, 0.15, 0, TAU); g.stroke();
+    g.beginPath(); g.ellipse(0, -26.6, 6.5, 1.4, -0.4, 0, TAU); g.stroke();
+    g.fillStyle = "#ffffff"; circle(g, 0, -26.6, 2.8); g.fill();
+    noGlow(g);
+    g.fillStyle = "#e9fdff"; circle(g, 0, -26.6, 1.4); g.fill();
+  },
+  corona(g, P) {
+    glow(g, P, "#ffb347", 14);
+    for (let i = 0; i < 13; i++) {
+      const a = Math.PI + (i / 12) * Math.PI, long = i % 2 === 0;
+      const r0 = 5.2, r1 = long ? 11.5 : 8.2;
+      g.fillStyle = long ? "#ffd45c" : "#ff8a3d";
+      g.beginPath();
+      g.moveTo(Math.cos(a - 0.12) * r0, -21.5 + Math.sin(a - 0.12) * r0);
+      g.lineTo(Math.cos(a) * r1, -21.5 + Math.sin(a) * r1 * 0.95);
+      g.lineTo(Math.cos(a + 0.12) * r0, -21.5 + Math.sin(a + 0.12) * r0);
+      g.closePath(); g.fill();
+    }
+    const core = g.createRadialGradient(0, -24.5, 0.5, 0, -24.5, 5.4);
+    core.addColorStop(0, "#ffffff"); core.addColorStop(0.5, "#fff1b8"); core.addColorStop(1, "rgba(255,179,71,0)");
+    g.fillStyle = core; g.beginPath(); g.ellipse(0, -23.5, 6, 3.8, 0, Math.PI, TAU); g.fill();
+    noGlow(g);
+  },
+  ascended(g, P) {
+    // the prismatic halo
+    const halo = g.createLinearGradient(-11, 0, 11, 0);
+    ["#ff3b5c", "#ffd45c", "#73ffce", "#63f4ff", "#a57bff", "#ff42d0"].forEach((c, i) => halo.addColorStop(i / 5, c));
+    glow(g, P, "#ffffff", 12);
+    g.strokeStyle = halo; g.lineWidth = 1.8;
+    g.beginPath(); g.ellipse(0, -30, 10.5, 1.8, 0, 0, TAU); g.stroke();
+    // a gold crown, seven points
+    const gold = g.createLinearGradient(0, -29, 0, -21);
+    gold.addColorStop(0, "#fff6d1"); gold.addColorStop(0.5, "#ffd45c"); gold.addColorStop(1, "#c98a1a");
+    g.fillStyle = gold;
+    shapeFromPoints(g, [-8, -21, -8.6, -26.2, -6, -24, -4.4, -28, -2.2, -24.4, 0, -29, 2.2, -24.4, 4.4, -28, 6, -24, 8.6, -26.2, 8, -21]);
+    g.fill();
+    noGlow(g);
+    g.fillStyle = "rgba(120,70,0,0.45)"; g.fillRect(-8, -22.6, 16, 1.4);
+    // the black hole gem
+    g.fillStyle = "#ff8a3d"; g.beginPath(); g.ellipse(0, -23.6, 3.6, 1.1, 0, 0, TAU); g.fill();
+    g.fillStyle = "#000000"; circle(g, 0, -23.6, 1.6); g.fill();
+    g.strokeStyle = "#ffe2c4"; g.lineWidth = 0.5; circle(g, 0, -23.6, 1.9); g.stroke();
+    g.fillStyle = "#ffffff";
+    for (const [x, y] of [[-10.5, -27], [10.5, -27.5], [0, -31.6]]) { g.save(); g.translate(x, y); starPath(g, 1.5, 0.55); g.fill(); g.restore(); }
+  },
   halo(g, P) {
     glow(g, P, "#fff3c4", 12);
     g.strokeStyle = "#ffe9a8"; g.lineWidth = 2.2;
@@ -652,7 +790,7 @@ export const sprites = {
   P: 0,
   robots: {},          // type → { base, flash, ally }
   player: null, playerFlash: null,
-  star: null, gold: null, heart: null, covet: null,
+  star: null, gold: null, heart: null, covet: null, sigil: null,
   bullet: null, bulletCrit: null, bulletEnvy: null,
   shots: [],           // player shots by bullet kind (0 blaster, 1 crit, 2 charged orb, 3 envy, 4.. one per gun)
   orbs: {},            // color → sprite
@@ -688,6 +826,15 @@ export const sprites = {
     this.covet = make(28, P, (g) => {        // a Covetous King star: stolen mint, a gold heart
       glow(g, P, C.mint, 10); g.fillStyle = C.mint; starPath(g, 9, 4); g.fill(); noGlow(g);
       g.fillStyle = C.amber; starPath(g, 4.5, 2); g.fill();
+    });
+    this.sigil = make(34, P, (g) => {        // a Sigil shard (4.5): a bright cyan gem
+      glow(g, P, C.cyan, 14);
+      g.fillStyle = C.cyan;
+      g.beginPath(); g.moveTo(0, -11); g.lineTo(9, -3); g.lineTo(0, 11); g.lineTo(-9, -3); g.closePath(); g.fill();
+      noGlow(g);
+      g.fillStyle = "#e8fdff";
+      g.beginPath(); g.moveTo(0, -11); g.lineTo(4, -3); g.lineTo(0, 6); g.lineTo(-4, -3); g.closePath(); g.fill();
+      g.fillStyle = "rgba(255,255,255,0.9)"; g.fillRect(-9, -3.6, 18, 1.2);
     });
     this.heart = make(34, P, (g) => {
       glow(g, P, C.heart, 12); g.fillStyle = C.heart; heartPath(g, 11); g.fill(); noGlow(g);
