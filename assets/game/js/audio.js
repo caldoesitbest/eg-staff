@@ -402,6 +402,43 @@ const SOUNDS = {
     const t = now();
     tone(d, "sine", jitter(1200, 0.1), 400, t, 0.08, 0.12);
   }],
+  // ---- 4.6 ----
+  levelUp: [0.6, (d) => {           // a level: a lift, a bright run up, a held chord and a shimmer on top
+    const t = now();
+    tone(d, "sine", 130, 262, t, 0.35, 0.3, 0.01);
+    [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.05, 0.45, 0.09));
+    [1047, 1319, 1568].forEach((f) => tone(d, "sawtooth", f, f, t + 0.32, 0.9, 0.022, 0.04));
+    noise(d, t + 0.3, 0.8, 0.07, "highpass", 6000, 12000);
+  }],
+  portal: [1, (d) => {              // a boss portal tearing open: a swirl that winds up, then a shimmer as it rises out
+    const t = now();
+    noise(d, t, 0.95, 0.2, "bandpass", 180, 2600, 3);
+    tone(d, "sawtooth", 38, 120, t, 0.95, 0.1, 0.5);
+    tone(d, "sine", 300, 1200, t + 0.9, 1.1, 0.045, 0.3);
+    noise(d, t + 0.9, 1.1, 0.06, "highpass", 4000, 9000);
+  }],
+  surge: [0.5, (d) => {             // a boss surge: a growl that climbs, then a crack
+    const t = now();
+    tone(d, "sawtooth", 70, 150, t, 0.6, 0.22, 0.03);
+    tone(d, "square", 73, 156, t, 0.6, 0.07, 0.03);
+    noise(d, t, 0.55, 0.3, "bandpass", 300, 2200, 1.4);
+    noise(d, t + 0.45, 0.35, 0.4, "highpass", 1500, 6000);
+  }],
+  minibossAlarm: [1, (d) => {       // a mini-boss on its way: a two-tone klaxon, three times, over a low drone
+    const t = now();
+    for (let i = 0; i < 3; i++) { tone(d, "square", 740, 740, t + i * 0.36, 0.16, 0.05, 0.01); tone(d, "square", 554, 554, t + i * 0.36 + 0.17, 0.16, 0.05, 0.01); }
+    tone(d, "sawtooth", 55, 55, t, 1.1, 0.16, 0.2);
+  }],
+  tick: [0.035, (d, opts) => {      // a results number counting up (higher as it nears the end)
+    const t = now(), f = 1300 + ((opts && opts.p) || 0) * 900;
+    tone(d, "square", f, f, t, 0.025, 0.016);
+  }],
+  stamp: [0.5, (d) => {             // "new best" stamped on: a thump and a bright run
+    const t = now();
+    tone(d, "sine", 110, 40, t, 0.35, 0.6, 0.003);
+    noise(d, t, 0.25, 0.35, "lowpass", 3000, 200, 0.7);
+    [784, 988, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + 0.08 + i * 0.05, 0.5, 0.07));
+  }],
   heartbeat: [0.5, (d) => {
     const t = now();
     tone(d, "sine", 70, 45, t, 0.14, 0.4);

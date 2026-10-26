@@ -335,7 +335,7 @@ export function offerInfo(o) {
   if (o.bounty) text = "Boss bounty. " + text;
   if (o.id === "crown") { const t = crownTarget(); if (t) text += " (" + CARDS.find((c) => c.id === t).name + ")"; }
   return {
-    name: it.name, kicker: RARITY[it.r].name + " equipment" + (it.max > 1 ? " · " + (n + 1) + "/" + it.max : ""), col: RARITY[it.r].col, text,
+    name: it.name, kicker: RARITY[it.r].name + " gear" + (it.max > 1 ? " · " + (n + 1) + "/" + it.max : ""), col: RARITY[it.r].col, text,
     note: n ? "You have " + n : "", rarity: it.r,
   };
 }

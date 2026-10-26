@@ -2,6 +2,7 @@
    runs (without saving) when storage is blocked, full or in a private window. */
 
 import { BALANCE } from "./balance.js";
+import { DEFAULT_KEYS, cleanKeys } from "./keys.js";
 
 const KEY = "eg-glider-v1";
 // Save format version. 1: up to 4.1. 2 (4.2): Boss Rush records, achievements, cosmetics, lifetime stats.
@@ -71,6 +72,9 @@ function defaults() {
       crossStyle: "ring",   // ring | cross | dot | ringcross
       crossOutline: true,
       crossTarget: true,    // turns red over a robot
+      // 4.6
+      keys: { ...DEFAULT_KEYS },   // keyboard bindings (keys.js)
+      hudScale: 100,        // % (hearts, score and the buttons in a run)
     },
     seenHowTo: false,
     rotateHintDismissed: false,
@@ -185,6 +189,8 @@ export const store = {
         if (st.autoAim === true) st.autoAim = "auto";
         else if (st.autoAim === false) st.autoAim = "off";
         if (saved.settings && saved.settings.shakeAmt === undefined && saved.settings.shake === false) st.shakeAmt = 0;
+        st.keys = cleanKeys(st.keys);
+        st.hudScale = Math.max(80, Math.min(140, Number(st.hudScale) || 100));
       }
     } catch (e) {
       data = defaults();

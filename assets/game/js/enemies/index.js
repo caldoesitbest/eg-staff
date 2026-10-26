@@ -204,7 +204,7 @@ function surge(e) {
   fx.text(e.x, e.y - R - 34, "SURGE", col, 24, 1.1);
   fx.screenFlash(col, 0.25, 3);
   fx.shake(0.5);
-  audio.play("warn", e.x, e.y, 1);
+  audio.play("surge", e.x, e.y, 1);
   audio.impact();
   G.emit("bossSurge", e);
 }

@@ -14,7 +14,7 @@ import { renderer } from "./render.js";
 import { fx } from "./fx.js";
 import { ui } from "./ui.js";
 import { waves } from "./waves.js";
-import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer } from "./world.js";
+import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer, haptic } from "./world.js";
 import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
@@ -38,6 +38,7 @@ import { social } from "./social.js";
 import { pressureTick } from "./pressure.js";
 import { MINIBOSSES } from "./enemies/minibosses.js";
 import { splash } from "./splash.js";
+import { keys, keyName, moveKeys, setKeys } from "./keys.js";
 import { tutorial } from "./tutorial.js";
 import { payRun, level, tierOf } from "./xp.js";
 import { cloud } from "./cloud.js";
@@ -114,6 +115,8 @@ function applySettings() {
   fx.reduced = s.reducedMotion;
   ui.setReduced(s.reducedMotion);
   loop.setCap(s.fpsCap);
+  setKeys(s.keys);
+  ui.setHudScale(s.hudScale);
   applyQuality();
   if (!s.showFps) ui.setFps(null);
   store.save();
@@ -249,11 +252,11 @@ function startRun(opts) {
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
 
-const boostWord = () => (input.mode === "touch" ? "Tap ⚡" : input.mode === "gamepad" ? "Press A" : "Press Space");
+const boostWord = () => (input.mode === "touch" ? "Tap ⚡" : input.mode === "gamepad" ? "Press A" : "Press " + keyName(keys().boost));
 const HINTS = {
   1: () => (input.mode === "touch"
     ? "Left thumb moves. " + (G.settings.autoAim ? "You fire on your own." : "Right thumb aims and fires.")
-    : input.mode === "gamepad" ? "Left stick moves, right stick aims and fires." : "WASD to move, mouse to aim, hold click to fire."),
+    : input.mode === "gamepad" ? "Left stick moves, right stick aims and fires." : moveKeys() + " to move, mouse to aim, hold click to fire."),
   2: () => "Rippers flash, then charge in a line. " + boostWord() + " to boost through.",
   3: () => "Gunners hang back. Their orbs are slow: weave through.",
   4: () => "Splitters burst into minis when they pop.",
@@ -1138,7 +1141,9 @@ ui.init({
   onSettings: applySettings,
   onLook: () => renderer.setSuit(suitDef()),
   onSfx: (name) => audio.play(name),
-  onAchv: () => audio.play("achv"),
+  onAchv: (x) => audio.play(x && x.levelUp ? "levelUp" : "achv"),
+  onTick: (p) => audio.play("tick", undefined, undefined, 1, { p }),
+  onStamp: () => { audio.play("stamp"); haptic([20, 30, 60]); },
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
@@ -1178,7 +1183,7 @@ friendsUI.init({
 });
 const AIM_NAMES = { off: "Off", assist: "Aim assist", auto: "Full auto" };
 input.onHotkey = (code) => {
-  if (code !== "KeyT") return;
+  if (code !== "aim") return;
   const order = ["off", "assist", "auto"];
   const s = G.settings;
   s.autoAim = order[(order.indexOf(s.autoAim) + 1) % order.length];
@@ -1244,7 +1249,7 @@ window.addEventListener("keydown", (e) => {
     if (digit === 0 || digit === 1) { e.preventDefault(); ui.pickSwapSlot(digit); }
     return;
   }
-  if (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleBuild(); return; }
+  if (e.code === keys().build && !e.ctrlKey && !e.metaKey && !e.altKey && (s === "playing" || s === "clear" || s === "paused" || s === "shop" || s === "upgrade" || ui.screen === "build")) { e.preventDefault(); toggleBuild(); return; }
   if (ui.screen === "build") return;
   if (s === "shop") {
     if (digit >= 0) { e.preventDefault(); if (ui.armed) shopBuy(digit); return; }
@@ -1401,7 +1406,7 @@ const MINI_HINT = {
   lancer: "It paints a line, then dashes along it and the line bursts. Step off before it locks red.",
   siege: "Its shells land where you are and where you're heading. Keep turning, and don't hug it.",
 };
-G.on("minibossWarn", (type) => { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("bossIntro", undefined, undefined, 0.5); });
+G.on("minibossWarn", (type) => { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("minibossAlarm"); });
 G.on("minibossDown", (e) => {
   G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); });
 G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });

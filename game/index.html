@@ -245,6 +245,7 @@
     <div class="panel glow-card">
       <h2 class="panel-title" id="pause-title">Paused</h2>
       <p class="panel-sub" id="pause-sub"></p>
+      <dl class="pause-stats" id="pause-stats"></dl>
       <div class="stack">
         <button class="btn btn-primary" id="resume-btn" type="button"><i data-icon="zap"></i>Resume</button>
         <button class="btn btn-ghost" id="pause-build-btn" type="button"><i data-icon="layers"></i>Your build</button>
@@ -366,12 +367,19 @@
 
   <!-- game over -->
   <section class="screen screen-over" id="screen-over" hidden aria-labelledby="over-title">
-    <div class="panel panel-wide glow-card">
+    <div class="panel panel-wide glow-card over">
       <p class="kicker" id="over-kicker">Run over</p>
       <h2 class="over-title" id="over-title">The machines win this round</h2>
-      <div class="over-best" id="over-best" hidden></div>
+      <div class="over-hero">
+        <span class="over-diff" id="over-diff"></span>
+        <b class="over-score" id="over-score" aria-label="Score">0</b>
+        <small class="over-score-sub" id="over-score-sub" hidden></small>
+        <div class="over-best" id="over-best" hidden></div>
+      </div>
+      <dl class="over-stats over-main" id="over-stats"></dl>
+      <dl class="over-more" id="over-more"></dl>
+      <div class="over-rewards" id="over-rewards"></div>
       <div class="over-xp" id="over-xp" hidden></div>
-      <dl class="over-stats" id="over-stats"></dl>
       <div class="build" id="over-build"></div>
       <div class="over-online" id="over-online" hidden></div>
       <div class="over-actions">
@@ -472,6 +480,7 @@
         <button class="tab" id="stab-audio" data-tab="audio" type="button" role="tab" aria-selected="true">Audio</button>
         <button class="tab" id="stab-graphics" data-tab="graphics" type="button" role="tab" aria-selected="false">Graphics</button>
         <button class="tab" id="stab-gameplay" data-tab="gameplay" type="button" role="tab" aria-selected="false">Gameplay</button>
+        <button class="tab" id="stab-controls" data-tab="controls" type="button" role="tab" aria-selected="false">Controls</button>
       </div>
       <div class="set-page" data-page="audio" role="tabpanel" aria-labelledby="stab-audio">
         <label class="set-row"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
@@ -505,7 +514,7 @@
         <label class="set-row set-check"><input type="checkbox" id="set-fps"><span>Show FPS</span></label>
       </div>
       <div class="set-page" data-page="gameplay" role="tabpanel" aria-labelledby="stab-gameplay" hidden>
-        <label class="set-row"><span>Auto-aim <small>Works on mouse too: full auto fires at the nearest robot; hold left-click to aim yourself. <kbd>T</kbd> toggles in a run</small></span>
+        <label class="set-row"><span>Auto-aim <small>Works on mouse too: full auto fires at the nearest robot; hold left-click to aim yourself. <kbd id="set-aimkey">T</kbd> cycles it in a run</small></span>
           <select id="set-autoaim"><option value="off">Off</option><option value="assist">Aim assist</option><option value="auto">Full auto</option></select>
         </label>
         <label class="set-row"><span>Screen shake</span><input type="range" id="set-shake" min="0" max="100" step="10"></label>
@@ -515,6 +524,7 @@
         <label class="set-row set-check"><input type="checkbox" id="set-reduced"><span>Reduced motion <small>(calmer flashes, no shake)</small></span></label>
         <label class="set-row set-check"><input type="checkbox" id="set-lookahead"><span>Camera looks ahead <small>(leans toward where you aim)</small></span></label>
         <label class="set-row set-check"><input type="checkbox" id="set-arrows"><span>Off-screen markers <small>(arrows at the edge for robots you can't see)</small></span></label>
+        <label class="set-row"><span>HUD size <small>Hearts, score and the buttons in a run</small></span><input type="range" id="set-hudscale" min="80" max="140" step="10"></label>
         <label class="set-row set-check"><input type="checkbox" id="set-haptics"><span>Vibration <small>(where supported)</small></span></label>
         <label class="set-row set-check"><input type="checkbox" id="set-post"><span>Post my runs to the leaderboard <small>(when signed in with Discord)</small></span></label>
         <h3 class="set-h">Crosshair</h3>
@@ -533,6 +543,18 @@
           </div>
           <canvas class="cross-preview" id="cross-preview" width="120" height="120" aria-label="Crosshair preview"></canvas>
         </div>
+      </div>
+      <div class="set-page" data-page="controls" role="tabpanel" aria-labelledby="stab-controls" hidden>
+        <h3 class="set-h">Keyboard <small>pick an action, then press its new key (Esc cancels)</small></h3>
+        <div class="keybinds" id="keybinds"></div>
+        <p class="set-note">The arrow keys always move and <kbd>Shift</kbd> always boosts. <kbd>Esc</kbd> or <kbd>P</kbd> pauses, <kbd>1</kbd> / <kbd>2</kbd> pick a gun and the mouse wheel swaps.</p>
+        <button class="btn btn-ghost btn-sm keys-reset" id="keys-reset" type="button"><i data-icon="refresh-cw"></i>Reset keys</button>
+        <h3 class="set-h">Mouse</h3>
+        <dl class="pad-map"><div><dt>Fire</dt><dd>Hold left-click</dd></div><div><dt>Charged shot</dt><dd>Hold right-click, let go</dd></div><div><dt>Swap gun</dt><dd>Mouse wheel</dd></div></dl>
+        <h3 class="set-h">Controller</h3>
+        <dl class="pad-map"><div><dt>Move</dt><dd>Left stick or d-pad</dd></div><div><dt>Aim and fire</dt><dd>Right stick (or hold RT)</dd></div><div><dt>Charged shot</dt><dd>Hold LT</dd></div><div><dt>Boost</dt><dd>A, LB or RB</dd></div><div><dt>Swap gun</dt><dd>Y</dd></div><div><dt>Your build</dt><dd>View</dd></div><div><dt>Pause</dt><dd>Menu</dd></div><div><dt>Menus</dt><dd>A picks, B backs out, LB / RB tabs</dd></div></dl>
+        <h3 class="set-h">Touch</h3>
+        <dl class="pad-map"><div><dt>Move</dt><dd>Drag on the left half</dd></div><div><dt>Aim and fire</dt><dd>Drag on the right half</dd></div><div><dt>Boost, charge</dt><dd>The buttons on the right</dd></div><div><dt>Swap gun</dt><dd>Tap your gun (top left)</dd></div></dl>
       </div>
       <p class="set-note" id="set-note"></p>
       <button class="btn btn-primary" id="settings-done" type="button">Done</button>
@@ -705,6 +727,7 @@
     "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=10",
     "/assets/game/js/render.js": "/assets/game/js/render.js?v=10",
     "/assets/game/js/social.js": "/assets/game/js/social.js?v=10",
+    "/assets/game/js/keys.js": "/assets/game/js/keys.js?v=10",
     "/assets/game/js/splash.js": "/assets/game/js/splash.js?v=10",
     "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=10",
     "/assets/game/js/state.js": "/assets/game/js/state.js?v=10",

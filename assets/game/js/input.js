@@ -1,6 +1,8 @@
 /* Keyboard + mouse, twin-stick touch (floating sticks) and gamepad.
    The control mode follows whatever the player actually touched last, not the user agent. */
 
+import { keys } from "./keys.js";
+
 const STICK_RADIUS = 56;     // CSS px for full deflection
 const DEAD = 0.14;
 const PAD_DEAD = 0.22;
@@ -76,9 +78,12 @@ export const input = {
     this.updateRect = updateRect;
 
     // ---------- keyboard ----------
-    const GAME_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "ShiftLeft", "ShiftRight", "KeyE", "KeyQ"]);
+    // the bound keys (keys.js, Settings > Controls); the arrows always move and Shift always boosts
+    const gameKey = (c) => { const B = keys(); return !!c && (c === B.up || c === B.down || c === B.left || c === B.right || c === B.boost || c === B.swap || c === B.charge || c.startsWith("Arrow") || c === "ShiftLeft" || c === "ShiftRight"); };
     window.addEventListener("keydown", (e) => {
-      if (e.repeat && !GAME_KEYS.has(e.code)) return;
+      if (self.capture) return;           // Settings is waiting for a new key
+      const B = keys(), game = gameKey(e.code);
+      if (e.repeat && !game) return;
       const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA");
       if (!typing && e.key !== "Tab") self.setMode("kbm");
       if (e.code === "Escape" || e.code === "KeyP") {
@@ -86,13 +91,13 @@ export const input = {
         return;
       }
       if (!self.enabled) return;
-      if (GAME_KEYS.has(e.code)) {
+      if (game) {
         e.preventDefault();
-        if (!e.repeat && (e.code === "Space" || e.code === "ShiftLeft" || e.code === "ShiftRight")) self.queued.boost = true;
-        if (!e.repeat && e.code === "KeyQ") { self.queued.swap = true; self.swapTo = undefined; }
+        if (!e.repeat && (e.code === B.boost || e.code === "ShiftLeft" || e.code === "ShiftRight")) self.queued.boost = true;
+        if (!e.repeat && e.code === B.swap) { self.queued.swap = true; self.swapTo = undefined; }
       }
       if (!e.repeat && (e.code === "Digit1" || e.code === "Digit2")) { self.queued.swap = true; self.swapTo = e.code === "Digit1" ? 0 : 1; }
-      if (!e.repeat && e.code === "KeyT" && self.onHotkey) self.onHotkey(e.code);
+      if (!e.repeat && e.code === B.aim && self.onHotkey) self.onHotkey("aim");
       self.keys.add(e.code);
     });
     window.addEventListener("keyup", (e) => { self.keys.delete(e.code); });
@@ -231,11 +236,11 @@ export const input = {
   /** Called once per rendered frame: reads the gamepad and combines everything. */
   poll(dt) {
     let mx = 0, my = 0;
-    const k = this.keys;
-    if (k.has("KeyA") || k.has("ArrowLeft")) mx -= 1;
-    if (k.has("KeyD") || k.has("ArrowRight")) mx += 1;
-    if (k.has("KeyW") || k.has("ArrowUp")) my -= 1;
-    if (k.has("KeyS") || k.has("ArrowDown")) my += 1;
+    const k = this.keys, B = keys();
+    if (k.has(B.left) || k.has("ArrowLeft")) mx -= 1;
+    if (k.has(B.right) || k.has("ArrowRight")) mx += 1;
+    if (k.has(B.up) || k.has("ArrowUp")) my -= 1;
+    if (k.has(B.down) || k.has("ArrowDown")) my += 1;
     if (mx || my) { const l = Math.hypot(mx, my); mx /= l; my /= l; }
 
     let fire = false;
@@ -245,7 +250,7 @@ export const input = {
     if (this.mode === "kbm") {
       if (this.mouse.seen) aimMode = "mouse";
       fire = this.mouse.down;
-      charge = this.mouse.charge || k.has("KeyE");
+      charge = this.mouse.charge || k.has(B.charge);
     }
     if (this.touchCharge) charge = true;
 
