@@ -625,3 +625,71 @@ cheapest to most serious:
    that keeps WebSockets open; Supabase Edge Functions can't), server-side match results, and a separate `pvp` board
    and save section. Don't post PvP results to the existing boards from clients.
 Keep PvP's modes and records apart from the Ladder, Daily, Co-op and Boss Rush ones, as the boards are today.
+
+---
+
+# Phase VIII: 4.7 "Cosmic Couture"
+
+## Added
+- **The in-run Sigil counter** shows what this run has earned ("+3"), not your balance.
+- **Outfits.** Suits can carry a pattern now (`drawPattern` in `sprites.js`: split, dots, stripes, hazard,
+  check, tux, camo, stars), plus a clown ruff, a bow tie, pom-poms, a racing number and a hazard mark.
+  - New suits: Monochrome, Big Top, Tuxedo, Hazard Crew, Checkered Racer, Frost Camo, Retrowave, Starfield.
+  - Hats: Rainbow Wig, Party Hat. Visors: Clown Nose, Monocle (drawn over the glass).
+  - Trails: Confetti (five colours; trails can have any number now), Champagne. Finishes: Big Top Red, Ivory.
+  - Two collections, each with a title: The Big Top ("Class Clown") and Black Tie ("The Distinguished").
+- **Buy a collection:** the rest of a collection in one go, 15% off when it's two items or more
+  (`setOffer` / `buySet`, `BALANCE.sigils.bundleOff`), with a confirm step.
+- **Live shop cards.** Every card (and the Play tab's "In the Item Shop today", and the purchase reveal) is a
+  small Hangar stage: your pilot wearing the item, lit on the pad, breathing.
+  - Each card is framed on its item: head for hats and visors, full body for suits and trails.
+  - Only cards on screen are drawn, and they share a 4.5 ms budget each frame (about 0.12 ms a card, measured).
+  - The card under the mouse follows it.
+  - Reduced motion and the Low and Potato presets keep them still.
+- **Get Sigils** (`sigilshop.js`, `docs/SIGIL_STORE.md`, `docs/game-4.7.sql`, `docs/server/*.ts`): Sigil packs
+  for money through Stripe Checkout.
+  - The server sets the prices.
+  - The webhook checks Stripe's signature (tested against Python-made signatures: valid, tampered, wrong
+    secret, stale, missing).
+  - Paid Sigils are the account's server total, added to the balance on every device. A refund or dispute
+    takes them back.
+  - $50 per 30 days per account, cosmetics only, no random rewards.
+  - Hidden until the owner sets it up and adds `SIGIL_STORE: true` to `assets/config.js`. The game doesn't
+    call the server for it before then.
+- **Sound:** a generated space reverb on a send for the big moments (explosions, bosses, portals, level-ups,
+  stamps); kills and explosions get a sharper attack.
+
+## Tests
+`?debug=1&tests=1`: 87 checks, all pass. New ones cover:
+- every suit, hat and visor drawing;
+- the new collections' titles;
+- the bundle price and buying (exact price, one Sigil short, title, nothing left);
+- paid Sigils: credited once, a refund comes off, another account's don't stay.
+
+The store UI was walked through against a mocked server:
+- hidden on the live server;
+- the sign-in prompt, then the packs;
+- a non-Stripe checkout address refused, and a Stripe one followed;
+- coming back canceled.
+
+## A game engine? (asked in 4.7)
+The game is about 24,000 lines of plain JavaScript drawing to a Canvas, with custom co-op netcode over WebRTC,
+Supabase, and three builds (website, Windows, Android) from one codebase.
+
+**Porting to Godot 4** (free, exports to web, Windows, Android and iOS) would mean rewriting all of it:
+- the game logic in GDScript;
+- the sprites (they're drawn in code today) as Godot scenes or art;
+- the co-op netcode on Godot's multiplayer;
+- the shop and saves on top of Supabase's HTTP API.
+
+That's months of work, and the web build would go from about 1 MB to about 30–40 MB with a slower first load.
+Unity is heavier still for the web.
+
+**What an engine gives you:** an editor, shaders, real lighting and particles, physics, animation tools, and
+console and mobile store exports.
+
+**A cheaper middle path:** keep the game on the web and move only the renderer to WebGL (PixiJS). Bloom,
+lighting, distortion and many more particles become possible, one piece at a time, without rewriting the game.
+
+**Recommendation:** stay on the web, and consider PixiJS for the renderer. Move to Godot only if consoles or the
+app stores become a goal.

@@ -56,7 +56,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 10;
+const NEWS_VERSION = 11;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
