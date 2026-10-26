@@ -320,6 +320,11 @@ function waveIntro(n) {
     audio.musicIntensity(1);
   }
   audio.play("wave");
+  // 4.6: past your best wave (solo Ladder runs that count): said once, the first wave past it
+  const bw = store.data.best.wave || 0;
+  if (bw >= 5 && n === bw + 1 && G.net.role === "off" && !G.daily && !G.debug.on) {
+    setTimeout(() => { if (G.state === "playing" || G.state === "clear") { ui.toast("Past your best (wave " + bw + "). Every wave from here is a record.", 3400); audio.play("stamp"); } }, 900);
+  }
 }
 
 // Climbing: remember the highest rung you've beaten.
@@ -1409,7 +1414,17 @@ const MINI_HINT = {
 function miniWarn(type) { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("minibossAlarm"); }
 G.on("minibossWarn", (type) => { miniWarn(type); if (G.net.role === "host") hostSend({ k: "mini", type }); });
 G.on("minibossDown", (e) => {
-  G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); });
+  G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); audio.play("clear"); });
+// 4.6: a combo milestone, called out over your head (and the HUD's combo meter flares)
+const COMBO_COL = [[300, "#ff42d0"], [150, "#ffc861"], [100, "#ff7a3d"], [50, "#73ffce"], [0, "#63f4ff"]];
+G.on("comboMark", (n) => {
+  const P = G.me;
+  if (!P || P.dead) return;
+  const col = COMBO_COL.find((c) => n >= c[0])[1];
+  fx.text(P.x, P.y - 58, n + " COMBO", col, n >= 100 ? 26 : 21, 1.3);
+  audio.play("comboUp", undefined, undefined, 1, { n });
+  ui.flareCombo(col);
+});
 G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });
 if (G.desktop) {
   ui.setDesktop(true);

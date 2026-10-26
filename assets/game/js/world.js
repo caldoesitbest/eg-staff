@@ -142,6 +142,9 @@ export function flushDamage(e) {
   e.numAcc = 0;
 }
 
+// 4.6: combo milestones get called out
+const COMBO_MARKS = [25, 50, 100, 150, 200, 300];
+
 export function killEnemy(e, silent) {
   if (e.dead) return;
   e.dead = true;
@@ -154,6 +157,7 @@ export function killEnemy(e, silent) {
     G.combo++;
     G.comboTimer = BALANCE.combo.window;
     if (G.combo > G.bestCombo) G.bestCombo = G.combo;
+    if (COMBO_MARKS.includes(G.combo) || (G.combo > 300 && G.combo % 100 === 0)) G.emit("comboMark", G.combo);
     addScore(e.score);
   }
   if (!e.boss) {

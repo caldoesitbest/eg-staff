@@ -56,7 +56,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 9;
+const NEWS_VERSION = 10;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
@@ -278,6 +278,13 @@ export const ui = {
   },
 
   setReduced(on) { this.els.game.classList.toggle("reduced", !!on); },
+  /** A combo milestone: the HUD's combo meter flares in that colour. */
+  flareCombo(col) {
+    const n = this.els["hud-combo"];
+    if (!n) return;
+    n.style.setProperty("--flare", col);
+    n.classList.remove("flare"); void n.offsetWidth; n.classList.add("flare");
+  },
   setHudScale(pct) { this.els.game.style.setProperty("--hud-zoom", (Math.max(80, Math.min(140, pct || 100)) / 100).toFixed(2)); },
 
   /** Settings > Controls: each action and its key. Pick one, press the new key (Esc cancels); a key that was

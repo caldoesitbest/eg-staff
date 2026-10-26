@@ -572,3 +572,56 @@ game behaves as before: saves stay on each device, and the leaderboard shows the
 `?debug=1&tests=1`: 78 checks (all pass), including the swap dialog (cancel spends nothing), friend codes, the
 economy (idle/short runs pay nothing, the daily cap, firsts pay once, Rush's daily clears), levels, cloud merge
 (union and ledger, idempotent), endless scaling, and migrations from 4.1/4.2/4.3 saves to version 6.
+
+---
+
+# Phase VII: 4.6 "Cosmic Shine" (polish)
+
+A polish pass over everything a player sees and hears, plus the bugs a full QA sweep turned up (desktop 1280×720,
+a phone held sideways 844×390 and upright 390×844, every screen, console errors, text spilling out of its box).
+
+## Fixed
+- **The Challenges tab crashed** (4.5's Sigil economy renamed fields the "Earning Sigils" list still read). A new test
+  draws every Hangar tab and menu screen, so a screen that throws fails the suite.
+- **Co-op clients broke when a mini-boss turned up**: the snapshot decoder didn't know mini-boss types, so the
+  renderer read `e.kind.drawUnder` of nothing. Clients now get mini-bosses (aim lines, real health, the resolve
+  flash), the boss portal, the "mini-boss incoming" warning and strike/surge rings in their real colours.
+- **A box around the wave banner**: the site's own `.banner` image style was leaking in. The banner also sits higher
+  and scales with screen height, so it no longer covers your pilot.
+- Armory labels ran into the lock button; the HUD showed through card picks and the Armory.
+
+## Added
+- **Results screen**: the score counts up (ticking), "new best" stamps on when it lands, the run's main numbers
+  count up in tiles, the rest in a tidy list, Sigils and contracts as reward chips, and "One more run" stays in reach
+  on a phone held sideways. The win screen's numbers count up too.
+- **Pause** shows the run: mode and difficulty, time, kills, best combo, stars, Sigils, and how you stand against
+  your best wave. Two columns on anything wider than a phone.
+- **Settings > Controls**: rebind every keyboard action (`keys.js`: a key that was another action's swaps with it;
+  Esc/P, Tab, Enter, 1-4, arrows and Shift stay as they are), with the mouse, controller and touch layouts listed.
+  Every hint (the Hangar's controls line, How to play, wave tips, flight school) follows the bindings.
+  **HUD size** (80-140%) in Gameplay. Both are new settings with defaults, so no save migration.
+- **Moments**: combo milestones (25, 50, 100, 150, 200, 300, then every 100) called out over your head with the HUD
+  combo meter flaring; passing your best wave mid-run gets a cheer.
+- **Sounds**: level-up, boss portal, surge, mini-boss klaxon, results ticks, the "new best" stamp, combo milestones,
+  mini-boss down.
+
+## Tests
+`?debug=1&tests=1`: 79 checks, all pass. A live two-player run (host + guest over the real lobby) with mini-bosses
+and a boss: the guest draws everything with no console errors and sees the same portal as the host.
+
+## Future: a PvP mode (notes, nothing built)
+The co-op netcode is **host-authoritative over WebRTC**: the host simulates the world, guests send inputs and draw
+snapshots. That's fine against robots but unfair head-to-head (the host has no lag and could tamper). Options, from
+cheapest to most serious:
+1. **Versus survival (recommended first)**: two to four pilots each fly their own seeded arena, locally, exactly
+   like solo; kills, combos and Perfect Boosts "send" robots or hazards into the others' arenas (a Tetris 99 shape),
+   last pilot standing wins. Only small events cross the wire, so lag barely matters, and it reuses the whole PvE
+   game, the party system and the lobby. Needs: an event channel on `net.js`, a "garbage" queue in `waves.js`, a
+   versus HUD (opponents' health and wave), normalised loadouts or a draft so builds start level.
+2. **Duels / arena PvP** (player shots hit players): needs player-vs-player collision in `world.js`, a separate
+   balance table (PvE builds deal far too much), lag compensation for the guest's shots, and spawn/respawn rules.
+   Host-authoritative is acceptable for friends-only matches.
+3. **Ranked**: anything with a ladder or Elo needs an authoritative server (a small Node/Deno process on a host
+   that keeps WebSockets open; Supabase Edge Functions can't), server-side match results, and a separate `pvp` board
+   and save section. Don't post PvP results to the existing boards from clients.
+Keep PvP's modes and records apart from the Ladder, Daily, Co-op and Boss Rush ones, as the boards are today.

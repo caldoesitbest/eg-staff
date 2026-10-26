@@ -429,6 +429,11 @@ const SOUNDS = {
     for (let i = 0; i < 3; i++) { tone(d, "square", 740, 740, t + i * 0.36, 0.16, 0.05, 0.01); tone(d, "square", 554, 554, t + i * 0.36 + 0.17, 0.16, 0.05, 0.01); }
     tone(d, "sawtooth", 55, 55, t, 1.1, 0.16, 0.2);
   }],
+  comboUp: [0.3, (d, opts) => {     // a combo milestone: a quick bright run, a little higher for bigger ones
+    const t = now(), k = Math.min(1, ((opts && opts.n) || 25) / 200), base = 660 * (1 + k * 0.5);
+    [1, 1.25, 1.5, 2].forEach((m, i) => tone(d, "square", base * m, base * m, t + i * 0.045, 0.14, 0.04));
+    noise(d, t + 0.12, 0.3, 0.05, "highpass", 7000, 11000);
+  }],
   tick: [0.035, (d, opts) => {      // a results number counting up (higher as it nears the end)
     const t = now(), f = 1300 + ((opts && opts.p) || 0) * 900;
     tone(d, "square", f, f, t, 0.025, 0.016);

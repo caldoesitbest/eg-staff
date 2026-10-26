@@ -90,6 +90,9 @@ body.eg-game::before { display: none; }
 .pause-btn { position: absolute; top: calc(10px + var(--safe-t)); right: calc(12px + var(--safe-r)); }
 .hud { transition: opacity 0.2s ease; }
 .hud-left, .hud-right, .pause-btn, .build-btn { zoom: var(--hud-zoom, 1); }      /* Settings: HUD size */
+.combo.flare { transform-origin: right center; animation: combo-flare 0.7s ease-out; }
+@keyframes combo-flare { 0% { transform: scale(1.35); filter: drop-shadow(0 0 10px var(--flare, #63f4ff)); color: var(--flare, #63f4ff); } 100% { transform: none; filter: none; } }
+.game.reduced .combo.flare { animation: none; }
 .game.state-upgrade .hud, .game.state-shop .hud, .game.state-event .hud, .game.state-evolve .hud { opacity: 0; }
 
 .hearts { display: flex; flex-wrap: wrap; gap: 3px; max-width: 240px; }
@@ -579,6 +582,9 @@ body.eg-game::before { display: none; }
 .over-stats dd small { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; color: var(--g-amber); text-transform: uppercase; }
 .over-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
+.news-prev { margin: 4px 0 -6px; color: #6f7aa3; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; text-align: left; }
+.news-old { opacity: 0.7; font-size: 0.92em; }
+
 /* 4.6 results: the score up top (counting up), the run's main numbers, the rest in a tidy list, what you took home */
 .over-hero { display: grid; justify-items: center; gap: 4px; margin-top: -4px; }
 .over-diff {
@@ -843,7 +849,16 @@ body.eg-game::before { display: none; }
 /* ---------- leaderboard ---------- */
 .board { text-align: left; }
 .board .panel-title { text-align: center; }
-.tabs { display: flex; gap: 6px; justify-content: center; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+@media (max-width: 460px) {
+  /* phones held upright: four tabs fit, and the Hangar's top bar keeps every button on screen */
+  .tab { padding: 6px 11px; font-size: 0.8rem; }
+  .menu-tools { gap: 6px; min-width: 0; }
+  .menu-tools .icon-btn { width: 38px; height: 38px; }
+  .account-chip { min-height: 38px; padding: 0 10px; }
+  .account-chip span { display: none; }
+  .hangar-sigils { height: 38px; padding: 0 10px; font-size: 1rem; }
+}
 .tab {
   min-height: 40px;
   padding: 6px 16px;
