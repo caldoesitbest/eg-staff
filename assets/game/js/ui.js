@@ -670,10 +670,11 @@ export const ui = {
     const sc = Math.floor(G.score);
     if (sc !== last.score) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
     if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
-    const sig = store.data.sigils || 0;
+    // 4.7: the Sigils this run has earned (your balance is in the Hangar)
+    const sig = G.runSigils || 0;
     if (sig !== last.sigils) {
       if (last.sigils >= 0 && sig > last.sigils) { const c = $("sigil-chip"); c.classList.remove("got"); void c.offsetWidth; c.classList.add("got"); }
-      last.sigils = sig; $("hud-sigils").textContent = String(sig);
+      last.sigils = sig; $("hud-sigils").textContent = "+" + sig;
     }
     if (G.wave !== last.wave) {
       last.wave = G.wave;
@@ -1924,7 +1925,7 @@ const visible = (n) => n.offsetParent !== null || (n.getClientRects && n.getClie
 /** The Hangar's open overlay (topmost first), if any: it keeps the controller to itself. */
 function menuOverlay() {
   if (screen !== "menu") return null;
-  return ["fr-confirm", "portal-menu", "party-drawer", "reveal", "item-detail"].map($).find((n) => n && !n.hidden) || null;
+  return ["sigil-store", "fr-confirm", "portal-menu", "party-drawer", "reveal", "item-detail"].map($).find((n) => n && !n.hidden) || null;
 }
 function navRoot() {
   const sw = $("swap-pick");

@@ -247,26 +247,36 @@ export const ROBOT_ART = {
 function drawAstronaut(g, P, suit) {
   const s = suit.suit, trim = suit.trim, visor = suit.visor;
   const dark = suit.dark || suit.id === "void" ? "#14183a" : "#8a93c2";
+  // 4.7: a suit can carry a pattern (split, dots, stripes, hazard, check, tux, camo, stars), painted inside each part
+  const pat = suit.pattern ? (part, path) => { g.save(); path(); g.clip(); drawPattern(g, suit, part); g.restore(); } : null;
   // jetpack
   rrect(g, -15, -6, 9, 19, 3); g.fillStyle = dark; g.fill();
   glow(g, P, trim, 6); g.strokeStyle = trim; g.lineWidth = 1.2; g.stroke(); noGlow(g);
   // legs
   g.fillStyle = s;
   rrect(g, -7, 10, 6, 9, 3); g.fill();
+  if (pat) pat("leg", () => rrect(g, -7, 10, 6, 9, 3));
+  g.fillStyle = s;
   rrect(g, 1, 10, 6, 9, 3); g.fill();
+  if (pat) pat("leg", () => rrect(g, 1, 10, 6, 9, 3));
   g.fillStyle = dark; g.fillRect(-7, 16, 6, 3); g.fillRect(1, 16, 6, 3);
   // body
   rrect(g, -9, -3, 18, 16, 6); g.fillStyle = s; g.fill();
-  g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 1; g.stroke();
-  g.fillStyle = trim; g.fillRect(-4, 2, 8, 3);
+  if (pat) pat("body", () => rrect(g, -9, -3, 18, 16, 6));
+  g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 1; rrect(g, -9, -3, 18, 16, 6); g.stroke();
+  if (suit.belt !== false) { g.fillStyle = trim; g.fillRect(-4, 2, 8, 3); }
   drawMark(g, P, suit.mark, trim, s);
   // back arm
   g.fillStyle = s; rrect(g, -11, 0, 5, 10, 2.5); g.fill();
+  if (pat) pat("arm", () => rrect(g, -11, 0, 5, 10, 2.5));
   // helmet
   glow(g, P, trim, 10);
   circle(g, 0, -10, 11.5); g.fillStyle = s; g.fill();
   noGlow(g);
+  if (pat) pat("helmet", () => circle(g, 0, -10, 11.5));
   g.strokeStyle = trim; g.lineWidth = 1.3; circle(g, 0, -10, 11.5); g.stroke();
+  if (suit.collar) drawCollar(g, P, suit);
+  if (suit.mark === "bowtie") drawBowtie(g, P, suit.bow || trim);
   // visor
   const grd = g.createLinearGradient(0, -17, 8, -3);
   grd.addColorStop(0, visor);
@@ -277,6 +287,80 @@ function drawAstronaut(g, P, suit) {
   g.fillStyle = "rgba(255,255,255,0.85)";
   g.beginPath(); g.ellipse(5.6, -13, 2.2, 1.3, -0.5, 0, TAU); g.fill();
   drawHat(g, P, suit.hat);
+}
+
+// ---------- suit patterns (4.7): drawn inside one part of the suit (the caller clips to it) ----------
+function drawPattern(g, suit, part) {
+  const p = suit.pattern, alt = suit.alt || "#101018";
+  if (p === "split") {
+    // half and half down the middle: the back half in the other colour
+    g.fillStyle = alt; g.fillRect(-40, -40, 40, 80);
+    g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(-0.4, -40, 0.8, 80);
+  } else if (p === "dots") {
+    if (part === "helmet") return;           // a plain white face under the wig
+    const cols = suit.dots || ["#ff3b5c", "#ffd45c", "#3fa9ff", "#5ee08c"];
+    let k = 0;
+    for (let y = -24, row = 0; y < 22; y += 4.4, row++) for (let x = -16 + (row % 2 ? 2.2 : 0); x < 16; x += 4.4) {
+      g.fillStyle = cols[k++ % cols.length]; circle(g, x, y, 1.25); g.fill();
+    }
+  } else if (p === "stripes") {
+    if (part === "helmet") return;
+    const cols = suit.bands || [alt];
+    let k = 0;
+    for (let y = -6; y < 22; y += 3.2) { g.fillStyle = cols[k++ % cols.length]; g.fillRect(-20, y, 40, 1.6); }
+  } else if (p === "hazard") {
+    if (part === "helmet") { g.fillStyle = alt; g.fillRect(-14, -12.4, 28, 2.6); return; }   // a band round the helmet
+    g.save(); g.rotate(-0.7); g.fillStyle = alt;
+    for (let x = -40; x < 40; x += 5) g.fillRect(x, -40, 2.4, 80);
+    g.restore();
+  } else if (p === "check") {
+    if (part === "helmet" || part === "arm") return;
+    const y0 = part === "leg" ? 15 : 5.2, rows = part === "leg" ? 1 : 2, q = 2.2;
+    for (let r = 0; r < rows; r++) for (let x = -12, c = 0; x < 12; x += q, c++) {
+      g.fillStyle = (c + r) % 2 ? alt : "#ffffff"; g.fillRect(x, y0 + r * q, q, q);
+    }
+  } else if (p === "tux") {
+    if (part !== "body") return;
+    // a white shirt front and two studs; the jacket is the suit colour
+    g.fillStyle = "#f4f4f8";
+    g.beginPath(); g.moveTo(-3.6, -3); g.lineTo(3.6, -3); g.lineTo(0.6, 12); g.lineTo(-0.6, 12); g.closePath(); g.fill();
+    g.fillStyle = "#15151c"; circle(g, 0, 6, 0.55); g.fill(); circle(g, 0.1, 9, 0.5); g.fill();
+    g.strokeStyle = "rgba(255,255,255,0.18)"; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(-3.6, -3); g.lineTo(-1.2, 9); g.moveTo(3.6, -3); g.lineTo(1.2, 9); g.stroke();
+  } else if (p === "camo") {
+    const cols = suit.blots || [alt, "#8fa3c2", "#e9f1ff"];
+    const pts = [[-9, -18, 3.4], [4, -20, 2.8], [-3, -12, 2.6], [7, -6, 3], [-8, -4, 2.8], [1, 1, 3.2], [-5, 7, 2.6], [6, 9, 2.8], [-3, 14, 2.6], [4, 17, 2.2], [-9, 12, 2.4], [9, -14, 2.4]];
+    pts.forEach(([x, y, r], i) => { g.fillStyle = cols[i % cols.length]; g.beginPath(); g.ellipse(x, y, r * 1.3, r * 0.8, i * 0.9, 0, TAU); g.fill(); });
+  } else if (p === "stars") {
+    const neb = g.createRadialGradient(-2, part === "helmet" ? -12 : 5, 0, -2, part === "helmet" ? -12 : 5, 12);
+    neb.addColorStop(0, hexToRgba(alt, 0.45)); neb.addColorStop(1, hexToRgba(alt, 0));
+    g.fillStyle = neb; g.fillRect(-20, -30, 40, 60);
+    g.fillStyle = "#ffffff";
+    for (const [x, y, r] of [[-6, -17, 0.45], [-2, -20, 0.3], [-8, -9, 0.35], [-4, -4, 0.3], [5, 1, 0.4], [-6, 3, 0.35], [2, 7, 0.3], [-3, 10, 0.45], [6, 11, 0.3], [-5, 15, 0.35], [3, 17, 0.4], [-9, 1, 0.3], [7, -18, 0.3]]) { circle(g, x, y, r); g.fill(); }
+  }
+}
+function hexToRgba(hex, a) {
+  const h = String(hex).replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+}
+/** A clown's ruff at the neck: a ring of puffs in the suit's dot colours. */
+function drawCollar(g, P, suit) {
+  const cols = suit.dots || ["#ff3b5c", "#ffd45c", "#3fa9ff", "#5ee08c"];
+  for (let i = 0; i < 7; i++) {
+    const x = -8.4 + i * 2.8, y = 1.2 + Math.abs(i - 3) * 0.35;
+    g.fillStyle = "#ffffff"; circle(g, x, y, 2.1); g.fill();
+    g.strokeStyle = "rgba(20,24,60,0.25)"; g.lineWidth = 0.5; g.stroke();
+    g.fillStyle = cols[i % cols.length]; circle(g, x, y + 0.4, 0.8); g.fill();
+  }
+}
+/** A bow tie at the collar (the Tuxedo). */
+function drawBowtie(g, P, col) {
+  g.fillStyle = col;
+  shapeFromPoints(g, [0, 2.4, -3.4, 0.6, -3.4, 4.2]); g.fill();
+  shapeFromPoints(g, [0, 2.4, 3.4, 0.6, 3.4, 4.2]); g.fill();
+  g.fillStyle = "rgba(255,255,255,0.35)"; g.fillRect(-3.1, 1.1, 1.2, 0.5);
+  g.fillStyle = col; circle(g, 0, 2.4, 1); g.fill();
 }
 
 // ---------- suit emblems: a small mark on the chest in the trim colour (catalog.js picks one per suit) ----------
@@ -318,6 +402,21 @@ function drawMark(g, P, mark, col, bg) {
     g.beginPath(); g.arc(x + 0.5, y + 0.3, 1.3, Math.PI * 0.8, Math.PI * 2.4); g.stroke();
     g.lineCap = "butt";
     circle(g, x + 0.4, y + 0.2, 0.5); g.fill();
+  } else if (mark === "pompom") {
+    noGlow(g);
+    g.fillStyle = "#ff3b5c"; circle(g, 0.6, 6.6, 1.5); g.fill();
+    g.fillStyle = "#ffd45c"; circle(g, 0.6, 10.4, 1.5); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.6)"; circle(g, 0.2, 6.1, 0.45); g.fill(); circle(g, 0.2, 9.9, 0.45); g.fill();
+  } else if (mark === "number") {
+    noGlow(g);
+    g.fillStyle = "#ffffff"; circle(g, x, y, 2.7); g.fill();
+    g.fillStyle = col; g.font = "bold 4px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("7", x, y + 0.2);
+  } else if (mark === "warning") {
+    noGlow(g);
+    g.fillStyle = "#15151c"; shapeFromPoints(g, [x, y - 2.8, x + 3, y + 2.4, x - 3, y + 2.4]); g.fill();
+    g.fillStyle = col; g.fillRect(x - 0.35, y - 1, 0.7, 1.8); g.fillRect(x - 0.35, y + 1.2, 0.7, 0.6);
+  } else if (mark === "bowtie" || mark === "none") {
+    // the bow tie is drawn at the collar; nothing on the chest
   } else {
     circle(g, x, y, 1.4); g.fill();      // the original glow dot
   }
@@ -346,6 +445,22 @@ function drawVisorFx(g, P, fxId) {
     g.beginPath(); g.ellipse(1, -12.5, 7, 1.6, -0.35, 0, TAU); g.fill();
   }
   g.restore();
+  if (fxId === "nose") {
+    // a clown nose on the front of the visor
+    glow(g, P, "#ff2d4b", 8);
+    const grd = g.createRadialGradient(9.6, -9.4, 0.3, 10.2, -8.6, 3);
+    grd.addColorStop(0, "#ff8a96"); grd.addColorStop(0.45, "#ff2d4b"); grd.addColorStop(1, "#a80f26");
+    g.fillStyle = grd; circle(g, 10.2, -8.6, 2.9); g.fill();
+    noGlow(g);
+    g.fillStyle = "rgba(255,255,255,0.85)"; g.beginPath(); g.ellipse(9.3, -9.8, 0.9, 0.55, -0.5, 0, TAU); g.fill();
+  } else if (fxId === "monocle") {
+    glow(g, P, "#ffd45c", 5);
+    g.strokeStyle = "#ffd45c"; g.lineWidth = 0.8; circle(g, 6, -11, 3.1); g.stroke();
+    noGlow(g);
+    g.strokeStyle = "rgba(255,212,92,0.7)"; g.lineWidth = 0.4;
+    g.beginPath(); g.moveTo(6, -7.9); g.quadraticCurveTo(7.4, -4.8, 5.4, -2.2); g.stroke();
+    g.fillStyle = "rgba(255,255,255,0.35)"; g.beginPath(); g.ellipse(5, -12, 1, 0.5, -0.6, 0, TAU); g.fill();
+  }
   if (fxId === "rim") {
     glow(g, P, "#63f4ff", 6);
     g.strokeStyle = "#63f4ff"; g.lineWidth = 1.1;
@@ -357,6 +472,30 @@ function drawVisorFx(g, P, fxId) {
 // ---------- hats (bought with Sigils; the crown is everyone's). The helmet is a circle at (0, -10), r 11.5;
 // everything stays inside the sprite's box (y >= -32). ----------
 const HAT_ART = {
+  clownwig(g, P) {
+    // rainbow curls round the back and top of the helmet, a bald patch in the middle
+    const cols = ["#ff3b5c", "#ff8a3d", "#ffd45c", "#5ee08c", "#3fa9ff", "#a57bff"];
+    const tufts = [[-11.8, -15.6, 3.4], [-13.6, -10.2, 3.2], [-12.6, -4.8, 2.8], [-8.6, -21, 3.2], [7.2, -22.2, 2.8], [10.6, -18.6, 2.6]];
+    tufts.forEach(([x, y, r], i) => {
+      for (let k = 0; k < 3; k++) {
+        const a = k * 2.1 + i;
+        g.fillStyle = cols[(i + k) % cols.length];
+        circle(g, x + Math.cos(a) * r * 0.45, y + Math.sin(a) * r * 0.45, r * 0.75); g.fill();
+      }
+    });
+    g.fillStyle = "rgba(255,255,255,0.35)";
+    for (const [x, y] of [[-12.4, -16.6], [-9.2, -22], [7.6, -23.2]]) { circle(g, x, y, 0.8); g.fill(); }
+  },
+  partyhat(g, P) {
+    // a striped cone with a pom-pom, tipped back a little
+    g.save(); g.translate(0, -21); g.rotate(-0.18);
+    g.fillStyle = "#3fa9ff"; shapeFromPoints(g, [-6, 0, 6, 0, 0, -10.5]); g.fill();
+    g.save(); shapeFromPoints(g, [-6, 0, 6, 0, 0, -10.5]); g.clip();
+    g.fillStyle = "#ffd45c"; for (let y = -2.5; y > -11; y -= 3.4) g.fillRect(-7, y, 14, 1.4);
+    g.restore();
+    glow(g, P, "#ff42d0", 6); g.fillStyle = "#ff42d0"; circle(g, 0, -10.8, 1.9); g.fill(); noGlow(g);
+    g.restore();
+  },
   crown(g, P) {
     glow(g, P, C.amber, 10);
     g.fillStyle = C.amber;

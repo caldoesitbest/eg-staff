@@ -54,6 +54,9 @@ export const SETS = [
   { id: "envy", name: "The Envy Collection", col: SIN.envy, desc: "Cracked mirrors and green-eyed light." },
   { id: "void", name: "The Void Collection", col: C.violet2, desc: "Black glass, dark halos, nebula smoke." },
   { id: "astral", name: "The Astral Collection", col: "#ffe08a", desc: "Starlight, cream and gold: the Hangar's finest." },
+  // 4.7
+  { id: "bigtop", name: "The Big Top Collection", col: "#ff3b5c", desc: "Polka dots, a rainbow wig and a nose that's definitely not a button." },
+  { id: "blacktie", name: "The Black Tie Collection", col: "#d9dbe8", desc: "Tailored for the end of the world." },
 ];
 export const SET_BY_ID = Object.fromEntries(SETS.map((s) => [s.id, s]));
 
@@ -87,6 +90,9 @@ const RAW = {
     { id: "pulsar", name: "Pulsar Helm", rarity: LEG, level: 250, col: "#9fe8ff", desc: "A neutron star spinning on your head, beams and all. Level 250." },
     { id: "corona", name: "Supernova Corona", rarity: MYTH, level: 500, col: "#ffb347", desc: "The moment a star goes out, worn as a crown. Level 500." },
     { id: "ascended", name: "The Thousandfold", rarity: MYTH, level: 1000, col: "#ffffff", desc: "A crown of gold around a black hole, under a prismatic halo. Level 1000. Very few will ever wear it." },
+    // 4.7
+    { id: "clownwig", name: "Rainbow Wig", rarity: RARE, shop: 1, set: "bigtop", col: "#ff8a3d", desc: "Every colour of curl, a bald patch for dignity." },
+    { id: "partyhat", name: "Party Hat", rarity: UNC, shop: 1, col: "#3fa9ff", desc: "Every wave is a celebration if you survive it." },
   ],
   suit: [
     { id: "classic", name: "Classic", rarity: COM, suit: "#eef2ff", trim: "#38e8ff", visor: "#8e44ff", desc: "Standard issue." },
@@ -110,6 +116,15 @@ const RAW = {
     { id: "voidwalker", name: "Voidwalker", rarity: EPIC, shop: 1, set: "void", suit: "#0d0f24", trim: "#8e44ff", visor: "#63f4ff", mark: "star", dark: 1, desc: "Black as the space between stars." },
     { id: "phantom", name: "Nebula Phantom", rarity: LEG, shop: 1, suit: "#2b1b4f", trim: "#ff42d0", visor: "#63f4ff", mark: "swirl", dark: 1, desc: "Deep purple with a nebula swirling on the chest." },
     { id: "guardian", name: "Astral Guardian", rarity: LEG, shop: 1, set: "astral", suit: "#f5f0e6", trim: "#63f4ff", visor: "#ffc861", mark: "spark", desc: "Cream and starlight, gold visor, cyan trim." },
+    // 4.7: patterned suits
+    { id: "monochrome", name: "Monochrome", rarity: RARE, shop: 1, suit: "#f4f4f8", alt: "#15151c", trim: "#ffffff", visor: "#15151c", pattern: "split", mark: "none", desc: "Black and white, split right down the middle." },
+    { id: "bigtop", name: "Big Top", rarity: EPIC, shop: 1, set: "bigtop", suit: "#fff7f0", trim: "#ff3b5c", visor: "#7fd6ff", pattern: "dots", collar: "ruff", mark: "pompom", belt: false, desc: "Polka dots, a ruff and two pom-poms. Wear the nose with it." },
+    { id: "tuxedo", name: "Tuxedo", rarity: EPIC, shop: 1, set: "blacktie", suit: "#17171f", trim: "#d9dbe8", visor: "#9fb4ff", pattern: "tux", mark: "bowtie", bow: "#15151c", belt: false, dark: 1, desc: "Black tie, white shirt, cool head." },
+    { id: "hazard", name: "Hazard Crew", rarity: RARE, shop: 1, suit: "#ffd23f", alt: "#17171f", trim: "#ffd23f", visor: "#ff8a3d", pattern: "hazard", mark: "warning", desc: "Caution: pilot at work." },
+    { id: "racer", name: "Checkered Racer", rarity: RARE, shop: 1, suit: "#f4f6ff", alt: "#17171f", trim: "#ff3b5c", visor: "#ffd45c", pattern: "check", mark: "number", desc: "Pole position. A chequered band and a lucky seven." },
+    { id: "frost", name: "Frost Camo", rarity: UNC, shop: 1, suit: "#dfe8f6", alt: "#5f7394", trim: "#9fe8ff", visor: "#63f4ff", pattern: "camo", blots: ["#5f7394", "#a9bad6", "#ffffff"], desc: "Hides you nowhere. Looks great doing it." },
+    { id: "retrowave", name: "Retrowave", rarity: EPIC, shop: 1, suit: "#1b1033", trim: "#ff42d0", visor: "#ffb35c", pattern: "stripes", bands: ["#ff42d0", "#ff8a3d", "#ffd45c"], mark: "star", dark: 1, desc: "Sunset stripes on midnight purple, straight out of 1986." },
+    { id: "starfield", name: "Starfield", rarity: LEG, shop: 1, suit: "#0b0d26", alt: "#7b61ff", trim: "#bfc8ff", visor: "#ff42d0", pattern: "stars", mark: "spark", dark: 1, desc: "A night sky, stitched into a suit." },
   ],
   visor: [
     { id: "", name: "Suit colour", rarity: COM, desc: "Matches your suit." },
@@ -123,6 +138,9 @@ const RAW = {
     { id: "cracked", name: "Cracked Glass", rarity: RARE, shop: 1, set: "envy", col: "#e9f1ff", fx: "crack", desc: "A mirror visor that took a hit and kept going." },
     { id: "galaxy", name: "Galaxy", rarity: EPIC, shop: 1, set: "void", col: "#6d7bff", fx: "stars", desc: "A starfield in the glass." },
     { id: "blackmirror", name: "Black Mirror", rarity: LEG, shop: 1, col: "#0d0d18", fx: "rim", desc: "Pitch-black glass with a cyan rim." },
+    // 4.7
+    { id: "honker", name: "Clown Nose", rarity: RARE, shop: 1, set: "bigtop", col: "#7fd6ff", fx: "nose", desc: "Clear blue glass and a big red nose. Honk not included." },
+    { id: "monocle", name: "Monocle", rarity: RARE, shop: 1, set: "blacktie", col: "#9fb4ff", fx: "monocle", desc: "A gold monocle on a fine chain. Indubitably." },
   ],
   trail: [
     { id: "", name: "Violet", rarity: COM, pals: [P_VIOLET, P_DVIOLET], desc: "The classic jetpack puff." },
@@ -143,6 +161,9 @@ const RAW = {
     { id: "nebula", name: "Nebula Smoke", rarity: EPIC, shop: 1, set: "void", pals: [P_DVIOLET, P_MAGENTA], style: "smoke", desc: "Purple and magenta clouds." },
     { id: "static", name: "Static", rarity: EPIC, shop: 1, pals: [P_BLUE, P_WHITE], style: "zap", desc: "Crackling blue-white discharge." },
     { id: "astralwake", name: "Astral Wake", rarity: LEG, shop: 1, set: "astral", pals: [P_AMBER, P_CYAN], style: "dust", desc: "Gold and cyan stardust." },
+    // 4.7
+    { id: "confetti", name: "Confetti", rarity: RARE, shop: 1, set: "bigtop", pals: [P_RED, P_AMBER, P_CYAN, P_MINT, P_MAGENTA], style: "dust", desc: "A party behind you, wherever you go." },
+    { id: "champagne", name: "Champagne", rarity: RARE, shop: 1, set: "blacktie", pals: [P_AMBER, P_WHITE], style: "ember", desc: "Gold bubbles that rise." },
   ],
   finish: [
     { id: "", name: "Steel", rarity: COM, col: "#c9d0f2", desc: "Factory finish." },
@@ -160,6 +181,9 @@ const RAW = {
     { id: "seafoam", name: "Seafoam Plasma", rarity: RARE, shop: 1, set: "envy", col: "#73ffce", desc: "Green plasma glow." },
     { id: "voidblack", name: "Void Black", rarity: UNC, shop: 1, set: "void", col: "#1b1830", desc: "Swallows the light." },
     { id: "astralgold", name: "Astral Gold", rarity: EPIC, shop: 1, set: "astral", col: "#ffe08a", desc: "Bright starlit gold." },
+    // 4.7
+    { id: "bigtopred", name: "Big Top Red", rarity: UNC, shop: 1, set: "bigtop", col: "#ff3b5c", desc: "Candy-apple red." },
+    { id: "ivory", name: "Ivory", rarity: UNC, shop: 1, set: "blacktie", col: "#f2efe6", desc: "Polished ivory white." },
   ],
   victory: [
     { id: "", name: "Classic", rarity: COM, desc: "The boss's own explosion." },
@@ -197,6 +221,8 @@ const RAW = {
     { id: "greeneyed", name: "Green-Eyed", rarity: EPIC, fromSet: "envy" },
     { id: "voidborn", name: "Voidborn", rarity: LEG, fromSet: "void" },
     { id: "astral", name: "Astral", rarity: LEG, fromSet: "astral" },
+    { id: "clown", name: "Class Clown", rarity: EPIC, fromSet: "bigtop" },
+    { id: "blacktie", name: "The Distinguished", rarity: EPIC, fromSet: "blacktie" },
   ],
 };
 
@@ -268,6 +294,28 @@ export function buy(it) {
   return true;
 }
 
+/** 4.7: the rest of a collection (its shop items you don't own) and what they cost together: two or more come
+    off by BALANCE.sigils.bundleOff, rounded to 5. */
+export function setOffer(id) {
+  const rest = setItems(id).filter((i) => !owns(i));
+  const full = rest.reduce((n, i) => n + i.price, 0);
+  const price = rest.length >= 2 ? Math.round((full * (1 - SG.bundleOff)) / 5) * 5 : full;
+  return { rest, full, price };
+}
+/** Buys the rest of a collection in one go. Returns the offer it paid for, or false. */
+export function buySet(id) {
+  const o = setOffer(id);
+  if (!o.rest.length || (data().sigils || 0) < o.price) return false;
+  ledgerAdd("spent", o.price);
+  data().sigils -= o.price;
+  const now = Date.now();
+  for (const it of o.rest) data().owned[it.key] = now;
+  store.save(true);
+  for (const it of o.rest) G.emit("bought", it);
+  if (setDone(id)) G.emit("setDone", SET_BY_ID[id]);
+  return o;
+}
+
 /** Everything you own, newest first (shop items by when you bought them). */
 export function ownedCount() {
   let n = 0;
@@ -285,6 +333,7 @@ export function look(over) {
   const s = pick("suit"), h = pick("hat"), v = pick("visor");
   return {
     id: s.id, suit: s.suit, trim: s.trim, visor: v.col || s.visor, visorFx: v.fx || "", dark: !!s.dark, mark: s.mark || "",
+    pattern: s.pattern || "", alt: s.alt, dots: s.dots, bands: s.bands, blots: s.blots, collar: s.collar || "", bow: s.bow, belt: s.belt,
     hat: h.id, key: s.id + "/" + h.id + "/" + v.id,
   };
 }
@@ -314,7 +363,7 @@ export function trailPalOf(it, t) {
   if (it.sins) return SIN_PALS[Math.floor(t * 6) % SIN_PALS.length];
   if (it.col) { const i = PAL.indexOf(it.col); return i >= 0 ? i : P_VIOLET; }
   const p = it.pals || [P_VIOLET, P_DVIOLET];
-  return p[Math.random() < 0.5 ? 0 : 1];
+  return p[Math.floor(Math.random() * p.length)];
 }
 // How a trail's puffs move: size, life, spread, and drift (negative rises).
 const STYLES = {

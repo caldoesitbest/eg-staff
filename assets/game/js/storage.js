@@ -78,6 +78,7 @@ function defaults() {
     },
     seenHowTo: false,
     rotateHintDismissed: false,
+    paid: { uid: "", total: 0, at: 0 },   // 4.7: Sigils bought with money, as the server last said (sigilshop.js)
     ver: SAVE_VER,
     // Boss Rush: clears, and per difficulty your best run ({ time, score, hits, mods, splits }) and best split per boss
     rush: { clears: 0, best: {}, splits: {}, mods: [] },

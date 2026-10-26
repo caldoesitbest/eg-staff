@@ -435,6 +435,7 @@ export const BALANCE = {
   // Harder difficulties pay a bit more, never enough to make picking one the way to farm.
   sigils: {
     price: [100, 200, 375, 600, 1000, 1600],  // Item Shop prices by rarity: Common, Uncommon, Rare, Epic, Legendary, Mythic
+    bundleOff: 0.15,                          // 4.7: buying the rest of a collection at once (two items or more) takes this off
     contracts: [50, 90, 150],                 // a daily contract's reward: easy, medium, hard
     achv: [40, 80, 150, 250],                 // an achievement, by tier (achvTier): easy, medium, hard, legendary
     // a run: base + 1 at each of these waves + 1 for a win, x diff, rounded. Only a real run counts (long enough,
