@@ -292,6 +292,20 @@ export async function runTests(h) {
       G.wave = keepW; G.mode = keepM; G.daily = keepDaily;
       check("endless: nothing changes before wave 35, then robots get tougher, hit harder, attack faster", a[0] === 1 && a[1] === 1 && b[0] > 3 && b[1] > 2 && b[2] < 0.8, b.map((x) => x.toFixed(2)).join("/"));
     }
+    // --- every Hangar tab and menu screen draws without throwing --------------------------------------------
+    {
+      const { ui } = await import("./ui.js");
+      const bad = [];
+      const keepState = G.state;
+      G.state = "menu";
+      for (const t of ["play", "locker", "shop", "challenges", "friends", "profile"]) { try { ui.show("menu"); ui.hangarTab(t); } catch (err) { bad.push(t + ": " + err.message); } }
+      for (const sc of ["how", "news", "download"]) { try { ui.show(sc); } catch (err) { bad.push(sc + ": " + err.message); } }
+      try { ui.openRush(); } catch (err) { bad.push("rush: " + err.message); }
+      try { ui.openSettings("menu"); ui.closeSettings(); } catch (err) { bad.push("settings: " + err.message); }
+      ui.show(null);
+      G.state = keepState;
+      check("screens: every Hangar tab and menu screen draws", !bad.length, bad.join(" | "));
+    }
     // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted (and paid in Sigils)
     const KEY = "eg-glider-v1";
     let backup = null;

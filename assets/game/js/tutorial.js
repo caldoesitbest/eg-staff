@@ -8,6 +8,7 @@ import { store } from "./storage.js";
 import { input } from "./input.js";
 import { ui } from "./ui.js";
 import { BALANCE } from "./balance.js";
+import { kbd } from "./keys.js";
 
 let H = null;          // main.js: { spawnEnemy, startRun, toMenu, openCards, audio }
 let step = -1, prog = 0, t = 0, lastX = 0, lastY = 0, slot = 0, sawBuild = false, targets = [], gunner = null;
@@ -16,25 +17,25 @@ const mode = () => (input.mode === "touch" ? "touch" : input.mode === "gamepad" 
 
 const STEPS = [
   { id: "move", title: "Fly", need: 900,
-    text: { kbm: "Move with <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>.", gamepad: "Move with the <b>left stick</b>.", touch: "Drag on the <b>left half</b> of the screen to fly." } },
+    text: { kbm: () => "Move with " + ["up", "left", "down", "right"].map(kbd).join(" ") + ".", gamepad: "Move with the <b>left stick</b>.", touch: "Drag on the <b>left half</b> of the screen to fly." } },
   { id: "shoot", title: "Shoot", need: 3,
     text: { kbm: "Aim with the mouse and hold <b>left-click</b> to fire. Destroy the three drones.", gamepad: "Aim with the <b>right stick</b>: you fire as you aim (or hold <b>RT</b>). Destroy the three drones.", touch: "Drag on the <b>right half</b> to aim and fire. Destroy the three drones." } },
   { id: "charge", title: "Charged shot", need: 1,
     text: { kbm: "Hold <b>right-click</b> until it's full, then let go.", gamepad: "Hold <b>LT</b> until it's full, then let go.", touch: "Hold the <b>Charge</b> button until it's full, then let go." } },
   { id: "boost", title: "Boost", need: 2,
-    text: { kbm: "Press <kbd>Space</kbd> to boost. Nothing can hit you mid-boost. Boost twice.", gamepad: "Press <b>A</b> (or <b>LB</b> / <b>RB</b>) to boost. Nothing can hit you mid-boost. Boost twice.", touch: "Tap <b>Boost</b>. Nothing can hit you mid-boost. Boost twice." } },
+    text: { kbm: () => "Press " + kbd("boost") + " to boost. Nothing can hit you mid-boost. Boost twice.", gamepad: "Press <b>A</b> (or <b>LB</b> / <b>RB</b>) to boost. Nothing can hit you mid-boost. Boost twice.", touch: "Tap <b>Boost</b>. Nothing can hit you mid-boost. Boost twice." } },
   { id: "perfect", title: "Perfect Boost", need: 1, skipAfter: 35,
     text: { all: "That gunner is shooting at you. Boost <b>through</b> a shot just before it hits: a <b>Perfect Boost</b> gives slow-mo, combo and a faster recharge." } },
   { id: "swap", title: "Two guns", need: 1,
-    text: { kbm: "You've got a Scattergun now. Press <kbd>Q</kbd> (or roll the mouse wheel) to swap guns.", gamepad: "You've got a Scattergun now. Press <b>Y</b> to swap guns.", touch: "You've got a Scattergun now. Tap your gun (top left) to swap." } },
+    text: { kbm: () => "You've got a Scattergun now. Press " + kbd("swap") + " (or roll the mouse wheel) to swap guns.", gamepad: "You've got a Scattergun now. Press <b>Y</b> to swap guns.", touch: "You've got a Scattergun now. Tap your gun (top left) to swap." } },
   { id: "build", title: "Your build", need: 1,
-    text: { kbm: "Press <kbd>I</kbd> to see your guns, upgrades and stats, then close it.", gamepad: "Press <b>View</b> (the small left button) to see your build, then <b>B</b> to close it.", touch: "Tap the <b>layers</b> button under pause to see your build, then close it." } },
+    text: { kbm: () => "Press " + kbd("build") + " to see your guns, upgrades and stats, then close it.", gamepad: "Press <b>View</b> (the small left button) to see your build, then <b>B</b> to close it.", touch: "Tap the <b>layers</b> button under pause to see your build, then close it." } },
   { id: "card", title: "Upgrades", need: 1,
     text: { all: "After every wave you pick a <b>Sin</b> or an <b>Augment</b>. Pick one now. The Armory opens between some waves too: guns, gear and patch-ups for stars." } },
   { id: "still", title: "Keep moving", need: 4,
     text: { all: "One rule: <b>don't stand still</b>. Stay put and robots come round behind you, then strikes land where you stand (a red ring fills first). Keep flying for a few seconds." } },
   { id: "done", title: "You're ready", need: 1,
-    text: { kbm: "Climb the Sin Ladder: a sin boss every 5 waves. Press <kbd>Space</kbd> to start your first run.", gamepad: "Climb the Sin Ladder: a sin boss every 5 waves. Press <b>A</b> to start your first run.", touch: "Climb the Sin Ladder: a sin boss every 5 waves. Tap <b>Boost</b> to start your first run." } },
+    text: { kbm: () => "Climb the Sin Ladder: a sin boss every 5 waves. Press " + kbd("boost") + " to start your first run.", gamepad: "Climb the Sin Ladder: a sin boss every 5 waves. Press <b>A</b> to start your first run.", touch: "Climb the Sin Ladder: a sin boss every 5 waves. Tap <b>Boost</b> to start your first run." } },
 ];
 
 function render() {
@@ -43,7 +44,8 @@ function render() {
   const s = STEPS[step];
   n.querySelector(".tut-step").textContent = "Flight school · " + (step + 1) + " of " + STEPS.length;
   n.querySelector(".tut-title").textContent = s.title;
-  n.querySelector(".tut-text").innerHTML = s.text.all || s.text[mode()];
+  const tx = s.text.all || s.text[mode()];
+  n.querySelector(".tut-text").innerHTML = typeof tx === "function" ? tx() : tx;
   n.querySelector(".tut-fill").style.transform = "scaleX(" + Math.min(1, prog / s.need).toFixed(3) + ")";
   const go = n.querySelector(".tut-go");
   go.hidden = !(s.id === "done" || (s.skipAfter && t > s.skipAfter));

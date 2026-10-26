@@ -190,7 +190,7 @@ function surge(e) {
   e.surgePace = Math.max(0.75, 1 - S.pace * e.surgeN);
   const R = e.r * e.scale, col = e.def.c1;
   const z = addZone(Z.SHOCK, e.x, e.y, S.reach, (S.reach - R) / S.speed);
-  if (z) { z.r0 = R; z.k = S.dmg; z.col = col; z.pal = 0; z.src = e.type; z.by = null; }
+  if (z) { z.r0 = R; z.k = S.dmg; z.col = col; z.pal = Math.max(0, PAL.indexOf(col)); z.src = e.type; z.by = null; }
   const di = G.difficulty === "nightmare" ? 2 : G.difficulty === "hard" ? 1 : 0;
   const rung = G.lap > 0 ? 6 : waves.rungOf(Math.max(1, G.wave));
   const n = Math.round(S.shots[di] * (0.65 + 0.35 * Math.min(1, rung / 4))), a0 = rand(0, TAU), gapAt = new Set();
@@ -204,7 +204,7 @@ function surge(e) {
   fx.text(e.x, e.y - R - 34, "SURGE", col, 24, 1.1);
   fx.screenFlash(col, 0.25, 3);
   fx.shake(0.5);
-  audio.play("warn", e.x, e.y, 1);
+  audio.play("surge", e.x, e.y, 1);
   audio.impact();
   G.emit("bossSurge", e);
 }

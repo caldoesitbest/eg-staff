@@ -23,6 +23,7 @@ import { synergyFor } from "./synergy.js";
 import { MINIBOSSES } from "./enemies/minibosses.js";
 import { levelOf, tierOf, xpNeed } from "./xp.js";
 import { item as catItem } from "./catalog.js";
+import { keys, keyName, kbd, KEY_ACTIONS, RESERVED, rebind, setKeys, DEFAULT_KEYS } from "./keys.js";
 
 const $ = (id) => document.getElementById(id);
 const HEART = "M12 21.2s-7.6-4.7-9.7-9.3C.8 8.4 2.9 4.4 6.7 4c2.2-.2 4 .9 5.3 2.7C13.3 4.9 15.1 3.8 17.3 4c3.8.4 5.9 4.4 4.4 7.9-2.1 4.6-9.7 9.3-9.7 9.3Z";
@@ -55,7 +56,7 @@ const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
 let handlers = {};
 let bossGhost = 1;
-const NEWS_VERSION = 9;
+const NEWS_VERSION = 10;
 const DIFF_NOTES = {
   normal: "Dodge, learn the robots, build smart.",
   hard: "Smarter, faster robots and less room for mistakes. Score ×1.3.",
@@ -202,6 +203,8 @@ export const ui = {
     bind("set-lookahead", "change", (n) => { s().lookahead = n.checked; });
     bind("set-arrows", "change", (n) => { s().arrows = n.checked; });
     bind("set-hitstop", "change", (n) => { s().hitstop = n.value; });
+    bind("set-hudscale", "input", (n) => { s().hudScale = Number(n.value); });
+    click("keys-reset", () => { handlers.onClick && handlers.onClick(); s().keys = { ...DEFAULT_KEYS }; setKeys(s().keys); handlers.onSettings(); this.renderKeybinds(); this.renderControlsHint(); });
     const cross = (id, ev, fn) => bind(id, ev, (n) => { fn(n); this.syncCrosshair(); });
     cross("set-crosscolor", "change", (n) => { s().crossColor = n.value; });
     cross("set-crosscustom", "input", (n) => { s().crossCustom = n.value; });
@@ -275,6 +278,66 @@ export const ui = {
   },
 
   setReduced(on) { this.els.game.classList.toggle("reduced", !!on); },
+  /** A combo milestone: the HUD's combo meter flares in that colour. */
+  flareCombo(col) {
+    const n = this.els["hud-combo"];
+    if (!n) return;
+    n.style.setProperty("--flare", col);
+    n.classList.remove("flare"); void n.offsetWidth; n.classList.add("flare");
+  },
+  setHudScale(pct) { this.els.game.style.setProperty("--hud-zoom", (Math.max(80, Math.min(140, pct || 100)) / 100).toFixed(2)); },
+
+  /** Settings > Controls: each action and its key. Pick one, press the new key (Esc cancels); a key that was
+      another action's swaps with it. */
+  renderKeybinds() {
+    const box = $("keybinds");
+    if (!box || this.stopListen) return;
+    box.replaceChildren();
+    const B = keys();
+    for (const [a, label] of KEY_ACTIONS) {
+      const row = el("div", "kb-row");
+      const b = el("button", "kb-key", keyName(B[a]));
+      b.type = "button";
+      b.dataset.act = a;
+      b.setAttribute("aria-label", label + ": " + keyName(B[a]) + ". Press to change it");
+      b.addEventListener("click", () => this.listenKey(a, b));
+      row.append(el("span", "", label), b);
+      box.append(row);
+    }
+  },
+  listenKey(action, btn) {
+    if (this.stopListen) this.stopListen();
+    handlers.onClick && handlers.onClick();
+    btn.classList.add("listening");
+    btn.textContent = "Press a key";
+    input.capture = true;
+    const done = () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", onDown, true);
+      input.capture = false;
+      this.stopListen = null;
+      this.renderKeybinds();
+      const nb = document.querySelector('.kb-key[data-act="' + action + '"]');
+      if (nb && input.mode !== "touch") nb.focus({ preventScroll: true });
+    };
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.code === "Escape") { done(); return; }
+      if (!e.code || RESERVED.has(e.code)) { btn.textContent = keyName(e.code) + " is kept"; handlers.onSfx && handlers.onSfx("deny"); return; }
+      store.data.settings.keys = { ...rebind(action, e.code) };
+      handlers.onSettings();
+      handlers.onSfx && handlers.onSfx("equip");
+      done();
+      this.renderControlsHint();
+      const at = $("set-aimkey");
+      if (at) at.textContent = keyName(keys().aim);
+    };
+    const onDown = (e) => { if (e.target !== btn) done(); };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onDown, true);
+    this.stopListen = done;
+  },
 
   openSettings(back) {
     this.settingsBack = back;
@@ -283,12 +346,14 @@ export const ui = {
     this.settingsTab(this.lastTab || "audio", true);
   },
   settingsTab(tab, keepFocus) {
+    if (this.stopListen) this.stopListen();
     this.lastTab = tab;
     document.querySelectorAll("#settings-form .tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.tab === tab ? "true" : "false"));
     document.querySelectorAll("#settings-form .set-page").forEach((pg) => { pg.hidden = pg.dataset.page !== tab; });
     if (!keepFocus && input.mode !== "touch") { const t = $("stab-" + tab); if (t) t.focus(); }
   },
   closeSettings() {
+    if (this.stopListen) this.stopListen();
     store.save();
     this.show(this.settingsBack || "menu");
   },
@@ -324,6 +389,9 @@ export const ui = {
     set("set-crossstyle", "value", s.crossStyle);
     set("set-crossoutline", "checked", s.crossOutline);
     set("set-crosstarget", "checked", s.crossTarget);
+    set("set-hudscale", "value", s.hudScale);
+    set("set-aimkey", "textContent", keyName(keys().aim));
+    this.renderKeybinds();
     this.syncCrosshair();
     const note = $("set-note");
     if (note) note.textContent = store.writable ? "Settings save on this device." : "Your browser is blocking storage, so settings and bests won't be saved after you leave.";
@@ -478,12 +546,11 @@ export const ui = {
     this.renderLadder($("win-ladder"), 7, true);
     const dl = $("win-stats");
     dl.replaceChildren();
-    const add = (label, value) => { const d = el("div"); d.append(el("dt", "", label), el("dd", "", value)); dl.append(d); };
-    add("Score", formatScore(sum.score));
-    add("Time", sum.time);
-    add("Kills", String(sum.kills));
-    add("Hits taken", String(sum.hits));
-    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
+    statTile(dl, "Score", sum.score, false, 0);
+    statTile(dl, "Time", sum.time, false, 1);
+    statTile(dl, "Kills", sum.kills, false, 2);
+    statTile(dl, "Hits taken", sum.hits, false, 3);
+    if (G.runSigils) statTile(dl, "Sigils", "+" + G.runSigils + " \u25c6", false, 4);
     const client = G.net.role === "client";
     $("win-endless").hidden = client;
     $("win-finish").hidden = client;
@@ -533,7 +600,7 @@ export const ui = {
   controlsLine(mode) {
     if (mode === "touch") return "Left thumb moves · right thumb aims &amp; fires · <b>⚡ Boost</b> to dash · hold <b>Charge</b> for a charged shot · tap your gun to swap";
     if (mode === "gamepad") return "<kbd>L</kbd> move · <kbd>R</kbd> aim &amp; fire · <kbd>A</kbd>/<kbd>LB</kbd> boost · hold <kbd>LT</kbd> to charge · <kbd>Y</kbd> swap gun · <kbd>Start</kbd> pause";
-    return "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · hold left-click to fire · hold right-click to charge · <kbd>Space</kbd> boost · <kbd>Q</kbd> swap gun · <kbd>Esc</kbd> pause";
+    return ["up", "left", "down", "right"].map(kbd).join("") + " move · hold left-click to fire · hold right-click to charge · " + kbd("boost") + " boost · " + kbd("swap") + " swap gun · <kbd>Esc</kbd> pause";
   },
 
   renderHow() {
@@ -541,7 +608,7 @@ export const ui = {
     if (!box) return;
     const mode = input.mode;
     const rows = {
-      kbm: [["Move", "<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows"], ["Aim", "Mouse (or auto-aim: <kbd>T</kbd>)"], ["Fire", "Hold left click"], ["Charged shot", "Hold right-click or <kbd>E</kbd>, let go to fire"], ["Boost", "<kbd>Space</kbd> or <kbd>Shift</kbd>"], ["Swap gun", "<kbd>Q</kbd>, mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>"], ["Pause", "<kbd>Esc</kbd> or <kbd>P</kbd>"], ["Cards / shop", "<kbd>1</kbd>–<kbd>4</kbd> to pick or buy"]],
+      kbm: [["Move", ["up", "left", "down", "right"].map(kbd).join("") + " or arrows"], ["Aim", "Mouse (or auto-aim: " + kbd("aim") + ")"], ["Fire", "Hold left click"], ["Charged shot", "Hold right-click or " + kbd("charge") + ", let go to fire"], ["Boost", kbd("boost") + " or <kbd>Shift</kbd>"], ["Swap gun", kbd("swap") + ", mouse wheel, <kbd>1</kbd>/<kbd>2</kbd>"], ["Your build", kbd("build")], ["Pause", "<kbd>Esc</kbd> or <kbd>P</kbd>"], ["Cards / shop", "<kbd>1</kbd>–<kbd>4</kbd> to pick or buy"], ["Change keys", "Settings, Controls"]],
       touch: [["Move", "Drag anywhere on the left half"], ["Aim + fire", "Drag on the right half (auto-fires)"], ["Boost", "Tap the ⚡ button"], ["Charged shot", "Hold the Charge button, let go to fire"], ["Swap gun", "Tap your gun (top left)"], ["Auto-aim", "On by default: just move, it shoots for you"], ["Pause", "⏸ top right"]],
       gamepad: [["Move", "Left stick"], ["Aim + fire", "Right stick (or hold RT)"], ["Charged shot", "Hold <kbd>LT</kbd>, let go to fire"], ["Boost", "<kbd>A</kbd>, <kbd>LB</kbd> or <kbd>RB</kbd>"], ["Swap gun", "<kbd>Y</kbd>"], ["Pause", "<kbd>Start</kbd>"]],
     };
@@ -992,7 +1059,7 @@ export const ui = {
       }
       box.append(tile, txt, el("i", "ap-timer"), el("i", "ap-scan"));
       box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
-      handlers.onAchv && handlers.onAchv();
+      handlers.onAchv && handlers.onAchv(x);
       setTimeout(() => { box.classList.remove("show"); setTimeout(next, 420); }, x.levelUp && x.hat ? 5200 : 4200);
     };
     next();
@@ -1587,6 +1654,22 @@ export const ui = {
     $("restart-btn").hidden = !!coop;
     $("resume-btn").lastChild.textContent = coop ? "Back to the fight" : "Resume";
     $("quit-btn").lastChild.textContent = coop ? "Leave co-op" : "Quit to menu";
+    // the run so far: what you're playing, how it's going, how it measures up to your best
+    const ps = $("pause-stats");
+    if (ps) {
+      ps.replaceChildren();
+      const add = (k, v, cls) => { const d = el("div", cls || ""); d.append(el("dt", "", k), el("dd", "", v)); ps.append(d); };
+      const dn = BALANCE.difficulty[G.difficulty] ? BALANCE.difficulty[G.difficulty].name : "Normal";
+      const mode = G.mode === "rush" ? "Boss Rush" : G.daily ? "Daily Challenge" : G.lap > 0 || G.wave > 35 ? "Endless" : "The Sin Ladder";
+      add("Run", mode + " · " + dn + (coop ? " · co-op" : ""), "wide");
+      add("Time", fmtClock(G.time).replace(/\.\d$/, ""));
+      add("Kills", formatScore(G.kills));
+      add("Best combo", String(G.bestCombo || 0));
+      add("Stars", "★ " + G.stars);
+      if (G.runSigils) add("Sigils", "+" + G.runSigils + " ◆");
+      const bw = store.data.best.wave || 0;
+      if (G.mode !== "rush" && !G.daily && !coop && bw) add("Your best", G.wave > bw ? "beating it" : "wave " + bw, G.wave > bw ? "ahead" : "");
+    }
     renderBuild($("pause-build"), build);
     renderArsenal($("pause-build"));
     this.show("pause");
@@ -1595,34 +1678,51 @@ export const ui = {
   showGameOver(sum) {
     $("over-kicker").textContent = sum.kicker || "Run over · wave " + sum.wave;
     $("over-title").textContent = sum.title;
+    // 4.6: the score up top, counting up, with what it's measured against; "new best" stamps on when it lands
+    const D = BALANCE.difficulty[sum.difficulty] || BALANCE.difficulty.normal;
+    const pill = $("over-diff");
+    pill.textContent = (G.daily ? "Daily Challenge" : sum.wave > 35 ? "Endless" : "The Sin Ladder") + " \u00b7 " + D.name + (D.score !== 1 ? " \u00b7 score \u00d7" + D.score : "") + (G.net.role !== "off" ? " \u00b7 co-op" : "");
+    pill.style.setProperty("--d-col", DIFF_COL[sum.difficulty] || DIFF_COL.normal);
+    const dur = Math.round(Math.min(1500, 500 + Math.log10(Math.max(10, sum.score)) * 150));
+    countUp($("over-score"), sum.score, 250, dur, true);
+    const sub = $("over-score-sub");
+    sub.replaceChildren();
+    if (G.net.role === "off" && !G.debug.on && sum.prevBest > 0) {
+      if (sum.newScore) sub.append("Beat your best by ", el("b", "", formatScore(sum.score - sum.prevBest)));
+      else sub.append("Your best: " + formatScore(sum.prevBest));
+    }
+    sub.hidden = !sub.childNodes.length;
     const best = $("over-best");
-    best.hidden = !sum.anyBest;
-    best.textContent = "New best!";
+    best.hidden = true;
+    best.textContent = sum.newScore ? "New best score!" : "New best wave!";
+    clearTimeout(this.stampT);
+    if (sum.anyBest) this.stampT = setTimeout(() => { if (screen === "over") { best.hidden = false; handlers.onStamp && handlers.onStamp(); } }, 250 + dur + 150);
+    // the run's main numbers
     const dl = $("over-stats");
     dl.replaceChildren();
-    const add = (label, value, isNew) => {
-      const d = el("div");
-      const dd = el("dd", isNew ? "new" : "", value);
-      if (isNew) dd.append(el("small", "", "New best"));
-      d.append(el("dt", "", label), dd);
-      dl.append(d);
-    };
-    if (sum.difficulty && sum.difficulty !== "normal") add("Difficulty", BALANCE.difficulty[sum.difficulty].name + " · score ×" + BALANCE.difficulty[sum.difficulty].score);
-    add("Score", formatScore(sum.score), sum.newScore);
-    add("Wave", String(sum.wave), sum.newWave);
-    add("Kills", String(sum.kills));
-    add("Best combo", String(sum.combo), sum.newCombo);
-    add("Stars", String(sum.stars));
-    add("Time", sum.time);
-    if (sum.perfects) add("Perfect boosts", String(sum.perfects));
-    if (sum.bosses) add("Bosses", String(sum.bosses));
-    if (sum.dmg) add("Damage dealt", formatScore(sum.dmg));
-    if (sum.big) add("Biggest hit", formatScore(sum.big));
-    if (sum.topGun) add("Top gun", sum.topGun);
-    if (sum.spent) add("Stars spent", String(sum.spent));
-    if (sum.killedBy) add("Got you", sum.killedBy);
-    if (G.runSigils) add("Sigils", "+" + G.runSigils + " \u25c6");
-    for (const c of G.runContracts || []) add("Contract done", c.text + " \u00b7 +" + c.sigils + " \u25c6");
+    statTile(dl, "Wave", sum.wave, sum.newWave, 0);
+    statTile(dl, "Kills", sum.kills, false, 1);
+    statTile(dl, "Best combo", sum.combo, sum.newCombo, 2);
+    statTile(dl, "Time", sum.time, false, 3);
+    // the rest, in a tidy list
+    const more = $("over-more");
+    more.replaceChildren();
+    const row = (k, v) => { const d = el("div"); d.append(el("dt", "", k), el("dd", "", v)); more.append(d); };
+    row("Stars collected", formatScore(sum.stars));
+    if (sum.spent) row("Stars spent", formatScore(sum.spent));
+    if (sum.perfects) row("Perfect boosts", String(sum.perfects));
+    if (sum.bosses) row("Bosses down", String(sum.bosses));
+    if (sum.dmg) row("Damage dealt", formatScore(sum.dmg));
+    if (sum.big) row("Biggest hit", formatScore(sum.big));
+    if (sum.topGun) row("Top gun", sum.topGun);
+    if (sum.killedBy) row("Got you", sum.killedBy);
+    // what you took home
+    const rw = $("over-rewards");
+    rw.replaceChildren();
+    let k = 0;
+    const chip = (cls, label, val) => { const c = el("span", "rw-chip" + (cls ? " " + cls : "")); c.style.animationDelay = (0.7 + k++ * 0.12).toFixed(2) + "s"; c.append(el("span", "", label), el("b", "", val)); rw.append(c); };
+    if (G.runSigils) chip("", "Sigils earned", "+" + G.runSigils + " \u25c6");
+    for (const c of G.runContracts || []) chip("contract", "Contract: " + c.text, "+" + c.sigils + " \u25c6");
     this.renderXp("over-xp");
     const buildBox = $("over-build");
     renderBuild(buildBox, sum.build, sum.buildTitle);
@@ -1762,6 +1862,41 @@ export const ui = {
     n.hidden = !(portrait && input.mode === "touch" && !store.data.rotateHintDismissed && screen === "menu" && G.state === "menu");
   },
 };
+
+const DIFF_COL = { normal: "#63f4ff", hard: "#ffc861", nightmare: "#ff3b5c" };
+
+/** Results numbers count up, eased, ticking as they go (reduced motion shows them at once). */
+function countUp(node, to, delay = 0, dur = 800, ticks = false) {
+  const token = (node._cu = (node._cu || 0) + 1);
+  const show = (v) => { node.textContent = formatScore(v); };
+  const calm = document.querySelector(".game.reduced") || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  if (!(to > 0) || calm) { show(to || 0); return; }
+  show(0);
+  const t0 = performance.now() + delay;
+  let lastTick = 0;
+  const step = (now) => {
+    if (node._cu !== token || !node.isConnected) return;
+    const k = Math.min(1, Math.max(0, (now - t0) / dur));
+    show(k >= 1 ? to : Math.floor(to * (1 - Math.pow(1 - k, 3))));
+    if (ticks && k > 0 && k < 1 && now - lastTick > 60) { lastTick = now; handlers.onTick && handlers.onTick(k); }
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** A results tile; a number counts up, and says so when it's a new best. */
+function statTile(dl, label, v, isNew, i = 0) {
+  const d = el("div");
+  d.style.setProperty("--i", String(i));
+  const dd = el("dd", isNew ? "new" : "");
+  const num = el("span", "n");
+  dd.append(num);
+  if (isNew) dd.append(el("small", "", "New best"));
+  d.append(el("dt", "", label), dd);
+  dl.append(d);
+  if (typeof v === "number") countUp(num, v, 350 + i * 90, 700); else num.textContent = v;
+  return dd;
+}
 
 /** 83.4 → "1:23.4" */
 function fmtClock(t) {

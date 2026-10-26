@@ -47,6 +47,7 @@ export function bossInit(e, cx, cy) {
   e.cd = 2; e.t2 = 3; e.t3 = 1.5; e.c = 1.5; e.a = 0; e.b = 0;
   G.boss = e;
   audio.play("bossIntro");
+  audio.play("portal");
   fx.shake(0.5);
 }
 

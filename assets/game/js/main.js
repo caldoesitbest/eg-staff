@@ -14,7 +14,7 @@ import { renderer } from "./render.js";
 import { fx } from "./fx.js";
 import { ui } from "./ui.js";
 import { waves } from "./waves.js";
-import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer } from "./world.js";
+import { stepWorld, clearWorld, spawnEdgeAsteroid, addScore, healPlayer, killEnemy, revivePlayer, haptic } from "./world.js";
 import { createPlayer, cancelCharge } from "./player.js";
 import { resetUpgrades, computeStats, offerCards, applyCard, onWaveEnd, buildSummary, buildTitle, CARDS, CARD_BY_ID } from "./upgrades.js";
 import { popAllAllies, spawnEnemy, hostileCount } from "./enemies/index.js";
@@ -38,6 +38,7 @@ import { social } from "./social.js";
 import { pressureTick } from "./pressure.js";
 import { MINIBOSSES } from "./enemies/minibosses.js";
 import { splash } from "./splash.js";
+import { keys, keyName, moveKeys, setKeys } from "./keys.js";
 import { tutorial } from "./tutorial.js";
 import { payRun, level, tierOf } from "./xp.js";
 import { cloud } from "./cloud.js";
@@ -114,6 +115,8 @@ function applySettings() {
   fx.reduced = s.reducedMotion;
   ui.setReduced(s.reducedMotion);
   loop.setCap(s.fpsCap);
+  setKeys(s.keys);
+  ui.setHudScale(s.hudScale);
   applyQuality();
   if (!s.showFps) ui.setFps(null);
   store.save();
@@ -249,11 +252,11 @@ function startRun(opts) {
   if (!store.data.seenHowTo) { store.data.seenHowTo = true; store.save(); }
 }
 
-const boostWord = () => (input.mode === "touch" ? "Tap ⚡" : input.mode === "gamepad" ? "Press A" : "Press Space");
+const boostWord = () => (input.mode === "touch" ? "Tap ⚡" : input.mode === "gamepad" ? "Press A" : "Press " + keyName(keys().boost));
 const HINTS = {
   1: () => (input.mode === "touch"
     ? "Left thumb moves. " + (G.settings.autoAim ? "You fire on your own." : "Right thumb aims and fires.")
-    : input.mode === "gamepad" ? "Left stick moves, right stick aims and fires." : "WASD to move, mouse to aim, hold click to fire."),
+    : input.mode === "gamepad" ? "Left stick moves, right stick aims and fires." : moveKeys() + " to move, mouse to aim, hold click to fire."),
   2: () => "Rippers flash, then charge in a line. " + boostWord() + " to boost through.",
   3: () => "Gunners hang back. Their orbs are slow: weave through.",
   4: () => "Splitters burst into minis when they pop.",
@@ -317,6 +320,11 @@ function waveIntro(n) {
     audio.musicIntensity(1);
   }
   audio.play("wave");
+  // 4.6: past your best wave (solo Ladder runs that count): said once, the first wave past it
+  const bw = store.data.best.wave || 0;
+  if (bw >= 5 && n === bw + 1 && G.net.role === "off" && !G.daily && !G.debug.on) {
+    setTimeout(() => { if (G.state === "playing" || G.state === "clear") { ui.toast("Past your best (wave " + bw + "). Every wave from here is a record.", 3400); audio.play("stamp"); } }, 900);
+  }
 }
 
 // Climbing: remember the highest rung you've beaten.
@@ -1138,7 +1146,9 @@ ui.init({
   onSettings: applySettings,
   onLook: () => renderer.setSuit(suitDef()),
   onSfx: (name) => audio.play(name),
-  onAchv: () => audio.play("achv"),
+  onAchv: (x) => audio.play(x && x.levelUp ? "levelUp" : "achv"),
+  onTick: (p) => audio.play("tick", undefined, undefined, 1, { p }),
+  onStamp: () => { audio.play("stamp"); haptic([20, 30, 60]); },
   onFullscreen: () => { if (G.desktop) window.chrome.webview.postMessage({ type: "fullscreen" }); else toggleFullscreen(); },
   onClick: () => audio.play("click"),
   onHover: () => audio.play("hover", undefined, undefined, 0.6),
@@ -1178,7 +1188,7 @@ friendsUI.init({
 });
 const AIM_NAMES = { off: "Off", assist: "Aim assist", auto: "Full auto" };
 input.onHotkey = (code) => {
-  if (code !== "KeyT") return;
+  if (code !== "aim") return;
   const order = ["off", "assist", "auto"];
   const s = G.settings;
   s.autoAim = order[(order.indexOf(s.autoAim) + 1) % order.length];
@@ -1244,7 +1254,7 @@ window.addEventListener("keydown", (e) => {
     if (digit === 0 || digit === 1) { e.preventDefault(); ui.pickSwapSlot(digit); }
     return;
   }
-  if (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleBuild(); return; }
+  if (e.code === keys().build && !e.ctrlKey && !e.metaKey && !e.altKey && (s === "playing" || s === "clear" || s === "paused" || s === "shop" || s === "upgrade" || ui.screen === "build")) { e.preventDefault(); toggleBuild(); return; }
   if (ui.screen === "build") return;
   if (s === "shop") {
     if (digit >= 0) { e.preventDefault(); if (ui.armed) shopBuy(digit); return; }
@@ -1401,9 +1411,20 @@ const MINI_HINT = {
   lancer: "It paints a line, then dashes along it and the line bursts. Step off before it locks red.",
   siege: "Its shells land where you are and where you're heading. Keep turning, and don't hug it.",
 };
-G.on("minibossWarn", (type) => { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("bossIntro", undefined, undefined, 0.5); });
+function miniWarn(type) { ui.banner("Mini-boss incoming", MINIBOSSES[type].name, MINI_HINT[type] || "", "bad", true, MINIBOSSES[type].accent); audio.play("minibossAlarm"); }
+G.on("minibossWarn", (type) => { miniWarn(type); if (G.net.role === "host") hostSend({ k: "mini", type }); });
 G.on("minibossDown", (e) => {
-  G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); });
+  G.runMinis = (G.runMinis || 0) + 1; ui.banner("Mini-boss down", MINIBOSSES[e.type] ? MINIBOSSES[e.type].name : "", "", "good"); audio.play("clear"); });
+// 4.6: a combo milestone, called out over your head (and the HUD's combo meter flares)
+const COMBO_COL = [[300, "#ff42d0"], [150, "#ffc861"], [100, "#ff7a3d"], [50, "#73ffce"], [0, "#63f4ff"]];
+G.on("comboMark", (n) => {
+  const P = G.me;
+  if (!P || P.dead) return;
+  const col = COMBO_COL.find((c) => n >= c[0])[1];
+  fx.text(P.x, P.y - 58, n + " COMBO", col, n >= 100 ? 26 : 21, 1.3);
+  audio.play("comboUp", undefined, undefined, 1, { n });
+  ui.flareCombo(col);
+});
 G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });
 if (G.desktop) {
   ui.setDesktop(true);
@@ -1497,6 +1518,7 @@ initCoop({
     waveIntro(n);
   },
   rushDone: (sum) => { sigilsRush(sum); fileRun(); lastRun = sum; setState("over"); ui.showRushDone(sum); audio.play(sum.cleared ? "newBest" : "gameOver"); },
+  miniWarn: (type) => miniWarn(type),
   waveBanner: (msg) => { ui.banner(...msg.b); audio.play(msg.snd || "clear"); if (msg.sig) { sigilsBoss(msg.sig); G.bossesKilled = (G.bossesKilled || 0) + 1; } },
   gameOver: (sum) => {
     // the host's numbers are the host's: keep the team ones, put in your own
