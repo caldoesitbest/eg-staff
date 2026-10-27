@@ -37,8 +37,9 @@ function ensure() {
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   // 4.7: a space reverb on a send: the big moments (explosions, bosses, level-ups) get a tail; shots stay dry
   try {
+    if ((navigator.hardwareConcurrency || 4) < 4) throw new Error("a slow device: no reverb");     // it runs on the audio thread all the time
     const conv = ctx.createConvolver();
-    conv.buffer = spaceImpulse(1.9);
+    conv.buffer = spaceImpulse(1.6);
     const tone2 = ctx.createBiquadFilter(); tone2.type = "lowpass"; tone2.frequency.value = 5200;
     const back = ctx.createGain(); back.gain.value = 0.85;
     verbIn = ctx.createGain(); verbIn.gain.value = 1;

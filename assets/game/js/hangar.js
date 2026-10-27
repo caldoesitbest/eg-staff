@@ -60,7 +60,7 @@ const sprCache = new Map();
 function stageSprite(L, P) {
   const k = L.key + "@" + P;
   let a = sprCache.get(k);
-  if (!a) { a = sprites.astronaut(P, L); if (sprCache.size > 120) sprCache.clear(); sprCache.set(k, a); }
+  if (!a) { a = sprites.astronaut(P, L); if (sprCache.size > 60) sprCache.clear(); sprCache.set(k, a); }      // a big stage's sprite is ~1 MB: keep the cache small
   return a;
 }
 
@@ -81,7 +81,8 @@ class Stage {
     this.lastKey = ""; this.swap = 0; this.swapCol = "#63f4ff";
     this.puffs = []; this.puffT = 0;
     this.bursts = []; this.burstT = 0;
-    if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(cv);
+    this.ro = window.ResizeObserver ? new ResizeObserver(() => { this.dirty = true; }) : null;
+    if (this.ro) this.ro.observe(cv);
   }
   resize() {
     const r = this.cv.getBoundingClientRect();
@@ -127,7 +128,8 @@ class Stage {
 
     // where you're pointing (or a slow look around when there's no mouse)
     const p = card && !this.hover ? null : this.pointer();
-    const px = p ? p.x : 0.5 + Math.sin(t * 0.37) * 0.32, py = p ? p.y : 0.42 + Math.sin(t * 0.53) * 0.12;
+    // nobody pointing: a slow look around (a card keeps facing you, so it never turns mid-glance)
+    const px = p ? p.x : card ? 0.64 + Math.sin(t * 0.37) * 0.08 : 0.5 + Math.sin(t * 0.37) * 0.32, py = p ? p.y : 0.42 + Math.sin(t * 0.53) * 0.12;
     const cx = W / 2 + (calm ? 0 : (px - 0.5) * -6 * u * 0.5), cy = card ? H * 0.5 - (this.opts.focus || 0) * u : H * 0.45;
     const floorY = cy + 21 * u;
     const bob = calm ? 0 : Math.sin(t * 2.1) * 2 * u;
@@ -547,7 +549,7 @@ const FRAMING = {
   trail: { zoom: 1.05, focus: 1 }, finish: { zoom: 1.3, focus: -4 }, victory: { zoom: 0.9, focus: -12 },
 };
 const cardStages = new Set();
-let cardCost = 0.5, cardAt = 0;
+let cardCost = 0.5, cardAt = 0, frameEma = 16;
 const cardIO = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((ents) => {
   for (const e of ents) {
     const st = e.target._st;
@@ -570,20 +572,24 @@ function liveCard(cv, it, btn) {
 const cardsStill = () => reduced() || store.data.settings.quality === "low" || store.data.settings.quality === "potato";
 /** Redraws the cards on screen, a few each frame within the budget; the one under the mouse every frame. */
 function cardsFrame(dt) {
+  // a weak device or a busy page: fewer cards a frame, each a little less often (the hovered one never waits)
+  frameEma += (dt * 1000 - frameEma) * 0.05;
+  const tier = frameEma > 30 ? 2 : frameEma > 21 ? 1 : 0;
+  const gap = [1 / 30, 1 / 15, 1 / 8][tier], budget = [4.5, 3, 1.5][tier];
   const vis = [];
   let hovered = null;
   for (const st of cardStages) {
-    if (!st.cv.isConnected) { cardStages.delete(st); if (cardIO) cardIO.unobserve(st.cv); continue; }
+    if (!st.cv.isConnected) { cardStages.delete(st); if (cardIO) cardIO.unobserve(st.cv); if (st.ro) st.ro.disconnect(); st.puffs.length = 0; continue; }      // a redrawn tab: let the old card go
     st.acc += dt;
     if (!st.visible || (detail && !st.cv.closest("#reveal"))) continue;      // the item panel covers the rest
     if (!st.drawn) { st.frame(0); st.drawn = !!st.spr; st.acc = 0; continue; }
-    if (st.hover) hovered = st; else vis.push(st);
+    if (st.hover) hovered = st; else if (st.acc >= gap) vis.push(st);
   }
   if (cardsStill()) return;
   const t0 = performance.now();
   let n = 0;
   if (hovered) { hovered.frame(Math.min(0.1, hovered.acc)); hovered.acc = 0; n++; }
-  const room = Math.max(1, Math.floor(4.5 / Math.max(0.05, cardCost)) - n);
+  const room = Math.max(1, Math.floor(budget / Math.max(0.05, cardCost)) - n);
   const k = Math.min(vis.length, room);
   for (let i = 0; i < k; i++) {
     const st = vis[(cardAt + i) % vis.length];

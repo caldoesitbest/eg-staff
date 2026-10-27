@@ -693,3 +693,25 @@ lighting, distortion and many more particles become possible, one piece at a tim
 
 **Recommendation:** stay on the web, and consider PixiJS for the renderer. Move to Godot only if consoles or the
 app stores become a goal.
+
+## Performance pass (4.7, before shipping)
+Measured in headless Chrome. Its canvas is software-rendered, so drawing reads slower than on a real GPU.
+- **Heavy fight** (wave 40, 70 robots, two mini-bosses, a maxed build): about 2 ms of work a frame at normal
+  speed. At 6× CPU throttling it's 21–30 ms, mostly canvas drawing; the glows were already pre-rendered sprites.
+- **HUD:**
+  - The score and combo text are written at most 30 times a second; they were written on every kill.
+  - The combo bump uses the Web Animations API instead of re-adding a class, which forced a synchronous layout
+    pass every kill.
+  - `updateHud` dropped out of the profile's top functions (it was 3.9% of the frame at 6×).
+- **Hangar:**
+  - The PLAY button's breathing glow fades a separate layer's opacity; animating the shadow repainted it every
+    frame.
+  - The card shimmer is promoted to its own layer.
+  - Live cards redraw at most 30 times a second each, and step down to 15, then 8, with a smaller budget when
+    frames run long. A hovered card always draws.
+  - The shop's Suits tab at 6× went from 24 ms to 18 ms a frame (median).
+- **Memory:** a card's ResizeObserver is disconnected when its tab redraws (it used to keep the old card alive).
+  The sprite cache was cut from 120 to 60 entries; a big stage's sprite is about 1 MB.
+  - Soak test (12 rounds of every shop tab, then six runs): the JS heap stayed at 6–8 MB, with no growth.
+- **Audio:** the reverb's impulse is 1.6 s, and it's skipped on devices with fewer than 4 cores. It runs on the
+  audio thread, where a slow device would crackle rather than drop frames.

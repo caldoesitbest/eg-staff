@@ -54,6 +54,8 @@ let screen = null;
 let armedAt = 0;            // clicks on cards / game-over buttons are ignored until this time
 const armed = () => performance.now() >= armedAt;
 let bannerTimer = 0, toastTimer = 0;
+let hudFastT = 0;
+const reducedUi = () => !!(store.data.settings && store.data.settings.reducedMotion);
 let handlers = {};
 let bossGhost = 1;
 const NEWS_VERSION = 11;
@@ -667,13 +669,18 @@ export const ui = {
       last.hp = P.hp; last.maxHp = P.maxHp; last.shield = P.shield; last.maxShield = P.maxShield;
       this.renderHearts(P);
     }
+    // 4.7: the score and combo text change on every kill; in a big fight that's every frame, so they're written at
+    // most 30 times a second (each write costs the page a layout pass)
+    hudFastT -= dt;
+    const fastTick = hudFastT <= 0;
+    if (fastTick) hudFastT = 1 / 30;
     const sc = Math.floor(G.score);
-    if (sc !== last.score) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
+    if (sc !== last.score && (fastTick || last.score < 0)) { last.score = sc; E["hud-score"].textContent = formatScore(sc); }
     if (G.stars !== last.stars) { last.stars = G.stars; E["hud-stars"].textContent = String(G.stars); }
     // 4.7: the Sigils this run has earned (your balance is in the Hangar)
     const sig = G.runSigils || 0;
     if (sig !== last.sigils) {
-      if (last.sigils >= 0 && sig > last.sigils) { const c = $("sigil-chip"); c.classList.remove("got"); void c.offsetWidth; c.classList.add("got"); }
+      if (last.sigils >= 0 && sig > last.sigils) { const c = $("sigil-chip"); c.classList.remove("got"); requestAnimationFrame(() => c.classList.add("got")); }
       last.sigils = sig; $("hud-sigils").textContent = "+" + sig;
     }
     if (G.wave !== last.wave) {
@@ -712,13 +719,13 @@ export const ui = {
       const left = G.tutorial ? "" : waves.boss ? (G.boss ? "Boss" : "") : (G.state === "playing" ? remaining + " left" : "Clear");
       if (left !== last.left) { last.left = left; E["hud-left"].textContent = left; }
     }
-    const m = comboMult();
-    if (G.combo !== last.combo) {
+    if (G.combo !== last.combo && (fastTick || G.combo === 0)) {
       const up = G.combo > last.combo;
       last.combo = G.combo;
-      E["combo-x"].textContent = "×" + m.toFixed(1);
+      E["combo-x"].textContent = "×" + comboMult().toFixed(1);
       E["hud-combo"].classList.toggle("on", G.combo > 0);
-      if (up && G.combo > 1) { E["hud-combo"].classList.remove("bump"); void E["hud-combo"].offsetWidth; E["hud-combo"].classList.add("bump"); }
+      // a little bump (an animation the browser runs on its own: no layout pass, unlike re-adding a class)
+      if (up && G.combo > 1 && E["combo-x"].animate && !reducedUi()) E["combo-x"].animate([{ transform: "scale(1.35)" }, { transform: "none" }], { duration: 180, easing: "ease-out" });
     }
     if (slowTick) {
       const a = G.ambush, on = !!(a && a.t > 0);

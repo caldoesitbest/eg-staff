@@ -1717,13 +1717,17 @@ body.eg-game::before { display: none; }
 .foot-links { grid-area: links; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .hangar-foot .controls-hint { grid-area: hint; font-size: 0.78rem; }
 .hangar .menu-ver { margin-left: 6px; font: 700 0.68rem var(--g-num); letter-spacing: 0.16em; text-transform: uppercase; color: #4b5375; transform: none; text-shadow: none; }
-.play-big { grid-area: play; min-width: 270px; min-height: 66px; gap: 14px; justify-content: center; border-radius: 16px; box-shadow: 0 16px 40px -16px rgba(99, 244, 255, 0.85); animation: play-breathe 3.2s ease-in-out infinite; }
+.play-big { position: relative; isolation: isolate; grid-area: play; min-width: 270px; min-height: 66px; gap: 14px; justify-content: center; border-radius: 16px; box-shadow: 0 16px 40px -16px rgba(99, 244, 255, 0.85); }
+/* 4.7: the breathing glow is its own layer that only fades (animating the shadow itself repainted it every frame) */
+.play-big::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; box-shadow: 0 16px 48px -12px rgba(165, 123, 255, 0.95); opacity: 0; pointer-events: none; will-change: opacity; animation: play-glow 3.2s ease-in-out infinite; }
+@keyframes play-glow { 50% { opacity: 1; } }
+.play-big.ready-up::after, .play-big.waiting::after { display: none; }
 .play-big .i { width: 26px; height: 26px; }
 .play-txt { display: grid; text-align: left; line-height: 1.02; }
 .play-txt b { font: 800 1.5rem var(--g-num); letter-spacing: 0.16em; text-transform: uppercase; }
 .play-txt small { font: 700 0.72rem var(--g-num); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.78; }
-@keyframes play-breathe { 50% { box-shadow: 0 16px 48px -12px rgba(165, 123, 255, 0.95); } }
-.game.reduced .play-big { animation: none; }
+
+.game.reduced .play-big::after { animation: none; }
 
 /* item cards (Shop, Locker, collections) */
 .icard {
@@ -1753,7 +1757,7 @@ body.eg-game::before { display: none; }
 .icard.r-legendary::before, .icard.r-mythic::before {
   content: ""; position: absolute; inset: -30%; pointer-events: none;
   background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.13) 50%, transparent 58%);
-  transform: translateX(-70%); animation: card-shimmer 4.2s ease-in-out infinite;
+  transform: translateX(-70%); will-change: transform; animation: card-shimmer 4.2s ease-in-out infinite;
 }
 .icard.r-mythic { background: radial-gradient(120% 80% at 50% 0%, rgba(255, 79, 139, 0.3), transparent 62%), radial-gradient(90% 60% at 50% 100%, rgba(255, 138, 61, 0.18), transparent 70%), linear-gradient(180deg, rgba(18, 10, 36, 0.95), rgba(8, 6, 22, 0.97)); }
 .icard.r-mythic::after { background: linear-gradient(90deg, #ff8a3d, #ff4f8b, #a57bff); }
