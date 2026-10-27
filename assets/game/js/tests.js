@@ -306,6 +306,50 @@ export async function runTests(h) {
       G.state = keepState;
       check("screens: every Hangar tab and menu screen draws", !bad.length, bad.join(" | "));
     }
+    // --- 4.7: outfits, bundles, paid Sigils ---------------------------------------------------------------------
+    {
+      const cat = await import("./catalog.js");
+      const { sprites } = await import("./sprites.js");
+      const { sigilShop } = await import("./sigilshop.js");
+      const { store: S } = await import("./storage.js");
+      // every suit, hat and visor draws (patterns, the ruff, the bow tie, the nose, the monocle)
+      const drawBad = [];
+      for (const k of ["suit", "hat", "visor"]) for (const it of cat.itemsOf(k)) {
+        try { const a = sprites.astronaut(2, cat.look({ strict: true, [k]: it.id })); if (!a.player || !a.player.c) drawBad.push(it.key); } catch (err) { drawBad.push(it.key + ": " + err.message); }
+      }
+      check("outfits: every suit, hat and visor draws", !drawBad.length, drawBad.join(", "));
+      check("outfits: the 4.7 collections each give a title", ["bigtop", "blacktie"].every((id) => cat.setItems(id).length >= 4 && cat.ITEMS.some((i) => i.kind === "title" && i.fromSet === id)));
+      S.save(true);
+      let keep = null;
+      try { keep = localStorage.getItem("eg-glider-v1"); } catch (err) { /* no storage */ }
+      try {
+        // buying the rest of a collection: 15% off two or more, rounded to 5, title and all
+        const d = S.data;
+        for (const it of cat.setItems("bigtop")) delete d.owned[it.key];
+        const o = cat.setOffer("bigtop");
+        const full = cat.setItems("bigtop").reduce((n, i) => n + i.price, 0);
+        check("bundles: the rest of a collection costs 15% less", o.full === full && o.price === Math.round((full * 0.85) / 5) * 5 && o.price < full, o.price + " of " + full);
+        d.sigils = o.price - 1;
+        check("bundles: you can't buy it a Sigil short", cat.buySet("bigtop") === false && cat.setItems("bigtop").every((i) => !d.owned[i.key]));
+        d.sigils = o.price + 10;
+        const got = cat.buySet("bigtop");
+        check("bundles: buying it takes the price and gives every item and the title", !!got && d.sigils === 10 && cat.setDone("bigtop") && cat.owns(cat.item("title", "clown")));
+        check("bundles: nothing left to buy afterwards", cat.setOffer("bigtop").rest.length === 0 && cat.buySet("bigtop") === false);
+        // paid Sigils: the server's total goes on, the same total again changes nothing, a refund comes off
+        d.sigils = 100; d.paid = { uid: "", total: 0, at: 0 };
+        const a1 = sigilShop.credit("u1", 1300), b1 = d.sigils;
+        const a2 = sigilShop.credit("u1", 1300), b2 = d.sigils;
+        const a3 = sigilShop.credit("u1", 0), b3 = d.sigils;
+        check("paid Sigils: credited once, refunds come back off", a1 === 1300 && b1 === 1400 && a2 === 0 && b2 === 1400 && a3 === -1300 && b3 === 100, [a1, b1, a2, b2, a3, b3].join(","));
+        sigilShop.credit("u1", 500);
+        const b4 = d.sigils;
+        sigilShop.credit("u2", 0);
+        check("paid Sigils: another account's purchases don't stay on this device", b4 === 600 && d.sigils === 100 && d.paid.uid === "u2");
+      } finally {
+        try { if (keep === null) localStorage.removeItem("eg-glider-v1"); else localStorage.setItem("eg-glider-v1", keep); } catch (err) { /* ignore */ }
+        S.load();
+      }
+    }
     // a 4.1 save comes through: bests kept, Boss Rush open, a past win and a wave-50 run counted (and paid in Sigils)
     const KEY = "eg-glider-v1";
     let backup = null;

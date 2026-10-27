@@ -25,7 +25,7 @@
 <link rel="preload" href="../assets/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts.css?v=6">
 <link rel="stylesheet" href="../assets/style.css?v=7">
-<link rel="stylesheet" href="../assets/game/game.css?v=11">
+<link rel="stylesheet" href="../assets/game/game.css?v=12">
 </head>
 <body class="eg-game">
 <div class="game mode-kbm" id="game">
@@ -83,7 +83,7 @@
       <div class="score" id="hud-score">0</div>
       <div class="combo" id="hud-combo"><span class="combo-x" id="combo-x">×1.0</span><div class="combo-track"><div class="combo-fill" id="combo-fill"></div></div></div>
       <div class="stars-chip" title="Stars (spend them between waves)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.1 6.6.6-5 4.4 1.5 6.5L12 16.7 6.3 20.1l1.5-6.5-5-4.4 6.6-.6Z"/></svg><span id="hud-stars">0</span></div>
-      <div class="sigil-chip" id="sigil-chip" title="Sigils (spend them in the Item Shop)"><i data-icon="gem"></i><span id="hud-sigils">0</span></div>
+      <div class="sigil-chip" id="sigil-chip" title="Sigils earned this run (spend them in the Item Shop)"><i data-icon="gem"></i><span id="hud-sigils">0</span></div>
     </div>
     <button class="icon-btn build-btn" id="build-btn" type="button" aria-label="Your build: weapons, upgrades, stats"><i data-icon="layers"></i></button>
     <button class="icon-btn pause-btn" id="pause-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
@@ -201,7 +201,7 @@
         <button class="btn btn-ghost btn-sm" id="news-btn" type="button"><i data-icon="sparkles"></i>What's new</button>
         <button class="btn btn-ghost btn-sm" id="download-btn" type="button"><i data-icon="download"></i>Download</button>
         <button class="btn btn-ghost btn-sm" id="exit-btn" type="button" hidden><i data-icon="log-out"></i>Quit game</button>
-        <span class="menu-ver" id="menu-ver">v4.6 · Cosmic Shine</span>
+        <span class="menu-ver" id="menu-ver">v4.7 · Cosmic Couture</span>
       </div>
       <p class="controls-hint" id="menu-controls"></p>
       <button class="btn btn-primary btn-xl play-big" id="play-btn" type="button"><i data-icon="zap"></i><span class="play-txt"><b>Play</b><small id="play-sub">The Sin Ladder · Normal</small></span></button>
@@ -603,9 +603,17 @@
   <!-- what's new -->
   <section class="screen screen-news" id="screen-news" hidden aria-labelledby="news-title">
     <div class="panel panel-wide glow-card news">
-      <p class="kicker"><span>Update 4.6</span><i>&#10022;</i><span>Cosmic Shine</span></p>
+      <p class="kicker"><span>Update 4.7</span><i>&#10022;</i><span>Cosmic Couture</span></p>
       <h2 class="panel-title" id="news-title">What's new</h2>
       <ul class="news-list">
+        <li><b>New looks.</b> Eight new suits: Monochrome, Tuxedo, Big Top (the clown suit, wear it with the Clown Nose and Rainbow Wig), Hazard Crew, Checkered Racer, Frost Camo, Retrowave and Starfield. Plus a Party Hat, a Monocle, Confetti and Champagne trails, and two new collections: The Big Top and Black Tie.</li>
+        <li><b>A living Item Shop.</b> Every card shows your pilot wearing the item, lit on the pad and moving, the way it looks when you open it. Point at one and it looks back.</li>
+        <li><b>Buy a whole collection</b> in one go, 15% off whatever you're missing.</li>
+        <li><b>Sigils in a run</b> now count what that run has earned, so you can watch them come in.</li>
+        <li><b>Bigger sound.</b> Explosions, bosses, portals and level-ups ring out in space, and kills land with more snap.</li>
+      </ul>
+      <p class="news-prev">4.6 "Cosmic Shine":</p>
+      <ul class="news-list news-old">
         <li><b>A proper finish.</b> Your score counts up at the end of a run, a new best gets stamped on, and the screen shows what you took home: Sigils, contracts, XP.</li>
         <li><b>Your keys, your way.</b> Settings has a Controls tab: rebind every key, and see the mouse, controller and touch layouts. Every hint in the game follows your keys. There's a HUD size slider too.</li>
         <li><b>Pause shows your run:</b> mode, difficulty, time, kills, best combo, and how you're doing against your best wave.</li>
@@ -613,7 +621,7 @@
         <li><b>Co-op fixes.</b> Teammates see mini-bosses properly (a mini-boss could break a guest's screen), plus the boss portal, the mini-boss warning and red strike rings.</li>
         <li><b>Fixes:</b> the Challenges tab opens again, the wave banner lost its stray box and no longer sits on top of you, Armory labels stop running into the lock, and the HUD steps back while you pick cards or shop.</li>
       </ul>
-      <p class="news-prev">Last update, 4.5 "Cosmic Legends":</p>
+      <p class="news-prev">4.5 "Cosmic Legends":</p>
       <ul class="news-list news-old">
         <li><b>Levels, 1 to 1000.</b> Every run, challenge and achievement earns XP (more on harder difficulties). Each level pays Sigils, and seven levels unlock a hat you can't get any other way: Cadet Wings (10), Comet Antenna (25), Saturn Ring (50), Nebula Crown (100), Pulsar Helm (250), Supernova Corona (500) and The Thousandfold (1000).</li>
         <li><b>Sigils mean something.</b> Daily challenges and achievements pay big, firsts pay once, an ordinary run pays a little. Prices went up and your balance went up with them, so nothing you had lost value. Sigils now show under your stars.</li>
@@ -631,17 +639,17 @@
   <!-- download the app (website only: hidden inside the apps) -->
   <section class="screen screen-download" id="screen-download" hidden aria-labelledby="download-title">
     <div class="panel panel-wide glow-card download">
-      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.6</span></p>
+      <p class="kicker"><span>Envious Glider</span><i>&#10022;</i><span>v4.7</span></p>
       <h2 class="panel-title" id="download-title">Get the app</h2>
       <p class="set-note">The same game as this page, in its own full-screen app. Leaderboards, sign-in and co-op work whenever you're online.</p>
       <div class="dl-grid" id="dl-grid">
-        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.6" download="EnviousGlider.exe">
+        <a class="dl-card" id="dl-win" href="/assets/game/download/EnviousGlider.exe?v=4.7" download="EnviousGlider.exe">
           <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
           <b>Windows</b><span>Windows 10 or 11 &middot; <span id="dl-win-size">2.2 MB</span></span><em><i data-icon="download"></i>Download .exe</em>
         </a>
-        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.6" download="EnviousGlider.apk" hidden>
+        <a class="dl-card" id="dl-android" href="/assets/game/download/EnviousGlider.apk?v=4.7" download="EnviousGlider.apk" hidden>
           <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
-          <b>Android</b><span>Android 7 or later &middot; <span id="dl-apk-size">0.9 MB</span></span><em><i data-icon="download"></i>Download .apk</em>
+          <b>Android</b><span>Android 7 or later &middot; <span id="dl-apk-size">1.0 MB</span></span><em><i data-icon="download"></i>Download .apk</em>
         </a>
       </div>
       <ul class="news-list dl-notes">
@@ -698,60 +706,61 @@
 <script type="importmap">
 {
   "imports": {
-    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=11",
-    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=11",
-    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=11",
-    "/assets/game/js/catalog.js": "/assets/game/js/catalog.js?v=11",
-    "/assets/game/js/cloud.js": "/assets/game/js/cloud.js?v=11",
-    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=11",
-    "/assets/game/js/contracts.js": "/assets/game/js/contracts.js?v=11",
-    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=11",
-    "/assets/game/js/events.js": "/assets/game/js/events.js?v=11",
-    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=11",
-    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=11",
-    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=11",
-    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=11",
-    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=11",
-    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=11",
-    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=11",
-    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=11",
-    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=11",
-    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=11",
-    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=11",
-    "/assets/game/js/enemies/minibosses.js": "/assets/game/js/enemies/minibosses.js?v=11",
-    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=11",
-    "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=11",
-    "/assets/game/js/friends.js": "/assets/game/js/friends.js?v=11",
-    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=11",
-    "/assets/game/js/hangar.js": "/assets/game/js/hangar.js?v=11",
-    "/assets/game/js/input.js": "/assets/game/js/input.js?v=11",
-    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=11",
-    "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=11",
-    "/assets/game/js/music.js": "/assets/game/js/music.js?v=11",
-    "/assets/game/js/net.js": "/assets/game/js/net.js?v=11",
-    "/assets/game/js/online.js": "/assets/game/js/online.js?v=11",
-    "/assets/game/js/party.js": "/assets/game/js/party.js?v=11",
-    "/assets/game/js/player.js": "/assets/game/js/player.js?v=11",
-    "/assets/game/js/pressure.js": "/assets/game/js/pressure.js?v=11",
-    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=11",
-    "/assets/game/js/render.js": "/assets/game/js/render.js?v=11",
-    "/assets/game/js/social.js": "/assets/game/js/social.js?v=11",
-    "/assets/game/js/keys.js": "/assets/game/js/keys.js?v=11",
-    "/assets/game/js/splash.js": "/assets/game/js/splash.js?v=11",
-    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=11",
-    "/assets/game/js/state.js": "/assets/game/js/state.js?v=11",
-    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=11",
-    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=11",
-    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=11",
-    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=11",
-    "/assets/game/js/tutorial.js": "/assets/game/js/tutorial.js?v=11",
-    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=11",
-    "/assets/game/js/util.js": "/assets/game/js/util.js?v=11",
-    "/assets/game/js/version.js": "/assets/game/js/version.js?v=11",
-    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=11",
-    "/assets/game/js/world.js": "/assets/game/js/world.js?v=11",
-    "/assets/game/js/xp.js": "/assets/game/js/xp.js?v=11",
-    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=11"
+    "/assets/game/js/armory.js": "/assets/game/js/armory.js?v=12",
+    "/assets/game/js/audio.js": "/assets/game/js/audio.js?v=12",
+    "/assets/game/js/balance.js": "/assets/game/js/balance.js?v=12",
+    "/assets/game/js/catalog.js": "/assets/game/js/catalog.js?v=12",
+    "/assets/game/js/cloud.js": "/assets/game/js/cloud.js?v=12",
+    "/assets/game/js/coop.js": "/assets/game/js/coop.js?v=12",
+    "/assets/game/js/contracts.js": "/assets/game/js/contracts.js?v=12",
+    "/assets/game/js/debug-bot.js": "/assets/game/js/debug-bot.js?v=12",
+    "/assets/game/js/events.js": "/assets/game/js/events.js?v=12",
+    "/assets/game/js/evolve.js": "/assets/game/js/evolve.js?v=12",
+    "/assets/game/js/enemies/bosses.js": "/assets/game/js/enemies/bosses.js?v=12",
+    "/assets/game/js/enemies/boss-common.js": "/assets/game/js/enemies/boss-common.js?v=12",
+    "/assets/game/js/enemies/boss-sloth.js": "/assets/game/js/enemies/boss-sloth.js?v=12",
+    "/assets/game/js/enemies/boss-gluttony.js": "/assets/game/js/enemies/boss-gluttony.js?v=12",
+    "/assets/game/js/enemies/boss-greed.js": "/assets/game/js/enemies/boss-greed.js?v=12",
+    "/assets/game/js/enemies/boss-lust.js": "/assets/game/js/enemies/boss-lust.js?v=12",
+    "/assets/game/js/enemies/boss-wrath.js": "/assets/game/js/enemies/boss-wrath.js?v=12",
+    "/assets/game/js/enemies/boss-pride.js": "/assets/game/js/enemies/boss-pride.js?v=12",
+    "/assets/game/js/enemies/boss-envy.js": "/assets/game/js/enemies/boss-envy.js?v=12",
+    "/assets/game/js/enemies/index.js": "/assets/game/js/enemies/index.js?v=12",
+    "/assets/game/js/enemies/minibosses.js": "/assets/game/js/enemies/minibosses.js?v=12",
+    "/assets/game/js/enemies/roster.js": "/assets/game/js/enemies/roster.js?v=12",
+    "/assets/game/js/fusion.js": "/assets/game/js/fusion.js?v=12",
+    "/assets/game/js/friends.js": "/assets/game/js/friends.js?v=12",
+    "/assets/game/js/fx.js": "/assets/game/js/fx.js?v=12",
+    "/assets/game/js/hangar.js": "/assets/game/js/hangar.js?v=12",
+    "/assets/game/js/input.js": "/assets/game/js/input.js?v=12",
+    "/assets/game/js/loop.js": "/assets/game/js/loop.js?v=12",
+    "/assets/game/js/mutations.js": "/assets/game/js/mutations.js?v=12",
+    "/assets/game/js/music.js": "/assets/game/js/music.js?v=12",
+    "/assets/game/js/net.js": "/assets/game/js/net.js?v=12",
+    "/assets/game/js/online.js": "/assets/game/js/online.js?v=12",
+    "/assets/game/js/party.js": "/assets/game/js/party.js?v=12",
+    "/assets/game/js/player.js": "/assets/game/js/player.js?v=12",
+    "/assets/game/js/pressure.js": "/assets/game/js/pressure.js?v=12",
+    "/assets/game/js/progress.js": "/assets/game/js/progress.js?v=12",
+    "/assets/game/js/render.js": "/assets/game/js/render.js?v=12",
+    "/assets/game/js/social.js": "/assets/game/js/social.js?v=12",
+    "/assets/game/js/keys.js": "/assets/game/js/keys.js?v=12",
+    "/assets/game/js/sigilshop.js": "/assets/game/js/sigilshop.js?v=12",
+    "/assets/game/js/splash.js": "/assets/game/js/splash.js?v=12",
+    "/assets/game/js/sprites.js": "/assets/game/js/sprites.js?v=12",
+    "/assets/game/js/state.js": "/assets/game/js/state.js?v=12",
+    "/assets/game/js/storage.js": "/assets/game/js/storage.js?v=12",
+    "/assets/game/js/synergy.js": "/assets/game/js/synergy.js?v=12",
+    "/assets/game/js/tests.js": "/assets/game/js/tests.js?v=12",
+    "/assets/game/js/ui.js": "/assets/game/js/ui.js?v=12",
+    "/assets/game/js/tutorial.js": "/assets/game/js/tutorial.js?v=12",
+    "/assets/game/js/upgrades.js": "/assets/game/js/upgrades.js?v=12",
+    "/assets/game/js/util.js": "/assets/game/js/util.js?v=12",
+    "/assets/game/js/version.js": "/assets/game/js/version.js?v=12",
+    "/assets/game/js/waves.js": "/assets/game/js/waves.js?v=12",
+    "/assets/game/js/world.js": "/assets/game/js/world.js?v=12",
+    "/assets/game/js/xp.js": "/assets/game/js/xp.js?v=12",
+    "/assets/game/js/zones.js": "/assets/game/js/zones.js?v=12"
   }
 }
 </script>
@@ -760,6 +769,6 @@
 <script src="../assets/config.js?v=7" defer></script>
 <script src="../assets/supa.js?v=6" defer></script>
 <script src="../assets/nav.js?v=9" defer></script>
-<script type="module" src="../assets/game/js/main.js?v=11"></script>
+<script type="module" src="../assets/game/js/main.js?v=12"></script>
 </body>
 </html>

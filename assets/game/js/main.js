@@ -39,6 +39,7 @@ import { pressureTick } from "./pressure.js";
 import { MINIBOSSES } from "./enemies/minibosses.js";
 import { splash } from "./splash.js";
 import { keys, keyName, moveKeys, setKeys } from "./keys.js";
+import { sigilShop } from "./sigilshop.js";
 import { tutorial } from "./tutorial.js";
 import { payRun, level, tierOf } from "./xp.js";
 import { cloud } from "./cloud.js";
@@ -1426,6 +1427,18 @@ G.on("comboMark", (n) => {
   ui.flareCombo(col);
 });
 G.on("look", () => { renderer.setSuit(suitDef()); social.setLook(lookCode()); });
+// 4.7: the Sigil store (hidden until the server side is set up and switched on); paid Sigils land on sign-in
+let storeLoaded = false;
+G.on("auth", () => { if (!storeLoaded) { storeLoaded = true; sigilShop.load(); } if (online.user) sigilShop.sync(); });
+G.on("sigilsPaid", (x) => {
+  if (x.delta > 0) { ui.toast("+" + x.delta.toLocaleString() + " Sigils are yours. Thanks for supporting the game!", 4200); audio.play("reveal"); }
+  else ui.toast(Math.abs(x.delta).toLocaleString() + " Sigils were taken back (a refunded or disputed purchase).", 4200);
+});
+{
+  const back = sigilShop.returning();
+  if (back === "paid") setTimeout(() => ui.toast("Payment received. Your Sigils are on their way…", 4200), 1200);
+  else if (back === "canceled") setTimeout(() => ui.toast("Checkout canceled. Nothing was charged.", 3200), 1200);
+}
 if (G.desktop) {
   ui.setDesktop(true);
   // script errors go to the launcher's log (%LOCALAPPDATA%\EnviousGlider\error.log)

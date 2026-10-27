@@ -4,7 +4,7 @@ import { createMusic } from "./music.js";
    Audio starts on the first tap/click/key (required on iOS). */
 
 let ctx = null;
-let master, sfxBus, musicBus, comp, noiseBuf;
+let master, sfxBus, musicBus, comp, noiseBuf, verbIn = null;
 let unlocked = false;
 const vol = { sfx: 0.8, music: 0.5, muted: false };
 const last = Object.create(null);     // per-sound throttle
@@ -35,9 +35,36 @@ function ensure() {
   noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  // 4.7: a space reverb on a send: the big moments (explosions, bosses, level-ups) get a tail; shots stay dry
+  try {
+    if ((navigator.hardwareConcurrency || 4) < 4) throw new Error("a slow device: no reverb");     // it runs on the audio thread all the time
+    const conv = ctx.createConvolver();
+    conv.buffer = spaceImpulse(1.6);
+    const tone2 = ctx.createBiquadFilter(); tone2.type = "lowpass"; tone2.frequency.value = 5200;
+    const back = ctx.createGain(); back.gain.value = 0.85;
+    verbIn = ctx.createGain(); verbIn.gain.value = 1;
+    verbIn.connect(conv); conv.connect(tone2); tone2.connect(back); back.connect(sfxBus);
+  } catch (e) { verbIn = null; }
   applyVolumes();
   mus = createMusic(ctx, musicBus, noiseBuf);
   return true;
+}
+
+/** A stereo impulse for the reverb: noise that thins out and darkens over `secs` (a big, soft room in space). */
+function spaceImpulse(secs) {
+  const rate = ctx.sampleRate, len = Math.floor(rate * secs);
+  const b = ctx.createBuffer(2, len, rate);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const k = i / len;
+      const n = Math.random() * 2 - 1;
+      lp += (n - lp) * (0.55 - k * 0.45);              // darker as it fades
+      d[i] = lp * Math.pow(1 - k, 2.6) * (i < rate * 0.012 ? i / (rate * 0.012) : 1);
+    }
+  }
+  return b;
 }
 
 function applyVolumes() {
@@ -136,20 +163,23 @@ const SOUNDS = {
   }],
   die: [0.045, (d) => {
     const t = now();
+    noise(d, t, 0.018, 0.35, "highpass", 4000, 2500);      // 4.7: the snap at the front
     noise(d, t, 0.22, 0.5, "lowpass", 3200, 200, 0.8);
     tone(d, "square", jitter(220, 0.15), 50, t, 0.18, 0.18);
-  }],
+    tone(d, "sine", 95, 45, t, 0.12, 0.22);                // and a little weight under it
+  }, 0.05],
   explode: [0.085, (d) => {
     const t = now();
+    noise(d, t, 0.025, 0.45, "highpass", 3000, 1800);
     noise(d, t, 0.6, 0.9, "lowpass", 1800, 90, 0.7);
     tone(d, "sine", 120, 35, t, 0.5, 0.6);
-  }],
+  }, 0.16],
   bigExplode: [0.1, (d) => {
     const t = now();
     noise(d, t, 1.4, 1, "lowpass", 2600, 60, 0.6);
     tone(d, "sine", 90, 25, t, 1.2, 0.9);
     tone(d, "sawtooth", 160, 40, t, 0.6, 0.25);
-  }],
+  }, 0.3],
   boost: [0.08, (d) => {
     const t = now();
     noise(d, t, 0.26, 0.45, "bandpass", 500, 3800, 1.4);
@@ -163,7 +193,7 @@ const SOUNDS = {
     const t = now();
     [784, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.05, 0.22, 0.12));
     noise(d, t, 0.4, 0.15, "highpass", 4000, 9000);
-  }],
+  }, 0.14],
   star: [0.05, (d, opts) => {
     const t = now();
     const step = Math.min(12, (opts && opts.pitch) || 0);
@@ -242,50 +272,50 @@ const SOUNDS = {
     const t = now();
     [659, 880, 1319, 1760].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.055, 0.3, 0.12));
     noise(d, t + 0.1, 0.5, 0.08, "highpass", 6000, 9000);
-  }],
+  }, 0.12],
   wave: [0.3, (d) => {
     const t = now();
     [440, 554, 659].forEach((f) => tone(d, "sawtooth", f, f, t, 0.7, 0.05, 0.02));
     tone(d, "sine", 110, 110, t, 0.8, 0.25, 0.01);
     noise(d, t, 0.5, 0.15, "bandpass", 800, 6000, 0.8);
-  }],
+  }, 0.18],
   clear: [0.3, (d) => {
     const t = now();
     [523, 659, 784, 1047].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.08, 0.4, 0.1));
-  }],
+  }, 0.14],
   bossIntro: [1, (d) => {
     const t = now();
     tone(d, "sawtooth", 55, 55, t, 2.4, 0.3, 0.3);
     tone(d, "sawtooth", 82.4, 82.4, t, 2.4, 0.2, 0.3);
     for (let i = 0; i < 3; i++) tone(d, "square", 880, 660, t + i * 0.5, 0.35, 0.08);
-  }],
+  }, 0.3],
   bossDown: [1, (d) => {
     const t = now();
     noise(d, t, 2.4, 1, "lowpass", 3000, 50, 0.5);
     tone(d, "sine", 80, 20, t, 2, 1);
     [523, 659, 784, 1047, 1319].forEach((f, i) => tone(d, "triangle", f, f, t + 0.6 + i * 0.09, 0.6, 0.1));
-  }],
+  }, 0.35],
   gameOver: [1, (d) => {
     const t = now();
     [392, 330, 262, 196].forEach((f, i) => tone(d, "triangle", f, f * 0.98, t + i * 0.18, 0.5, 0.14));
-  }],
+  }, 0.25],
   newBest: [1, (d) => {
     const t = now();
     [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(d, "square", f, f, t + i * 0.07, 0.2, 0.06));
-  }],
+  }, 0.2],
   // ---- weapon evolutions ----
   evoReady: [1, (d) => {           // a gun is ready to evolve: a shimmer that rises
     const t = now();
     [392, 494, 587, 784].forEach((f, i) => tone(d, "triangle", f, f * 1.01, t + i * 0.09, 0.5, 0.07, 0.02));
     noise(d, t, 0.9, 0.06, "highpass", 5000, 11000);
-  }],
+  }, 0.2],
   evolve: [1, (d) => {             // evolved: a low hit, a bright major chord, a sparkle
     const t = now();
     tone(d, "sine", 98, 49, t, 0.9, 0.5);
     noise(d, t, 0.6, 0.35, "lowpass", 4000, 200, 0.6);
     [523, 659, 784, 1047, 1319].forEach((f, i) => tone(d, "sawtooth", f, f, t + 0.08 + i * 0.03, 0.9, 0.035, 0.03));
     [1568, 2093, 2637].forEach((f, i) => tone(d, "triangle", f, f, t + 0.3 + i * 0.07, 0.4, 0.05));
-  }],
+  }, 0.3],
   fusion: [1, (d) => {              // a Sin Fusion: two chords colliding into one
     const t = now();
     [262, 330, 392].forEach((f) => tone(d, "sawtooth", f, f * 1.5, t, 0.5, 0.04, 0.05));
@@ -293,12 +323,12 @@ const SOUNDS = {
     tone(d, "sine", 65, 33, t + 0.45, 1.1, 0.6);
     noise(d, t + 0.45, 0.8, 0.4, "lowpass", 5000, 150, 0.6);
     [523, 784, 1047, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + 0.5 + i * 0.05, 0.7, 0.06));
-  }],
+  }, 0.3],
   achv: [0.5, (d) => {              // an achievement: a bright little fanfare
     const t = now();
     [784, 988, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.07, 0.35, 0.08));
     tone(d, "sine", 2349, 2349, t + 0.3, 0.5, 0.05);
-  }],
+  }, 0.18],
   evoBurst: [0.2, (d) => {         // Overdrive kicks in, Supernova's shockwave
     const t = now();
     tone(d, "sawtooth", 220, 880, t, 0.25, 0.12, 0.01);
@@ -397,7 +427,7 @@ const SOUNDS = {
     noise(d, t, 0.4, 0.12, "bandpass", 600, 7000, 0.8);
     [523, 659, 784, 1047].forEach((f, i) => tone(d, "triangle", f, f, t + 0.32 + i * 0.05, 0.6, 0.07));
     tone(d, "sine", 2093, 2093, t + 0.55, 0.5, 0.04);
-  }],
+  }, 0.22],
   pop: [0.05, (d) => {
     const t = now();
     tone(d, "sine", jitter(1200, 0.1), 400, t, 0.08, 0.12);
@@ -409,31 +439,31 @@ const SOUNDS = {
     [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + i * 0.05, 0.45, 0.09));
     [1047, 1319, 1568].forEach((f) => tone(d, "sawtooth", f, f, t + 0.32, 0.9, 0.022, 0.04));
     noise(d, t + 0.3, 0.8, 0.07, "highpass", 6000, 12000);
-  }],
+  }, 0.25],
   portal: [1, (d) => {              // a boss portal tearing open: a swirl that winds up, then a shimmer as it rises out
     const t = now();
     noise(d, t, 0.95, 0.2, "bandpass", 180, 2600, 3);
     tone(d, "sawtooth", 38, 120, t, 0.95, 0.1, 0.5);
     tone(d, "sine", 300, 1200, t + 0.9, 1.1, 0.045, 0.3);
     noise(d, t + 0.9, 1.1, 0.06, "highpass", 4000, 9000);
-  }],
+  }, 0.35],
   surge: [0.5, (d) => {             // a boss surge: a growl that climbs, then a crack
     const t = now();
     tone(d, "sawtooth", 70, 150, t, 0.6, 0.22, 0.03);
     tone(d, "square", 73, 156, t, 0.6, 0.07, 0.03);
     noise(d, t, 0.55, 0.3, "bandpass", 300, 2200, 1.4);
     noise(d, t + 0.45, 0.35, 0.4, "highpass", 1500, 6000);
-  }],
+  }, 0.22],
   minibossAlarm: [1, (d) => {       // a mini-boss on its way: a two-tone klaxon, three times, over a low drone
     const t = now();
     for (let i = 0; i < 3; i++) { tone(d, "square", 740, 740, t + i * 0.36, 0.16, 0.05, 0.01); tone(d, "square", 554, 554, t + i * 0.36 + 0.17, 0.16, 0.05, 0.01); }
     tone(d, "sawtooth", 55, 55, t, 1.1, 0.16, 0.2);
-  }],
+  }, 0.18],
   comboUp: [0.3, (d, opts) => {     // a combo milestone: a quick bright run, a little higher for bigger ones
     const t = now(), k = Math.min(1, ((opts && opts.n) || 25) / 200), base = 660 * (1 + k * 0.5);
     [1, 1.25, 1.5, 2].forEach((m, i) => tone(d, "square", base * m, base * m, t + i * 0.045, 0.14, 0.04));
     noise(d, t + 0.12, 0.3, 0.05, "highpass", 7000, 11000);
-  }],
+  }, 0.12],
   tick: [0.035, (d, opts) => {      // a results number counting up (higher as it nears the end)
     const t = now(), f = 1300 + ((opts && opts.p) || 0) * 900;
     tone(d, "square", f, f, t, 0.025, 0.016);
@@ -443,7 +473,7 @@ const SOUNDS = {
     tone(d, "sine", 110, 40, t, 0.35, 0.6, 0.003);
     noise(d, t, 0.25, 0.35, "lowpass", 3000, 200, 0.7);
     [784, 988, 1175, 1568].forEach((f, i) => tone(d, "triangle", f, f, t + 0.08 + i * 0.05, 0.5, 0.07));
-  }],
+  }, 0.2],
   heartbeat: [0.5, (d) => {
     const t = now();
     tone(d, "sine", 70, 45, t, 0.14, 0.4);
@@ -502,7 +532,11 @@ export const audio = {
     if (t - budgetT > 1) { budgetT = t; budgetN = 0; }
     if (++budgetN > 28 && name !== "hurt" && name !== "bossDown" && name !== "perfect") return;
     last[name] = t;
-    try { s[1](out(x, y, gain), opts); } catch (e) { /* never let audio break the game */ }
+    try {
+      const o = out(x, y, gain);
+      if (s[2] && verbIn) { const w = ctx.createGain(); w.gain.value = s[2]; o.connect(w); w.connect(verbIn); }
+      s[1](o, opts);
+    } catch (e) { /* never let audio break the game */ }
   },
 
   chargeStart() {

@@ -58,7 +58,7 @@ export function mergeInto(d, c) {
   // the ledger: every device's counters, the bigger of each (a counter only ever goes up)
   const L = ledger(d), C = c.ledger || {};
   for (const k of ["base", "earned", "spent", "xpBase", "xp"]) L[k] = maxMap(L[k], C[k]);
-  d.sigils = Math.max(0, Math.round(sum(L.base) + sum(L.earned) - sum(L.spent)));
+  d.sigils = Math.max(0, Math.round(sum(L.base) + sum(L.earned) - sum(L.spent) + ((d.paid && d.paid.total) || 0)));   // 4.7: plus what the account bought
   d.xp = Math.max(0, Math.round(sum(L.xpBase) + sum(L.xp)));
   // records: the best of each
   for (const k in c.best || {}) {

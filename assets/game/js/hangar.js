@@ -11,9 +11,11 @@ import { store } from "./storage.js";
 import {
   RARITY, KINDS, KIND_BY_ID, SETS, SET_BY_ID, item, itemsOf, shopItems, owns, source, equipped, equip, buy, look,
   trailPalOf, trailStyleOf, finishColOf, featured, dayKey, savePreset, applyPreset, setItems, ownedCount, ITEMS, DEFAULTS, parseLook,
+  setOffer, buySet,
 } from "./catalog.js";
 import { contracts, contractText, contractTier, contractReward, contractsResetIn } from "./contracts.js";
 import { achvSigils } from "./catalog.js";
+import { sigilShop } from "./sigilshop.js";
 import { ACHIEVEMENTS, ACH_BY_ID } from "./progress.js";
 import { sprites, PAL, C } from "./sprites.js";
 import { GUN_COL } from "./armory.js";
@@ -53,9 +55,21 @@ function modeNow() {
 // ---------------------------------------------------------------------------
 // the stage: a big astronaut on a lit platform, aiming at your pointer
 // ---------------------------------------------------------------------------
+// sprites for every stage (the big ones and the shop's cards), by look and scale
+const sprCache = new Map();
+function stageSprite(L, P) {
+  const k = L.key + "@" + P;
+  let a = sprCache.get(k);
+  if (!a) { a = sprites.astronaut(P, L); if (sprCache.size > 60) sprCache.clear(); sprCache.set(k, a); }      // a big stage's sprite is ~1 MB: keep the cache small
+  return a;
+}
+
 class Stage {
-  constructor(cv) {
+  /** opts (4.7, the shop's cards): { card: true, zoom, focus } (focus: the sprite-space y to centre on). */
+  constructor(cv, opts) {
     this.cv = cv;
+    this.opts = opts || {};
+    this.hover = false;
     this.g = cv.getContext("2d");
     this.over = null;               // a try-on: { hat: "halo" } and so on
     this.victory = "";              // a victory effect to preview over the astronaut
@@ -67,7 +81,8 @@ class Stage {
     this.lastKey = ""; this.swap = 0; this.swapCol = "#63f4ff";
     this.puffs = []; this.puffT = 0;
     this.bursts = []; this.burstT = 0;
-    if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(cv);
+    this.ro = window.ResizeObserver ? new ResizeObserver(() => { this.dirty = true; }) : null;
+    if (this.ro) this.ro.observe(cv);
   }
   resize() {
     const r = this.cv.getBoundingClientRect();
@@ -102,18 +117,20 @@ class Stage {
     const key = L.key + "|" + tr.id + "|" + fin.id + "|" + this.victory;
     if (key !== this.lastKey) { if (this.lastKey && !calm) this.swap = 1; this.lastKey = key; }
     const portals = this.cv.id === "stage-play" ? portalSlots() : null;           // 4.4: party portals either side of you
-    const u = Math.min(H / 94, W / (portals ? 84 : 70), 7.2 * (window.devicePixelRatio || 1));      // pixels per sprite unit (capped on big screens)
+    const card = !!this.opts.card;
+    const u = Math.min(H / 94, W / (portals ? 84 : 70), 7.2 * (window.devicePixelRatio || 1)) * (this.opts.zoom || 1);      // pixels per sprite unit (capped on big screens)
     const P = Math.max(1, Math.round(u * 2) / 2);
     const sk = L.key + "@" + P;
-    if (sk !== this.sprKey && sprites.P) { const a = sprites.astronaut(P, L); this.spr = a.player; this.flash = a.flash; this.sprKey = sk; }
+    if (sk !== this.sprKey && sprites.P) { const a = stageSprite(L, P); this.spr = a.player; this.flash = a.flash; this.sprKey = sk; }
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!this.spr) return;
 
     // where you're pointing (or a slow look around when there's no mouse)
-    const p = this.pointer();
-    const px = p ? p.x : 0.5 + Math.sin(t * 0.37) * 0.32, py = p ? p.y : 0.42 + Math.sin(t * 0.53) * 0.12;
-    const cx = W / 2 + (calm ? 0 : (px - 0.5) * -6 * u * 0.5), cy = H * 0.45;
+    const p = card && !this.hover ? null : this.pointer();
+    // nobody pointing: a slow look around (a card keeps facing you, so it never turns mid-glance)
+    const px = p ? p.x : card ? 0.64 + Math.sin(t * 0.37) * 0.08 : 0.5 + Math.sin(t * 0.37) * 0.32, py = p ? p.y : 0.42 + Math.sin(t * 0.53) * 0.12;
+    const cx = W / 2 + (calm ? 0 : (px - 0.5) * -6 * u * 0.5), cy = card ? H * 0.5 - (this.opts.focus || 0) * u : H * 0.45;
     const floorY = cy + 21 * u;
     const bob = calm ? 0 : Math.sin(t * 2.1) * 2 * u;
     const tilt = calm ? 0 : Math.sin(t * 1.3) * 0.04;
@@ -486,6 +503,7 @@ function loop(now) {
     hangarStats.frameMs += (performance.now() - t0 - hangarStats.frameMs) * 0.05;
     hangarStats.frames++;
   }
+  if (cardStages.size) cardsFrame(dt);
   if (tabNow === "challenges" && Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) updateResetClock();
   requestAnimationFrame(loop);
 }
@@ -507,12 +525,10 @@ function itemCard(it, opts) {
     art.classList.add("title-art");
     art.append(el("span", "title-plate", it.name));
   } else {
+    // 4.7: a live stage, like the item panel's (the pilot wearing it, lit, breathing), not a still
     const c = document.createElement("canvas");
-    const w = o.big ? 220 : 104, h = o.big ? 190 : 92;
-    const src = thumb(it, w, h);
-    c.width = src.width; c.height = src.height;
-    c.getContext("2d").drawImage(src, 0, 0);
     art.append(c);
+    liveCard(c, it, b);
   }
   b.append(art);
   b.append(el("span", "icard-name", it.name));
@@ -523,6 +539,66 @@ function itemCard(it, opts) {
   b.setAttribute("aria-label", it.name + ", " + RARITY[it.rarity].name + " " + KIND_BY_ID[it.kind].name.toLowerCase() + ". " + statusText(it));
   return b;
 }
+// ---------------------------------------------------------------------------
+// live cards (4.7): each card is a small Stage framed on its item. They share a time budget each frame
+// (the more there are on screen, the fewer redraw per frame), only the ones you can see are drawn, and a
+// card you point at follows the mouse. Reduced motion or the Low and Potato presets keep them still.
+// ---------------------------------------------------------------------------
+const FRAMING = {
+  hat: { zoom: 1.8, focus: -17 }, visor: { zoom: 2.15, focus: -10 }, suit: { zoom: 1.08, focus: -4 },
+  trail: { zoom: 1.05, focus: 1 }, finish: { zoom: 1.3, focus: -4 }, victory: { zoom: 0.9, focus: -12 },
+};
+const cardStages = new Set();
+let cardCost = 0.5, cardAt = 0, frameEma = 16;
+const cardIO = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((ents) => {
+  for (const e of ents) {
+    const st = e.target._st;
+    if (!st) continue;
+    st.visible = e.isIntersecting;
+    if (e.isIntersecting && !st.drawn) { st.frame(0); st.drawn = !!st.spr; }
+  }
+}, { rootMargin: "60px" }) : null;
+function liveCard(cv, it, btn) {
+  const st = new Stage(cv, { card: true, ...(FRAMING[it.kind] || {}) });
+  st.tryOn(tryOnFor(it), RARITY[it.rarity].col);
+  st.t = Math.random() * 20;
+  st.acc = 0; st.visible = !cardIO; st.drawn = false;
+  cv._st = st;
+  btn.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") st.hover = true; });
+  btn.addEventListener("pointerleave", () => { st.hover = false; });
+  cardStages.add(st);
+  if (cardIO) cardIO.observe(cv);
+}
+const cardsStill = () => reduced() || store.data.settings.quality === "low" || store.data.settings.quality === "potato";
+/** Redraws the cards on screen, a few each frame within the budget; the one under the mouse every frame. */
+function cardsFrame(dt) {
+  // a weak device or a busy page: fewer cards a frame, each a little less often (the hovered one never waits)
+  frameEma += (dt * 1000 - frameEma) * 0.05;
+  const tier = frameEma > 30 ? 2 : frameEma > 21 ? 1 : 0;
+  const gap = [1 / 30, 1 / 15, 1 / 8][tier], budget = [4.5, 3, 1.5][tier];
+  const vis = [];
+  let hovered = null;
+  for (const st of cardStages) {
+    if (!st.cv.isConnected) { cardStages.delete(st); if (cardIO) cardIO.unobserve(st.cv); if (st.ro) st.ro.disconnect(); st.puffs.length = 0; continue; }      // a redrawn tab: let the old card go
+    st.acc += dt;
+    if (!st.visible || (detail && !st.cv.closest("#reveal"))) continue;      // the item panel covers the rest
+    if (!st.drawn) { st.frame(0); st.drawn = !!st.spr; st.acc = 0; continue; }
+    if (st.hover) hovered = st; else if (st.acc >= gap) vis.push(st);
+  }
+  if (cardsStill()) return;
+  const t0 = performance.now();
+  let n = 0;
+  if (hovered) { hovered.frame(Math.min(0.1, hovered.acc)); hovered.acc = 0; n++; }
+  const room = Math.max(1, Math.floor(budget / Math.max(0.05, cardCost)) - n);
+  const k = Math.min(vis.length, room);
+  for (let i = 0; i < k; i++) {
+    const st = vis[(cardAt + i) % vis.length];
+    st.frame(Math.min(0.25, st.acc)); st.acc = 0; n++;
+  }
+  if (vis.length) cardAt = (cardAt + k) % vis.length;
+  if (n) { cardCost += ((performance.now() - t0) / n - cardCost) * 0.1; hangarStats.cardMs = cardCost; hangarStats.cardsDrawn = n; }
+}
+
 function statusText(it) {
   if (equipped(it.kind).id === it.id && owns(it)) return "Equipped";
   if (owns(it)) return "Owned";
@@ -608,8 +684,7 @@ function renderPlay() {
     feat.replaceChildren();
     feat.style.setProperty("--r", RARITY[it.rarity].col);
     const c = document.createElement("canvas");
-    const src = thumb(it, 88, 76);
-    c.width = src.width; c.height = src.height; c.getContext("2d").drawImage(src, 0, 0);
+    if (it.kind !== "title") liveCard(c, it, feat);
     const txt = el("span", "feat-txt");
     txt.append(el("small", "", "In the Item Shop today"), el("b", "", it.name), el("span", "", RARITY[it.rarity].name + " " + KIND_BY_ID[it.kind].name.toLowerCase()));
     feat.append(c, txt, owns(it) ? el("span", "icard-state owned", "Owned") : sigilTag(it.price, "feat-price"));
@@ -788,8 +863,15 @@ function renderShop() {
   earn.type = "button";
   earn.addEventListener("click", () => { sfx("click"); setTab("challenges"); });
   bal.append(earn);
+  if (sigilShop.open) {
+    const get = el("button", "btn btn-primary btn-sm get-sigils", "Get Sigils");
+    get.type = "button"; get.prepend(icon("gem"));
+    get.addEventListener("click", () => openSigilStore());
+    bal.append(get);
+  }
   const ms = contractsResetIn();
-  $("shop-note").textContent = shopKind === "featured" ? "Today's picks · new ones at 00:00 UTC (in " + Math.floor(ms / 3600000) + "h " + Math.floor((ms % 3600000) / 60000) + "m). Everything is always in the full catalog too." : "Everything here is for Sigils you earn in play. Nothing is for real money.";
+  $("shop-note").textContent = shopKind === "featured" ? "Today's picks · new ones at 00:00 UTC (in " + Math.floor(ms / 3600000) + "h " + Math.floor((ms % 3600000) / 60000) + "m). Everything is always in the full catalog too."
+    : sigilShop.open ? "Everything here is cosmetic, for Sigils: earn them in play, or get more with Get Sigils." : "Everything here is for Sigils you earn in play. Nothing is for real money.";
   const body = $("shop-body");
   body.replaceChildren();
   const visible = (it) => !(shopHideOwned && owns(it));
@@ -840,9 +922,150 @@ function setStrip(full) {
     }
     card.append(row);
     if (title) card.append(el("p", "set-reward", (have === items.length ? "Title earned: " : "Own all " + items.length + " for the title ") + "“" + title.name + "”"));
+    if (have < items.length) card.append(setBuyRow(s));
     wrap.append(card);
   }
   return wrap;
+}
+
+// --- Get Sigils (4.7): packs for money, through Stripe's checkout (sigilshop.js) ------------------
+let storeBusy = "", storeErr = "";
+function openSigilStore() {
+  let box = $("sigil-store");
+  if (!box) {
+    box = el("div", "sigil-store");
+    box.id = "sigil-store";
+    box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ss-title");
+    box.addEventListener("click", (e) => { if (e.target === box) { sfx("click"); closeSigilStore(); } });
+    $("screen-menu").append(box);
+  }
+  storeBusy = ""; storeErr = "";
+  box.hidden = false;
+  box.classList.remove("in"); void box.offsetWidth; box.classList.add("in");
+  sfx("tab");
+  renderSigilStore();
+  sigilShop.sync().then(() => { if (!box.hidden) renderSigilStore(); });
+  setTimeout(() => { const f = box.querySelector(".ss-buy, .ss-signin, .ss-close"); if (f) f.focus({ preventScroll: true }); }, 30);
+}
+function closeSigilStore() {
+  const box = $("sigil-store");
+  if (!box || box.hidden) return false;
+  box.hidden = true;
+  if (tabNow === "shop") renderShop();
+  renderSigils();
+  return true;
+}
+const PACK_ART = ["pouch", "stack", "chest", "vault"];
+function renderSigilStore() {
+  const box = $("sigil-store");
+  if (!box) return;
+  box.replaceChildren();
+  const panel = el("div", "ss-panel glow-card");
+  const close = el("button", "icon-btn ss-close"); close.type = "button"; close.setAttribute("aria-label", "Close"); close.append(icon("x"));
+  close.addEventListener("click", () => { sfx("click"); closeSigilStore(); });
+  const head = el("header", "ss-head");
+  const hb = el("div");
+  hb.append(el("p", "kicker", "Envious Glider · Sigils"), el("h2", "panel-title", "Get Sigils"));
+  hb.lastChild.id = "ss-title";
+  const bal = el("p", "ss-bal");
+  bal.append(document.createTextNode("You have "), sigilTag(store.data.sigils || 0), document.createTextNode(" Sigils"));
+  hb.append(bal);
+  head.append(hb, close);
+  panel.append(head);
+  if (!online.user) {
+    const p = el("div", "ss-signin-box");
+    p.append(el("p", "", "Sigils you buy are kept on your account, so they follow you to the website, the Windows app and the Android app. Sign in with Discord first."));
+    const b = el("button", "btn btn-primary ss-signin", "Sign in with Discord"); b.type = "button"; b.prepend(icon("discord"));
+    b.addEventListener("click", () => { sfx("click"); online.signIn(); });
+    p.append(b);
+    panel.append(p);
+  } else {
+    const grid = el("div", "ss-packs");
+    const base = sigilShop.packs[0];
+    sigilShop.packs.forEach((pk, i) => {
+      const card = el("div", "ss-pack" + (i === sigilShop.packs.length - 1 ? " best" : ""));
+      card.style.setProperty("--i", String(i));
+      const art = el("span", "ss-art ss-" + (PACK_ART[i] || "vault"));
+      for (let k = 0; k < Math.min(6, i + 2); k++) { const g = icon("gem"); g.style.setProperty("--k", String(k)); art.append(g); }
+      const more = base && i > 0 ? Math.round(((pk.sigils / pk.cents) / (base.sigils / base.cents) - 1) * 100) : 0;
+      card.append(art, el("b", "ss-n", pk.sigils.toLocaleString()), el("span", "ss-label", (pk.name || "") + " · Sigils"));
+      card.append(el("span", "ss-more" + (more > 0 ? "" : " none"), more > 0 ? "+" + more + "% more Sigils" : "Starter"));
+      const buy = el("button", "btn btn-primary ss-buy", storeBusy === pk.id ? "Opening checkout…" : sigilShop.money(pk.cents, pk.currency));
+      buy.type = "button";
+      buy.disabled = !!storeBusy;
+      buy.setAttribute("aria-label", "Buy " + pk.sigils + " Sigils for " + sigilShop.money(pk.cents, pk.currency));
+      buy.addEventListener("click", async () => {
+        if (storeBusy) return;
+        sfx("click");
+        storeBusy = pk.id; storeErr = "";
+        renderSigilStore();
+        try { await sigilShop.checkout(pk.id); if (G.desktop || G.androidApp) { storeBusy = ""; storeErr = ""; renderSigilStore(); ui.toast("Finish paying in your browser. Your Sigils will show up here.", 5000); } }
+        catch (e) { storeBusy = ""; storeErr = e.message || "Checkout couldn't start."; sfx("deny"); renderSigilStore(); }
+      });
+      card.append(buy);
+      grid.append(card);
+    });
+    panel.append(grid);
+    if (storeErr) panel.append(el("p", "ss-err", storeErr));
+    if (sigilShop.watching) panel.append(el("p", "ss-wait", "Waiting for your payment to come through… your Sigils appear here as soon as it does."));
+    if (sigilShop.cap) panel.append(el("p", "ss-cap", "Last 30 days: " + sigilShop.money(sigilShop.month, base ? base.currency : "usd") + " of " + sigilShop.money(sigilShop.cap, base ? base.currency : "usd") + " per account."));
+  }
+  const fine = el("ul", "ss-fine");
+  for (const t of [
+    "Sigils only buy cosmetics. Nothing for sale changes how the game plays, and every item can also be earned by playing.",
+    "You pay on Stripe's secure page. Your card details never reach Envious Gluttony.",
+    "A pack is exactly what it says: no random rewards.",
+    "Under 18? Ask a parent or guardian before you buy.",
+    "A problem with a purchase? Message us on Discord.",
+  ]) fine.append(el("li", "", t));
+  panel.append(fine);
+  if (online.user && sigilShop.orders.length) {
+    const h = el("h3", "ss-h", "Your purchases");
+    const list = el("ul", "ss-orders");
+    const NAMES = { paid: "Paid", refunded: "Refunded (Sigils taken back)", disputed: "Disputed (on hold)", pending: "Waiting for payment" };
+    for (const o of sigilShop.orders.slice(0, 8)) {
+      const li = el("li", "ss-order " + o.status);
+      li.append(el("span", "", new Date(o.at).toLocaleDateString()), el("b", "", "+" + Number(o.sigils).toLocaleString()), el("span", "", sigilShop.money(o.cents, o.currency)), el("em", "", NAMES[o.status] || o.status));
+      list.append(li);
+    }
+    panel.append(h, list);
+  }
+  box.append(panel);
+}
+
+/** 4.7: "Buy the rest" for a collection, at a bundle price, with a confirm step. */
+let setConfirm = "";
+function setBuyRow(s) {
+  const o = setOffer(s.id), have = store.data.sigils || 0;
+  const row = el("div", "set-buy");
+  const price = el("span", "set-price");
+  price.append(sigilTag(o.price));
+  if (o.price < o.full) { const was = el("s", "", String(o.full)); price.append(was, el("em", "", "-" + Math.round(BALANCE.sigils.bundleOff * 100) + "%")); }
+  if (setConfirm === s.id) {
+    const yes = el("button", "btn btn-primary btn-sm", "Buy " + o.rest.length + " for " + o.price);
+    yes.type = "button"; yes.prepend(icon("gem"));
+    yes.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setConfirm = "";
+      const got = buySet(s.id);
+      if (!got) { sfx("deny"); ui.toast("Not enough Sigils"); renderShop(); return; }
+      sfx("reveal");
+      ui.toast(s.name + ": " + got.rest.length + " item" + (got.rest.length === 1 ? "" : "s") + " are yours");
+      renderShop(); renderSigils();
+    });
+    const no = el("button", "btn btn-ghost btn-sm", "Not now"); no.type = "button";
+    no.addEventListener("click", (e) => { e.stopPropagation(); setConfirm = ""; sfx("click"); renderShop(); });
+    row.append(el("span", "set-ask", "Spend " + o.price + " of your " + have + "?"), yes, no);
+    setTimeout(() => yes.focus({ preventScroll: true }), 20);
+    return row;
+  }
+  const b = el("button", "btn btn-primary btn-sm set-all", o.rest.length === setItems(s.id).length ? "Buy the collection" : "Buy the rest (" + o.rest.length + ")");
+  b.type = "button";
+  b.disabled = have < o.price;
+  if (have < o.price) b.textContent = "Need " + (o.price - have) + " more";
+  b.addEventListener("click", (e) => { e.stopPropagation(); setConfirm = s.id; sfx("click"); renderShop(); });
+  row.append(price, b);
+  return row;
 }
 
 // --- the item panel (shop and locker): try it on, buy it, wear it ---------------------
@@ -948,7 +1171,7 @@ function reveal(it) {
   const art = $("reveal-art");
   art.replaceChildren();
   if (it.kind === "title") art.append(el("span", "title-plate big", it.name));
-  else { const c = document.createElement("canvas"); const src = thumb(it, 220, 190); c.width = src.width; c.height = src.height; c.getContext("2d").drawImage(src, 0, 0); art.append(c); }
+  else { const c = document.createElement("canvas"); art.append(c); liveCard(c, it, art); }
   box.hidden = false;
   box.classList.remove("in"); void box.offsetWidth; box.classList.add("in");
   sfx("reveal");
@@ -1201,7 +1424,10 @@ export const hangar = {
     G.on("look", () => { if (tabNow === "play") renderPlay(); });
     G.on("sigils", () => renderSigils());
     G.on("setDone", (s) => ui.toast(s.name + " complete: its title is yours", 2600));
+    G.on("sigilStore", () => { if (tabNow === "shop") renderShop(); });
+    G.on("sigilsPaid", () => { renderSigils(); if (tabNow === "shop") renderShop(); const b = $("sigil-store"); if (b && !b.hidden) renderSigilStore(); });
   },
+  openSigilStore,
   /** The menu screen just opened. */
   show() { start(); refresh(); },
   tab: setTab,
@@ -1210,6 +1436,7 @@ export const hangar = {
   play,
   /** Esc / Back in the Hangar: closes what's open, then goes back to Play. False when there's nothing to close. */
   back() {
+    if (closeSigilStore()) return true;
     if (friendsUI.back()) return true;
     if (closeReveal()) return true;
     if (closeDetail()) return true;
